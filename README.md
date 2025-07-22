@@ -1,4 +1,4 @@
-# Research link: Technology Landscaping
+# Research Link: Technology Landscaping
 
 ## Project Description 
 The ability to identify and understand internal and external collaboration networks presents an ongoing challenge for many research institutions. This is particularly true for analysing broader industry networks, communicating the impact of industry collaborative efforts, and enhancing the visibility of applied research outcomes. 

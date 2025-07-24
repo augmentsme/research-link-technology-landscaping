@@ -1,0 +1,19 @@
+[project]
+name = "pyrla"
+version = "0.1.0"
+description = "Python interface for Research Link Australia (RLA) API"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "aiohttp",
+    "typer",
+    "rich",
+    "python-dotenv"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "isort", "flake8"]
+
+[project.scripts]
+pyrla = "pyrla.cli:app"

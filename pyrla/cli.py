@@ -16,9 +16,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from dotenv import load_dotenv
 
+from .config import APIConfig, CLIConfig, FilterConfig, StatusOptions, DisplayConfig
 from .client import RLAClient
-from .models import Researcher, Grant, Organisation, Publication
-from .exceptions import RLAError, RLAAuthenticationError, RLANotFoundError
+from .models import Researcher, Grant, Organisation
+from .exceptions import RLAError, RLAAuthenticationError
 from .utils import get_funding_statistics, filter_grants_by_amount, filter_researchers_by_orcid
 
 # Main app
@@ -28,18 +29,6 @@ app = typer.Typer(
     epilog="Visit https://researchlink.ardc.edu.au/v3/api-docs/public for API documentation."
 )
 
-# Subcommand apps
-researchers_app = typer.Typer(help="Commands for working with researchers")
-grants_app = typer.Typer(help="Commands for working with grants")
-organisations_app = typer.Typer(help="Commands for working with organisations")
-publications_app = typer.Typer(help="Commands for working with publications")
-
-# Register subcommands
-app.add_typer(researchers_app, name="researchers")
-app.add_typer(grants_app, name="grants")
-app.add_typer(organisations_app, name="organisations")
-app.add_typer(publications_app, name="publications")
-
 console = Console()
 
 # Global client instance and debug flag
@@ -47,14 +36,40 @@ client: Optional[RLAClient] = None
 debug_mode: bool = False
 
 
+def build_filter_query(filter_mapping: dict, **kwargs) -> str:
+    """Build a filter query string from individual filter parameters"""
+    filters = []
+    for param_name, value in kwargs.items():
+        if value is not None and value != "":
+            if param_name in filter_mapping:
+                api_field = filter_mapping[param_name]
+                filters.append(f"{api_field}:{value}")
+    return ",".join(filters)
+
+
+def build_advanced_query(**kwargs) -> str:
+    """Build an advanced search query string from parameters"""
+    queries = []
+    for param_name, value in kwargs.items():
+        if value is not None and value != "":
+            queries.append(f"{param_name}:{value}")
+    return ",".join(queries)
+
+
+def combine_filter_queries(*queries) -> str:
+    """Combine multiple filter query strings"""
+    non_empty = [q for q in queries if q]
+    return ",".join(non_empty)
+
+
 def save_json_to_file(data: List[dict], filename: str) -> None:
     """Save JSON data to a file"""
     try:
         with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
-        console.print(f"[green]✓ JSON data saved to: {filename}[/green]")
+            json.dump(data, f, indent=DisplayConfig.JSON_INDENT, ensure_ascii=False, default=str)
+        console.print(f"[{DisplayConfig.SUCCESS_COLOR}]✓ JSON data saved to: {filename}[/{DisplayConfig.SUCCESS_COLOR}]")
     except Exception as e:
-        console.print(f"[red]Error saving JSON file: {e}[/red]")
+        console.print(f"[{DisplayConfig.ERROR_COLOR}]Error saving JSON file: {e}[/{DisplayConfig.ERROR_COLOR}]")
         raise typer.Exit(1)
 
 
@@ -177,29 +192,6 @@ def format_organisation_table(orgs: List[Organisation], title: str = "Organisati
     return table
 
 
-def format_publication_table(publications: List[Publication], title: str = "Publications") -> Table:
-    """Format publications data as a rich table"""
-    table = Table(title=title, show_header=True, header_style="bold magenta")
-    table.add_column("Title", style="cyan", min_width=40)
-    table.add_column("Authors", style="green", min_width=20)
-    table.add_column("Type", style="yellow", min_width=15)
-    table.add_column("Year", justify="right", style="blue")
-    table.add_column("Journal", style="red", min_width=20)
-    table.add_column("DOI", style="magenta", min_width=15)
-    
-    for pub in publications:
-        title_display = pub.title[:50] + "..." if len(pub.title) > 50 else pub.title or "N/A"
-        authors = pub.authors_list[:30] + "..." if len(pub.authors_list) > 30 else pub.authors_list or "N/A"
-        pub_type = pub.publication_type or "N/A"
-        year = str(pub.publication_year) if pub.publication_year else "N/A"
-        journal = pub.journal[:25] + "..." if len(pub.journal) > 25 else pub.journal or "N/A"
-        doi = pub.doi[:20] + "..." if len(pub.doi) > 20 else pub.doi or "N/A"
-        
-        table.add_row(title_display, authors, pub_type, year, journal, doi)
-    
-    return table
-
-
 @app.command()
 def test_connection():
     """Test connection to the RLA API"""
@@ -224,15 +216,84 @@ def test_connection():
         raise typer.Exit(1)
 
 
-@researchers_app.command("search")
+@app.command("get")
+def get_item(
+    item_type: str = typer.Argument(..., help="Type of item to get (researcher, grant, organisation)"),
+    item_id: str = typer.Argument(..., help="ID of the item to retrieve"),
+    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file")
+):
+    """Get a specific item by type and ID"""
+    try:
+        client = get_client()
+        
+        # Normalize item type
+        item_type = item_type.lower()
+        if item_type.endswith('s'):
+            item_type = item_type[:-1]  # Remove plural 's'
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            if item_type == "researcher":
+                task = progress.add_task("Fetching researcher...", total=None)
+                item = client.get_researcher_sync(item_id)
+                progress.update(task, completed=100)
+                
+                if json_file:
+                    save_json_to_file([asdict(item)], json_file)
+                else:
+                    table = format_researcher_table([item], f"Researcher Details: {item.full_name}")
+                    console.print(table)
+                    
+            elif item_type == "grant":
+                task = progress.add_task("Fetching grant...", total=None)
+                item = client.get_grant_sync(item_id)
+                progress.update(task, completed=100)
+                
+                if json_file:
+                    save_json_to_file([asdict(item)], json_file)
+                else:
+                    table = format_grant_table([item], f"Grant Details: {item.title}")
+                    console.print(table)
+                    
+            elif item_type == "organisation":
+                task = progress.add_task("Fetching organisation...", total=None)
+                item = client.get_organisation_sync(item_id)
+                progress.update(task, completed=100)
+                
+                if json_file:
+                    save_json_to_file([asdict(item)], json_file)
+                else:
+                    table = format_organisation_table([item], f"Organisation Details: {item.name}")
+                    console.print(table)
+            else:
+                console.print(f"[red]Error: Unknown item type '{item_type}'. Valid types: researcher, grant, organisation[/red]")
+                raise typer.Exit(1)
+                
+    except RLAError as e:
+        console.print(f"[red]API Error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("researchers")
 def search_researchers(
-    query: str = typer.Argument(..., help="Search query for researchers"),
-    page_size: int = typer.Option(10, "--size", "-s", help="Number of results per page"),
-    page_number: int = typer.Option(1, "--page", "-p", help="Page number"),
-    filter_query: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter query (e.g., 'currentOrganisationName:University')"),
-    advanced_query: Optional[str] = typer.Option(None, "--advanced", "-a", help="Advanced search query"),
+    query: str = typer.Argument("", help="Search query for researchers (empty returns all researchers)"),
+    limit: int = typer.Option(CLIConfig.DEFAULT_LIMIT, "--limit", "-l", help="Maximum number of results to return"),
+    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages (ignores --limit)"),
+    current_organisation: Optional[str] = typer.Option(None, "--org", help="Filter by current organisation name"),
+    country: Optional[str] = typer.Option(None, "--country", help="Filter by country code (e.g., 'au')"),
+    state: Optional[str] = typer.Option(None, "--state", help="Filter by state code (e.g., 'nsw')"),
+    for_subject: Optional[str] = typer.Option(None, "--for-subject", help="Filter by FOR subject code"),
+    seo_subject: Optional[str] = typer.Option(None, "--seo-subject", help="Filter by SEO subject code"),
+    first_name: Optional[str] = typer.Option(None, "--first-name", help="Filter by first name"),
+    last_name: Optional[str] = typer.Option(None, "--last-name", help="Filter by last name"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="Search by research topic"),
     orcid_only: bool = typer.Option(False, "--orcid-only", help="Show only researchers with ORCID"),
-    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages"),
     json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
     debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
 ):
@@ -242,31 +303,75 @@ def search_researchers(
     try:
         client = get_client()
         
+        # Build filter query from individual parameters
+        filter_query = build_filter_query(
+            FilterConfig.RESEARCHER_FILTERS,
+            current_organisation=current_organisation,
+            country=country,
+            state=state,
+            for_subject=for_subject,
+            seo_subject=seo_subject,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        # Build advanced query for topic-based search
+        advanced_query = build_advanced_query(topic=topic) if topic else ""
+        
+        # Handle --all option or limit-based fetching
         if all_results:
-            # Fetch all results from all pages using async for better performance
-            console.print("[yellow]Fetching all results using concurrent requests...[/yellow]")
+            console.print("[yellow]Fetching ALL researchers from all pages...[/yellow]")
             
             async def fetch_all_async():
-                async with client:  # Use async context manager
-                    return await client.search_all_researchers(
+                async with client:
+                    response = await client.search_all_researchers(
                         value=query,
                         filter_query=filter_query,
                         advanced_search_query=advanced_query,
-                        max_concurrent=5  # Limit concurrent requests to be API-friendly
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
                     )
+                    return response
             
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Fetching all researchers concurrently...", total=None)
+                task = progress.add_task("Fetching all researchers...", total=None)
                 response = run_async(fetch_all_async())
+                progress.update(task, completed=100, description=f"Fetched {len(response.results)} researchers")
+            
+            researchers = response.results
+        elif limit > APIConfig.MAX_PAGE_SIZE:
+            # For larger limits, use async bulk fetching
+            console.print(f"[yellow]Fetching {limit} results using concurrent requests...[/yellow]")
+            
+            async def fetch_limited_async():
+                async with client:
+                    # Use search_all but limit results
+                    response = await client.search_all_researchers(
+                        value=query,
+                        filter_query=filter_query,
+                        advanced_search_query=advanced_query,
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
+                    )
+                    # Limit results to requested amount
+                    response.results = response.results[:limit]
+                    return response
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Fetching researchers concurrently...", total=None)
+                response = run_async(fetch_limited_async())
                 progress.update(task, completed=100, description=f"Fetched {len(response.results)} researchers")
             
             researchers = response.results
         else:
             # Single page fetch
+            page_size = min(limit, APIConfig.MAX_PAGE_SIZE)
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -276,7 +381,7 @@ def search_researchers(
                 response = client.search_researchers_sync(
                     value=query,
                     filter_query=filter_query,
-                    page_number=page_number,
+                    page_number=1,
                     page_size=page_size,
                     advanced_search_query=advanced_query
                 )
@@ -293,20 +398,16 @@ def search_researchers(
         else:
             # Display table format to stdout
             if all_results:
-                total_pages = 1  # All results in one "page"
                 info_panel = Panel(
                     f"Found {response.total_results} researchers total\n"
-                    f"Showing all results\n"
-                    f"Results displayed: {len(researchers)}",
-                    title="Search Results (All Pages)",
+                    f"Showing ALL {len(researchers)} results",
+                    title="Search Results",
                     border_style="blue"
                 )
             else:
-                total_pages = (response.total_results + response.size - 1) // response.size  # Calculate total pages
                 info_panel = Panel(
                     f"Found {response.total_results} researchers total\n"
-                    f"Showing page {response.current_page} of {total_pages}\n"
-                    f"Results per page: {page_size}",
+                    f"Showing {len(researchers)} results (limit: {limit})",
                     title="Search Results",
                     border_style="blue"
                 )
@@ -329,57 +430,22 @@ def search_researchers(
         raise typer.Exit(1)
 
 
-@researchers_app.command("get")
-def get_researcher(
-    researcher_id: str = typer.Argument(..., help="Researcher ID"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Get a specific researcher by ID"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = get_client()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Fetching researcher...", total=None)
-            researcher = client.get_researcher_sync(researcher_id)
-            progress.update(task, completed=100)
-        
-        if json_file:
-            # Save to JSON file
-            save_json_to_file([asdict(researcher)], json_file)
-        else:
-            # Display table format to stdout
-            table = format_researcher_table([researcher], f"Researcher Details: {researcher.full_name}")
-            console.print(table)
-            
-    except RLANotFoundError:
-        console.print(f"[red]Researcher with ID '{researcher_id}' not found.[/red]")
-        raise typer.Exit(1)
-    except RLAError as e:
-        console.print(f"[red]API Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        handle_exception(e, "retrieving researcher")
-        raise typer.Exit(1)
 
-
-@grants_app.command("search")
+@app.command("grants")
 def search_grants(
     query: str = typer.Argument("", help="Search query for grants (empty returns all grants)"),
-    page_size: int = typer.Option(10, "--size", "-s", help="Number of results per page"),
-    page_number: int = typer.Option(1, "--page", "-p", help="Page number"),
-    filter_query: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter query (e.g., 'funder:NHMRC,status:Active')"),
-    advanced_query: Optional[str] = typer.Option(None, "--advanced", "-a", help="Advanced search query"),
+    limit: int = typer.Option(CLIConfig.DEFAULT_LIMIT, "--limit", "-l", help="Maximum number of results to return"),
+    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages (ignores --limit)"),
+    status: Optional[str] = typer.Option(None, "--status", help=f"Filter by grant status ({'/'.join(StatusOptions.GRANT_STATUSES)})"),
+    funder: Optional[str] = typer.Option(None, "--funder", help="Filter by funder name"),
+    funding_scheme: Optional[str] = typer.Option(None, "--funding-scheme", help="Filter by funding scheme"),
+    funding_amount: Optional[float] = typer.Option(None, "--funding-amount", help="Filter by exact funding amount"),
+    country: Optional[str] = typer.Option(None, "--country", help="Filter by country code"),
+    state: Optional[str] = typer.Option(None, "--state", help="Filter by state code"),
+    for_subject: Optional[str] = typer.Option(None, "--for-subject", help="Filter by FOR subject code"),
+    seo_subject: Optional[str] = typer.Option(None, "--seo-subject", help="Filter by SEO subject code"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="Search by research topic"),
     min_amount: Optional[float] = typer.Option(None, "--min-amount", help="Minimum funding amount"),
-    active: bool = typer.Option(False, "--active", help="Show only active grants"),
-    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages"),
     json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
     show_stats: bool = typer.Option(False, "--stats", help="Show funding statistics"),
     debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
@@ -390,37 +456,76 @@ def search_grants(
     try:
         client = get_client()
         
-        # Add active filter if requested
-        if active and filter_query:
-            filter_query += ",status:Active"
-        elif active:
-            filter_query = "status:Active"
+        # Build filter query from individual parameters
+        filter_query = build_filter_query(
+            FilterConfig.GRANT_FILTERS,
+            status=status,
+            funder=funder,
+            funding_scheme=funding_scheme,
+            funding_amount=funding_amount,
+            country=country,
+            state=state,
+            for_subject=for_subject,
+            seo_subject=seo_subject
+        )
         
+        # Build advanced query for topic-based search
+        advanced_query = build_advanced_query(topic=topic) if topic else ""
+        
+        # Handle --all option or limit-based fetching
         if all_results:
-            # Fetch all results from all pages using async for better performance
-            console.print("[yellow]Fetching all grant results using concurrent requests...[/yellow]")
+            console.print("[yellow]Fetching ALL grants from all pages...[/yellow]")
             
             async def fetch_all_async():
-                async with client:  # Use async context manager
-                    return await client.search_all_grants(
+                async with client:
+                    response = await client.search_all_grants(
                         value=query,
                         filter_query=filter_query,
                         advanced_search_query=advanced_query,
-                        max_concurrent=5  # Limit concurrent requests to be API-friendly
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
                     )
+                    return response
             
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Fetching all grants concurrently...", total=None)
+                task = progress.add_task("Fetching all grants...", total=None)
                 response = run_async(fetch_all_async())
+                progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
+            
+            grants = response.results
+        elif limit > APIConfig.MAX_PAGE_SIZE:
+            # For larger limits, use async bulk fetching
+            console.print(f"[yellow]Fetching {limit} results using concurrent requests...[/yellow]")
+            
+            async def fetch_limited_async():
+                async with client:
+                    # Use search_all but limit results
+                    response = await client.search_all_grants(
+                        value=query,
+                        filter_query=filter_query,
+                        advanced_search_query=advanced_query,
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
+                    )
+                    # Limit results to requested amount
+                    response.results = response.results[:limit]
+                    return response
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Fetching grants concurrently...", total=None)
+                response = run_async(fetch_limited_async())
                 progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
             
             grants = response.results
         else:
             # Single page fetch
+            page_size = min(limit, APIConfig.MAX_PAGE_SIZE)
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -430,13 +535,14 @@ def search_grants(
                 response = client.search_grants_sync(
                     value=query,
                     filter_query=filter_query,
-                    page_number=page_number,
+                    page_number=1,
                     page_size=page_size,
                     advanced_search_query=advanced_query
                 )
                 progress.update(task, completed=100)
             
             grants = response.results
+            
         if min_amount:
             grants = filter_grants_by_amount(grants, min_amount=min_amount)
         
@@ -459,20 +565,16 @@ def search_grants(
         else:
             # Display table format to stdout
             if all_results:
-                total_pages = 1  # All results in one "page"
                 info_panel = Panel(
                     f"Found {response.total_results} grants total\n"
-                    f"Showing all results\n"
-                    f"Results displayed: {len(grants)}",
-                    title="Search Results (All Pages)",
+                    f"Showing ALL {len(grants)} results",
+                    title="Search Results",
                     border_style="blue"
                 )
             else:
-                total_pages = (response.total_results + response.size - 1) // response.size  # Calculate total pages
                 info_panel = Panel(
                     f"Found {response.total_results} grants total\n"
-                    f"Showing page {response.current_page} of {total_pages}\n"
-                    f"Results per page: {page_size}",
+                    f"Showing {len(grants)} results (limit: {limit})",
                     title="Search Results",
                     border_style="blue"
                 )
@@ -492,65 +594,42 @@ def search_grants(
         raise typer.Exit(1)
 
 
-@grants_app.command("get")
-def get_grant(
-    grant_id: str = typer.Argument(..., help="Grant ID"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Get a specific grant by ID"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = RLAClient(debug=debug)
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Fetching grant...", total=None)
-            grant = client.get_grant_sync(grant_id)
-            progress.update(task, completed=100)
-        
-        if json_file:
-            # Save to JSON file
-            save_json_to_file([asdict(grant)], json_file)
-        else:
-            # Display table format to stdout
-            table = format_grant_table([grant], f"Grant Details: {grant.title or grant.grant_title}")
-            console.print(table)
-            
-    except Exception as e:
-        handle_exception(e, debug_mode)
-
-
-@organisations_app.command("search")
+@app.command("organisations")
 def search_organisations(
-    query: str = typer.Argument(..., help="Search query for organisations"),
-    page_size: int = typer.Option(10, "--size", "-s", help="Number of results per page"),
-    page_number: int = typer.Option(1, "--page", "-p", help="Page number"),
-    filter_query: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter query"),
-    advanced_query: Optional[str] = typer.Option(None, "--advanced", "-a", help="Advanced search query"),
-    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages"),
+    query: str = typer.Argument("", help="Search query for organisations (empty returns all organisations)"),
+    limit: int = typer.Option(CLIConfig.DEFAULT_LIMIT, "--limit", "-l", help="Maximum number of results to return"),
+    all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages (ignores --limit)"),
+    country: Optional[str] = typer.Option(None, "--country", help="Filter by country"),
+    state: Optional[str] = typer.Option(None, "--state", help="Filter by state/province"),
+    type: Optional[str] = typer.Option(None, "--type", help="Filter by organisation type"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="Filter by research topic/field"),
+    status: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
     json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file")
 ):
     """Search for organisations in the RLA database"""
     try:
         client = get_client()
         
+        # Build filter query using individual parameters
+        filter_query = build_filter_query(
+            FilterConfig.ORGANISATION_FILTERS,
+            country=country,
+            state=state,
+            type=type,
+            topic=topic,
+            status=status
+        )
+        
+        # Handle --all option or limit-based fetching
         if all_results:
-            # Fetch all results from all pages using async for better performance
-            console.print("[yellow]Fetching all organisation results using concurrent requests...[/yellow]")
+            console.print("[yellow]Fetching ALL organisations from all pages...[/yellow]")
             
-            async def fetch_all_async():
-                async with client:  # Use async context manager
+            async def search_all_async():
+                async with client:
                     return await client.search_all_organisations(
                         value=query,
                         filter_query=filter_query,
-                        advanced_search_query=advanced_query,
-                        max_concurrent=5  # Limit concurrent requests to be API-friendly
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
                     )
             
             with Progress(
@@ -558,27 +637,34 @@ def search_organisations(
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Fetching all organisations concurrently...", total=None)
-                response = run_async(fetch_all_async())
-                progress.update(task, completed=100, description=f"Fetched {len(response.results)} organisations")
+                task = progress.add_task("Fetching all organisations...", total=None)
+                response = run_async(search_all_async())
+                progress.update(task, completed=100, description=f"Found {len(response.results)} organisations")
             
             orgs = response.results
         else:
-            # Single page fetch
+            # Use async search with limit and concurrent requests
+            console.print(f"[yellow]Searching organisations with limit {limit}...[/yellow]")
+            
+            async def search_async():
+                async with client:
+                    response = await client.search_all_organisations(
+                        value=query,
+                        filter_query=filter_query,
+                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
+                    )
+                    # Limit results to requested amount
+                    response.results = response.results[:limit]
+                    return response
+            
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Searching organisations...", total=None)
-                response = client.search_organisations_sync(
-                    value=query,
-                    filter_query=filter_query,
-                    page_number=page_number,
-                    page_size=page_size,
-                    advanced_search_query=advanced_query
-                )
-                progress.update(task, completed=100)
+                task = progress.add_task("Searching organisations concurrently...", total=None)
+                response = run_async(search_async())
+                progress.update(task, completed=100, description=f"Found {len(response.results)} organisations")
             
             orgs = response.results
         
@@ -587,20 +673,18 @@ def search_organisations(
         else:
             # Table format (default)
             if all_results:
-                total_pages = 1  # All results in one "page"
                 info_panel = Panel(
-                    f"Found {response.total_results} organisations total\n"
-                    f"Showing all results\n"
-                    f"Results displayed: {len(orgs)}",
-                    title="Search Results (All Pages)",
+                    f"Found ALL {len(orgs)} organisations\n"
+                    f"Total available: {response.total_results}\n"
+                    f"Filters applied: {', '.join([f'{k}={v}' for k, v in [('country', country), ('state', state), ('type', type), ('topic', topic), ('status', status)] if v])}",
+                    title="Search Results",
                     border_style="blue"
                 )
             else:
-                total_pages = (response.total_results + response.size - 1) // response.size  # Calculate total pages
                 info_panel = Panel(
-                    f"Found {response.total_results} organisations total\n"
-                    f"Showing page {response.current_page} of {total_pages}\n"
-                    f"Results per page: {page_size}",
+                    f"Found {len(orgs)} organisations (limited to {limit})\n"
+                    f"Total available: {response.total_results}\n"
+                    f"Filters applied: {', '.join([f'{k}={v}' for k, v in [('country', country), ('state', state), ('type', type), ('topic', topic), ('status', status)] if v])}",
                     title="Search Results",
                     border_style="blue"
                 )
@@ -618,401 +702,7 @@ def search_organisations(
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
-
-
-@organisations_app.command("get")
-def get_organisation(
-    organisation_id: str = typer.Argument(..., help="Organisation ID"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Get a specific organisation by ID"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = RLAClient(debug=debug)
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Fetching organisation...", total=None)
-            org = client.get_organisation_sync(organisation_id)
-            progress.update(task, completed=100)
-        
-        if json_file:
-            save_json_to_file(asdict(org), json_file)
-        else:
-            table = format_organisation_table([org], f"Organisation Details: {org.name or org.organisation_name}")
-            console.print(table)
-            
-    except Exception as e:
-        handle_exception(e, debug_mode)
-
-
-@grants_app.command("by-funder")
-def grants_by_funder(
-    funder: str = typer.Argument(..., help="Funder name (e.g., 'Australian Research Council')"),
-    status: Optional[str] = typer.Option(None, "--status", help="Grant status filter"),
-    page_size: int = typer.Option(10, "--size", "-s", help="Number of results per page"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
-    show_stats: bool = typer.Option(False, "--stats", help="Show funding statistics")
-):
-    """Search for grants by funding agency"""
-    try:
-        client = get_client()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"Searching grants by {funder}...", total=None)
-            response = client.run_async(client.search_grants_by_funder(funder, status=status or "", page_size=page_size))
-            progress.update(task, completed=100)
-        
-        grants = response.results
-        
-        if show_stats and grants:
-            stats = get_funding_statistics(grants)
-            stats_panel = Panel(
-                f"Total Funding: ${stats['total_funding']:,.2f}\n"
-                f"Average Funding: ${stats['average_funding']:,.2f}\n"
-                f"Median Funding: ${stats['median_funding']:,.2f}\n"
-                f"Number of Grants: {stats['grant_count']}",
-                title=f"Funding Statistics - {funder}",
-                border_style="green"
-            )
-            console.print(stats_panel)
-        
-        if json_file:
-            save_json_to_file([asdict(g) for g in grants], json_file)
-        else:
-            total_pages = (response.total_results + response.size - 1) // response.size  # Calculate total pages
-            info_panel = Panel(
-                f"Found {response.total_results} grants from {funder}\n"
-                f"Showing page {response.current_page} of {total_pages}",
-                title="Search Results",
-                border_style="blue"
-            )
-            console.print(info_panel)
-            
-            if grants:
-                table = format_grant_table(grants, f"Grants from {funder}")
-                console.print(table)
-            else:
-                console.print(f"[yellow]No grants found from {funder}.[/yellow]")
-                
-    except RLAError as e:
-        console.print(f"[red]API Error: {e}[/red]")
         raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
-
-
-# Publication Commands
-
-@publications_app.command("search")
-def search_publications(
-    query: str = typer.Argument(..., help="Search query for publications"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
-    size: int = typer.Option(10, "--size", "-s", help="Number of results to return"),
-    page: int = typer.Option(1, "--page", "-p", help="Page number"),
-    filter: str = typer.Option("", "--filter", help="Filter query (e.g., 'publicationType:journal article,publicationYear:2023')"),
-    advanced: str = typer.Option("", "--advanced", help="Advanced search query"),
-    year: Optional[int] = typer.Option(None, "--year", "-y", help="Filter by publication year"),
-    type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by publication type"),
-    doi_only: bool = typer.Option(False, "--doi-only", help="Show only publications with DOI"),
-    stats: bool = typer.Option(False, "--stats", help="Show publication statistics"),
-    async_search: bool = typer.Option(False, "--async", help="Use async search for better performance (recommended for larger searches)"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Search for publications"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = get_client()
-        
-        # Build filter query
-        filter_parts = []
-        if filter:
-            filter_parts.append(filter)
-        if year:
-            filter_parts.append(f"publicationYear:{year}")
-        if type:
-            filter_parts.append(f"publicationType:{type}")
-        
-        combined_filter = ",".join(filter_parts)
-        
-        if async_search:
-            # Use async search for better performance
-            console.print("[yellow]Using async search for better performance...[/yellow]")
-            
-            async def search_async():
-                async with client:
-                    return await client.search_publications(
-                        value=query,
-                        filter_query=combined_filter,
-                        page_number=page,
-                        page_size=size,
-                        advanced_search_query=advanced,
-                        max_concurrent=10  # Higher concurrency for publications
-                    )
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Searching publications concurrently...", total=None)
-                response = run_async(search_async())
-                progress.update(task, completed=100, description=f"Found {len(response.results)} publications")
-        else:
-            # Use traditional sync search
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Searching publications...", total=None)
-                response = client.search_publications_sync(
-                    value=query,
-                    filter_query=combined_filter,
-                    page_number=page,
-                    page_size=size,
-                    advanced_search_query=advanced
-                )
-                progress.update(task, completed=100)
-        
-        publications = response.results
-        
-        # Apply additional filtering
-        if doi_only:
-            from .utils import filter_publications_by_doi
-            publications = filter_publications_by_doi(publications)
-        
-        if json_file:
-            # Save to JSON file
-            data = [asdict(pub) for pub in publications]
-            save_json_to_file(data, json_file)
-        else:
-            # Display as table
-            table = format_publication_table(publications, f"Publications: {query}")
-            console.print(table)
-            
-            console.print(f"\n[dim]Showing {len(publications)} of {response.total_results} total results[/dim]")
-            
-            if stats and publications:
-                from .utils import get_publication_statistics
-                pub_stats = get_publication_statistics(publications)
-                stats_table = Table(title="Publication Statistics", show_header=True)
-                stats_table.add_column("Metric", style="cyan")
-                stats_table.add_column("Value", style="green")
-                
-                stats_table.add_row("Total Publications", str(pub_stats['total_publications']))
-                stats_table.add_row("Publications with DOI", f"{pub_stats['publications_with_doi']} ({pub_stats['doi_percentage']:.1f}%)")
-                stats_table.add_row("Unique Publishers", str(pub_stats['unique_publishers']))
-                stats_table.add_row("Unique Journals", str(pub_stats['unique_journals']))
-                if pub_stats['year_range']:
-                    stats_table.add_row("Year Range", f"{pub_stats['year_range'][0]} - {pub_stats['year_range'][1]}")
-                
-                console.print("\n")
-                console.print(stats_table)
-                
-                # Show publication types breakdown
-                if pub_stats['publication_types']:
-                    type_table = Table(title="Publication Types", show_header=True)
-                    type_table.add_column("Type", style="cyan")
-                    type_table.add_column("Count", style="green")
-                    
-                    for pub_type, count in sorted(pub_stats['publication_types'].items(), key=lambda x: x[1], reverse=True):
-                        type_table.add_row(pub_type, str(count))
-                    
-                    console.print("\n")
-                    console.print(type_table)
-                    
-    except Exception as e:
-        handle_exception(e, "searching publications")
-        raise typer.Exit(1)
-
-
-@publications_app.command("get")
-def get_publication(
-    publication_id: str = typer.Argument(..., help="Publication ID to retrieve"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Get a specific publication by ID"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = get_client()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Retrieving publication...", total=None)
-            publication = client.get_publication_sync(publication_id)
-            progress.update(task, completed=100)
-        
-        if json_file:
-            # Save to JSON file
-            data = asdict(publication)
-            save_json_to_file([data], json_file)
-        else:
-            # Display as table
-            table = format_publication_table([publication], f"Publication Details: {publication.title}")
-            console.print(table)
-            
-            # Show additional details
-            if publication.abstract:
-                abstract_panel = Panel(
-                    publication.abstract,
-                    title="Abstract",
-                    border_style="blue"
-                )
-                console.print("\n")
-                console.print(abstract_panel)
-                
-    except RLANotFoundError:
-        console.print(f"[red]Publication with ID '{publication_id}' not found[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        handle_exception(e, "retrieving publication")
-        raise typer.Exit(1)
-
-
-@publications_app.command("by-doi")
-def get_publication_by_doi(
-    doi: str = typer.Argument(..., help="DOI of the publication"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Search for publications by DOI"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = get_client()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Searching by DOI...", total=None)
-            # Search for publications using DOI in filter query
-            response = client.search_publications_sync(
-                filter_query=f"doi:{doi}",
-                page_size=100
-            )
-            progress.update(task, completed=100)
-        
-        if not response.results:
-            console.print(f"[yellow]No publications found with DOI: {doi}[/yellow]")
-            return
-            
-        publications = response.results
-        
-        if json_file:
-            # Save to JSON file
-            data = [asdict(pub) for pub in publications]
-            save_json_to_file(data, json_file)
-        else:
-            # Display as table
-            table = format_publication_table(publications, f"Publications by DOI: {doi}")
-            console.print(table)
-            
-    except Exception as e:
-        handle_exception(e, "searching publications by DOI")
-        raise typer.Exit(1)
-
-
-@publications_app.command("by-year")
-def search_publications_by_year(
-    year: int = typer.Argument(..., help="Publication year"),
-    end_year: Optional[int] = typer.Option(None, "--end-year", help="End year for range search"),
-    size: int = typer.Option(10, "--size", "-s", help="Number of results to return"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
-    stats: bool = typer.Option(False, "--stats", help="Show publication statistics"),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
-):
-    """Search for publications by year or year range"""
-    global debug_mode
-    debug_mode = debug
-    
-    try:
-        client = get_client()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Searching publications by year...", total=None)
-            # Search for publications using year in filter query
-            if end_year and end_year != year:
-                year_filter = f"publicationYear:{year}-{end_year}"
-            else:
-                year_filter = f"publicationYear:{year}"
-            
-            response = client.search_publications_sync(
-                filter_query=year_filter,
-                page_size=size
-            )
-            progress.update(task, completed=100)
-        
-        publications = response.results
-        year_range = f"{year}-{end_year}" if end_year and end_year != year else str(year)
-        
-        if json_file:
-            # Save to JSON file
-            data = [asdict(pub) for pub in publications]
-            save_json_to_file(data, json_file)
-        else:
-            # Display as table
-            table = format_publication_table(publications, f"Publications: {year_range}")
-            console.print(table)
-            console.print(f"\n[dim]Showing {len(publications)} of {response.total_results} total results[/dim]")
-            
-            if stats and publications:
-                from .utils import get_publication_statistics
-                pub_stats = get_publication_statistics(publications)
-                
-                stats_table = Table(title="Publication Statistics", show_header=True)
-                stats_table.add_column("Metric", style="cyan")
-                stats_table.add_column("Value", style="green")
-                
-                stats_table.add_row("Total Publications", str(pub_stats['total_publications']))
-                stats_table.add_row("Publications with DOI", f"{pub_stats['publications_with_doi']} ({pub_stats['doi_percentage']:.1f}%)")
-                stats_table.add_row("Unique Publishers", str(pub_stats['unique_publishers']))
-                
-                console.print("\n")
-                console.print(stats_table)
-                
-    except Exception as e:
-        handle_exception(e, "searching publications by year")
-
-
-@app.command()
-def version():
-    """Show PyRLA version information"""
-    try:
-        from . import __version__
-        version_info = __version__
-    except ImportError:
-        version_info = "unknown"
-    
-    console.print(f"[bold blue]PyRLA[/bold blue] version [bold green]{version_info}[/bold green]")
-    console.print("Python interface for Research Link Australia API")
-    console.print("API Documentation: https://researchlink.ardc.edu.au/v3/api-docs/public")
 
 
 def main():

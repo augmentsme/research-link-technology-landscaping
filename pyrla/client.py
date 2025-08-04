@@ -3,12 +3,12 @@ Main client for interacting with the Research Link Australia (RLA) API
 """
 
 import os
-import requests
-import aiohttp
+import httpx
 import asyncio
 from typing import Dict, List, Optional, Union, Any
 from urllib.parse import urljoin
 import logging
+from .config import APIConfig
 from .models import Researcher, Grant, Organisation, Publication, SearchResponse
 from .exceptions import (
     RLAError, 
@@ -64,7 +64,7 @@ class RLAClient:
         researchers = client.run_async(client.search_researchers(value="John Smith"))
     """
     
-    def __init__(self, api_token: Optional[str] = None, base_url: str = "https://researchlink.ardc.edu.au", debug: bool = False):
+    def __init__(self, api_token: Optional[str] = None, base_url: str = APIConfig.BASE_URL, debug: bool = False):
         """
         Initialize the RLA client
         
@@ -91,10 +91,10 @@ class RLAClient:
         }
         
         # Default request timeout
-        self.timeout = 60
+        self.timeout = APIConfig.DEFAULT_TIMEOUT
         
         # Async session management
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: Optional[httpx.AsyncClient] = None
     
     def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
         """
@@ -129,12 +129,8 @@ class RLAClient:
                     logger.debug(f"Making request to {url}")
                     print(f"[DEBUG] API Request: {url}")
                 
-            response = requests.get(
-                url,
-                headers=self.headers,
-                params=params or {},
-                timeout=self.timeout
-            )
+            with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
+                response = client.get(url, params=params or {})
             
             # Handle different HTTP status codes
             if response.status_code == 200:
@@ -150,7 +146,7 @@ class RLAClient:
             else:
                 raise RLAError(f"API request failed ({response.status_code}): {response.text}")
                 
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             raise RLAError(f"Request failed: {e}")
     
     def test_connection(self) -> bool:
@@ -187,20 +183,19 @@ class RLAClient:
             # No event loop exists, create one
             return asyncio.run(coro)
     
-    async def _get_session(self) -> aiohttp.ClientSession:
+    async def _get_session(self) -> httpx.AsyncClient:
         """Get or create async session"""
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
-            self._session = aiohttp.ClientSession(
+        if self._session is None or self._session.is_closed:
+            self._session = httpx.AsyncClient(
                 headers=self.headers,
-                timeout=timeout
+                timeout=self.timeout
             )
         return self._session
     
     async def _close_session(self):
         """Close async session"""
-        if self._session and not self._session.closed:
-            await self._session.close()
+        if self._session and not self._session.is_closed:
+            await self._session.aclose()
             self._session = None
     
     async def __aenter__(self):
@@ -213,7 +208,7 @@ class RLAClient:
     
     def __del__(self):
         """Cleanup session on deletion if still open"""
-        if self._session and not self._session.closed:
+        if self._session and not self._session.is_closed:
             # Create new event loop if none exists (for cleanup)
             try:
                 loop = asyncio.get_event_loop()
@@ -261,25 +256,23 @@ class RLAClient:
                     logger.debug(f"Making async request to {url}")
                     print(f"[DEBUG] Async API Request: {url}")
                 
-            async with session.get(url, params=params or {}) as response:
-                # Handle different HTTP status codes
-                if response.status == 200:
-                    return await response.json()
-                elif response.status == 401:
-                    raise RLAAuthenticationError("Authentication failed - check API token")
-                elif response.status == 404:
-                    raise RLANotFoundError("Resource not found")
-                elif response.status == 400:
-                    text = await response.text()
-                    raise RLAValidationError(f"Invalid request parameters: {text}")
-                elif 500 <= response.status < 600:
-                    text = await response.text()
-                    raise RLAServerError(f"Server error ({response.status}): {text}")
-                else:
-                    text = await response.text()
-                    raise RLAError(f"API request failed ({response.status}): {text}")
+            response = await session.get(url, params=params or {})
+            
+            # Handle different HTTP status codes
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                raise RLAAuthenticationError("Authentication failed - check API token")
+            elif response.status_code == 404:
+                raise RLANotFoundError("Resource not found")
+            elif response.status_code == 400:
+                raise RLAValidationError(f"Invalid request parameters: {response.text}")
+            elif 500 <= response.status_code < 600:
+                raise RLAServerError(f"Server error ({response.status_code}): {response.text}")
+            else:
+                raise RLAError(f"API request failed ({response.status_code}): {response.text}")
                     
-        except aiohttp.ClientError as e:
+        except httpx.RequestError as e:
             raise RLAError(f"Request failed: {e}")
         except Exception as e:
             # Ensure session cleanup on unexpected errors
@@ -297,7 +290,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         page_number: int = 1,
-        page_size: int = 10,
+        page_size: int = APIConfig.DEFAULT_PAGE_SIZE,
         advanced_search_query: str = ""
     ) -> SearchResponse:
         """
@@ -317,7 +310,7 @@ class RLAClient:
             "value": value,
             "filterQuery": filter_query,
             "pageNumber": page_number,
-            "pageSize": min(page_size, 250),  # API limit
+            "pageSize": min(page_size, APIConfig.MAX_PAGE_SIZE),  # API limit
             "advancedSearchQuery": advanced_search_query
         }
         
@@ -345,7 +338,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         advanced_search_query: str = "",
-        max_concurrent: int = 5
+        max_concurrent: int = APIConfig.DEFAULT_MAX_CONCURRENT
     ) -> SearchResponse:
         """
         Search for all researchers across all pages with concurrent requests
@@ -359,7 +352,7 @@ class RLAClient:
         Returns:
             SearchResponse containing all researchers
         """
-        max_page_size = 250  # API limit
+        max_page_size = APIConfig.MAX_PAGE_SIZE  # API limit
         
         # First request to get total count
         first_response = await self.search_researchers(
@@ -415,7 +408,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         page_number: int = 1,
-        page_size: int = 10,
+        page_size: int = APIConfig.DEFAULT_PAGE_SIZE,
         advanced_search_query: str = ""
     ) -> SearchResponse:
         """
@@ -435,7 +428,7 @@ class RLAClient:
             "value": value,
             "filterQuery": filter_query,
             "pageNumber": page_number,
-            "pageSize": min(page_size, 250),  # API limit
+            "pageSize": min(page_size, APIConfig.MAX_PAGE_SIZE),  # API limit
             "advancedSearchQuery": advanced_search_query
         }
         
@@ -463,7 +456,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         advanced_search_query: str = "",
-        max_concurrent: int = 5
+        max_concurrent: int = APIConfig.DEFAULT_MAX_CONCURRENT
     ) -> SearchResponse:
         """
         Search for all grants across all pages with concurrent requests
@@ -477,7 +470,7 @@ class RLAClient:
         Returns:
             SearchResponse containing all grants
         """
-        max_page_size = 250  # API limit
+        max_page_size = APIConfig.MAX_PAGE_SIZE  # API limit
         
         # First request to get total count
         first_response = await self.search_grants(
@@ -533,7 +526,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         page_number: int = 1,
-        page_size: int = 10,
+        page_size: int = APIConfig.DEFAULT_PAGE_SIZE,
         advanced_search_query: str = ""
     ) -> SearchResponse:
         """
@@ -553,7 +546,7 @@ class RLAClient:
             "value": value,
             "filterQuery": filter_query,
             "pageNumber": page_number,
-            "pageSize": min(page_size, 250),  # API limit
+            "pageSize": min(page_size, APIConfig.MAX_PAGE_SIZE),  # API limit
             "advancedSearchQuery": advanced_search_query
         }
         
@@ -581,7 +574,7 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         advanced_search_query: str = "",
-        max_concurrent: int = 5
+        max_concurrent: int = APIConfig.DEFAULT_MAX_CONCURRENT
     ) -> SearchResponse:
         """
         Search for all organisations across all pages with concurrent requests
@@ -595,7 +588,7 @@ class RLAClient:
         Returns:
             SearchResponse containing all organisations
         """
-        max_page_size = 250  # API limit
+        max_page_size = APIConfig.MAX_PAGE_SIZE  # API limit
         
         # First request to get total count
         first_response = await self.search_organisations(
@@ -651,9 +644,9 @@ class RLAClient:
         value: str = "",
         filter_query: str = "",
         page_number: int = 1,
-        page_size: int = 10,
+        page_size: int = APIConfig.DEFAULT_PAGE_SIZE,
         advanced_search_query: str = "",
-        max_concurrent: int = 10
+        max_concurrent: int = APIConfig.DEFAULT_MAX_CONCURRENT
     ) -> SearchResponse:
         """
         Search for publications by searching researchers and extracting their publications
@@ -677,19 +670,19 @@ class RLAClient:
             if advanced_search_query:
                 researcher_params = {
                     "pageNumber": 1,
-                    "pageSize": min(20, 250),
+                    "pageSize": min(20, APIConfig.MAX_PAGE_SIZE),
                     "advancedSearchQuery": advanced_search_query
                 }
             elif value:
                 researcher_params = {
                     "value": value,
                     "pageNumber": 1,
-                    "pageSize": min(20, 250),
+                    "pageSize": min(20, APIConfig.MAX_PAGE_SIZE),
                 }
             else:
                 researcher_params = {
                     "pageNumber": 1,
-                    "pageSize": min(10, 250),
+                    "pageSize": min(APIConfig.DEFAULT_PAGE_SIZE, APIConfig.MAX_PAGE_SIZE),
                 }
             
             # Remove empty parameters
@@ -796,7 +789,7 @@ class RLAClient:
         try:
             researcher_data = await self._make_async_request("/search/researchers", {
                 "advancedSearchQuery": f"publications.id:{publication_id}",
-                "pageSize": 250
+                "pageSize": APIConfig.MAX_PAGE_SIZE
             })
             
             researcher_response = SearchResponse.from_dict(researcher_data, Researcher)
@@ -866,6 +859,153 @@ class RLAClient:
                     # Add more filter criteria as needed
         
         return True
+    
+    async def search_all_publications(
+        self,
+        value: str = "",
+        filter_query: str = "",
+        advanced_search_query: str = "",
+        max_concurrent: int = APIConfig.DEFAULT_MAX_CONCURRENT
+    ) -> SearchResponse:
+        """
+        Search for all publications across all researchers with concurrent requests
+        
+        Args:
+            value: Search value (publication title, author keywords, etc.)
+            filter_query: Comma-separated filters
+            advanced_search_query: Advanced search query
+            max_concurrent: Maximum concurrent requests (default: 10)
+            
+        Returns:
+            SearchResponse containing all matching publications
+        """
+        try:
+            # Determine strategy based on search criteria
+            if advanced_search_query:
+                researcher_params = {
+                    "pageNumber": 1,
+                    "pageSize": APIConfig.MAX_PAGE_SIZE,
+                    "advancedSearchQuery": advanced_search_query
+                }
+            elif value:
+                researcher_params = {
+                    "value": value,
+                    "pageNumber": 1,
+                    "pageSize": APIConfig.MAX_PAGE_SIZE,
+                }
+            else:
+                # General search across researchers
+                researcher_params = {
+                    "pageNumber": 1,
+                    "pageSize": APIConfig.MAX_PAGE_SIZE,
+                }
+            
+            # Remove empty parameters
+            researcher_params = {k: v for k, v in researcher_params.items() if v}
+            
+            # Get all researchers
+            all_researchers = []
+            page = 1
+            
+            while True:
+                researcher_params["pageNumber"] = page
+                researcher_data = await self._make_async_request("/search/researchers", researcher_params)
+                researcher_response = SearchResponse.from_dict(researcher_data, Researcher)
+                
+                if not researcher_response.results:
+                    break
+                    
+                all_researchers.extend(researcher_response.results)
+                
+                # Check if we've reached the last page
+                if page >= (researcher_response.total_results + APIConfig.MAX_PAGE_SIZE - 1) // APIConfig.MAX_PAGE_SIZE:
+                    break
+                    
+                page += 1
+            
+            # Extract publications by fetching full researcher details CONCURRENTLY
+            all_publications = []
+            
+            # Create semaphore to limit concurrent requests
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            async def fetch_researcher_publications(researcher) -> List[Publication]:
+                async with semaphore:
+                    try:
+                        # Fetch full researcher details to get publications
+                        full_researcher = await self.get_researcher(researcher.id)
+                        
+                        publications = []
+                        if hasattr(full_researcher, 'publications') and full_researcher.publications:
+                            # Filter publications based on search criteria
+                            for pub in full_researcher.publications:
+                                if self._publication_matches_criteria(pub, value, filter_query):
+                                    publications.append(pub)
+                        
+                        return publications
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch researcher {researcher.id}: {e}")
+                        return []
+            
+            # Fetch all researcher publications concurrently
+            researcher_tasks = [
+                fetch_researcher_publications(researcher) 
+                for researcher in all_researchers
+            ]
+            
+            # Wait for all tasks to complete
+            publication_results = await asyncio.gather(*researcher_tasks, return_exceptions=True)
+            
+            # Collect all publications from successful fetches
+            for result in publication_results:
+                if not isinstance(result, Exception):
+                    all_publications.extend(result)
+                else:
+                    logger.warning(f"Failed to fetch researcher publications: {result}")
+            
+            # Remove duplicates based on publication ID
+            seen_ids = set()
+            unique_publications = []
+            for pub in all_publications:
+                if hasattr(pub, 'id') and pub.id:
+                    if pub.id not in seen_ids:
+                        seen_ids.add(pub.id)
+                        unique_publications.append(pub)
+                else:
+                    # If no ID, add anyway (might be duplicate but we can't tell)
+                    unique_publications.append(pub)
+            
+            # Sort publications by relevance
+            if value:
+                def sort_key(pub):
+                    title_match = value.lower() in (pub.title or "").lower()
+                    year = pub.publication_year or 0
+                    return (not title_match, -year)
+                unique_publications.sort(key=sort_key)
+            else:
+                unique_publications.sort(key=lambda p: -(p.publication_year or 0))
+            
+            # Create a SearchResponse for all publications
+            search_response = SearchResponse(
+                total_results=len(unique_publications),
+                current_page=1,
+                from_index=0,
+                size=len(unique_publications),
+                results=unique_publications
+            )
+            
+            return search_response
+            
+        except Exception as e:
+            # If search fails, return empty results instead of crashing
+            logger.error(f"Async search all publications failed: {e}")
+            return SearchResponse(
+                total_results=0,
+                current_page=1,
+                from_index=0,
+                size=0,
+                results=[]
+            )
     
     # Generic search by ID method
     

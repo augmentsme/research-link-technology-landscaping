@@ -16,7 +16,6 @@ data/topics.json:
 data/domains.json:
 	pyalex domains --all --json-file $@
 
-
 inference:
 	inspect eval modeling/topic_classification.py --limit 1000 --model openai/o4-mini -T classification_type=fields -T data_path=/fred/oz318/luhanc/research-link-technology-landscaping/data/active_grants.json
 

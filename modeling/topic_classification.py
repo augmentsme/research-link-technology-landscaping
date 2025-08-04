@@ -8,6 +8,24 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import multiple_choice
 
+# Import ANZSRC data loader - delay import to avoid path issues
+def _load_anzsrc():
+    """Lazy import and load ANZSRC data."""
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'anzsrc'))
+    
+    # Save current directory and change to anzsrc directory
+    current_dir = os.getcwd()
+    anzsrc_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'anzsrc')
+    
+    try:
+        os.chdir(anzsrc_dir)
+        from data import load_anzsrc
+        return load_anzsrc()
+    finally:
+        os.chdir(current_dir)
+
 
 class ClassificationType(Enum):
     """Enum for different classification types."""
@@ -15,6 +33,10 @@ class ClassificationType(Enum):
     FIELDS = "fields"
     SUBFIELDS = "subfields"
     TOPICS = "topics"
+    FOR_DIVISIONS = "for_divisions"
+    FOR_GROUPS = "for_groups"
+    SEO_DIVISIONS = "seo_divisions"
+    SEO_GROUPS = "seo_groups"
 
 
 class ClassificationTemplate(str, Enum):
@@ -75,7 +97,7 @@ class Label:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any], classification_type: ClassificationType) -> 'Label':
-        """Create Label from OpenAlex data dictionary."""
+        """Create Label from OpenAlex data dictionary or ANZSRC data."""
         if classification_type == ClassificationType.TOPICS:
             return cls(
                 id=data.get('id', ''),
@@ -111,6 +133,17 @@ class Label:
                 keywords=None,
                 field=data.get('field', {}).get('display_name', '') if data.get('field') else None,
                 domain=data.get('domain', {}).get('display_name', '') if data.get('domain') else None
+            )
+        elif classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
+                                     ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS]:
+            # Handle ANZSRC data structure
+            return cls(
+                id=data.get('id', ''),
+                display_name=data.get('display_name', ''),
+                description=data.get('definition', ''),  # ANZSRC uses 'definition' instead of 'description'
+                keywords=None,
+                field=data.get('division_name', ''),  # Use division_name as field for groups
+                domain=data.get('classification', '')  # FoR or SEO
             )
 
 
@@ -205,12 +238,93 @@ class PipelineConfig:
     
     def _load_labels_from_file(self) -> List[Label]:
         """Load labels from the appropriate JSON file based on classification type."""
+        # Handle ANZSRC classifications
+        if self.classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
+                                        ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS]:
+            return self._load_anzsrc_labels()
+        
+        # Handle OpenAlex classifications
         labels_path = self.labels_path
         with open(labels_path, 'r') as f:
             labels_data = json.load(f)
         
         # Convert to Label objects
         labels = [Label.from_dict(label_data, self.classification_type) for label_data in labels_data]
+        
+        return labels
+    
+    def _load_anzsrc_labels(self) -> List[Label]:
+        """Load ANZSRC labels from the combined DataFrame."""
+        # Load ANZSRC data
+        anzsrc_df = _load_anzsrc()
+        
+        labels = []
+        
+        if self.classification_type == ClassificationType.FOR_DIVISIONS:
+            # Get FoR divisions
+            for_divisions = anzsrc_df[
+                (anzsrc_df.index.get_level_values('classification') == 'FoR') & 
+                (anzsrc_df['level'] == 'division')
+            ]
+            
+            for (classification, division_code, _), row in for_divisions.iterrows():
+                label_data = {
+                    'id': division_code,
+                    'display_name': row['division_name'],
+                    'definition': row['definition'],
+                    'classification': classification
+                }
+                labels.append(Label.from_dict(label_data, self.classification_type))
+        
+        elif self.classification_type == ClassificationType.FOR_GROUPS:
+            # Get FoR groups
+            for_groups = anzsrc_df[
+                (anzsrc_df.index.get_level_values('classification') == 'FoR') & 
+                (anzsrc_df['level'] == 'group')
+            ]
+            
+            for (classification, division_code, group_code), row in for_groups.iterrows():
+                label_data = {
+                    'id': group_code,
+                    'display_name': row['group_name'],
+                    'definition': row['definition'],
+                    'division_name': row['division_name'],
+                    'classification': classification
+                }
+                labels.append(Label.from_dict(label_data, self.classification_type))
+        
+        elif self.classification_type == ClassificationType.SEO_DIVISIONS:
+            # Get SEO divisions
+            seo_divisions = anzsrc_df[
+                (anzsrc_df.index.get_level_values('classification') == 'SEO') & 
+                (anzsrc_df['level'] == 'division')
+            ]
+            
+            for (classification, division_code, _), row in seo_divisions.iterrows():
+                label_data = {
+                    'id': division_code,
+                    'display_name': row['division_name'],
+                    'definition': row['definition'],
+                    'classification': classification
+                }
+                labels.append(Label.from_dict(label_data, self.classification_type))
+        
+        elif self.classification_type == ClassificationType.SEO_GROUPS:
+            # Get SEO groups
+            seo_groups = anzsrc_df[
+                (anzsrc_df.index.get_level_values('classification') == 'SEO') & 
+                (anzsrc_df['level'] == 'group')
+            ]
+            
+            for (classification, division_code, group_code), row in seo_groups.iterrows():
+                label_data = {
+                    'id': group_code,
+                    'display_name': row['group_name'],
+                    'definition': row['definition'],
+                    'division_name': row['division_name'],
+                    'classification': classification
+                }
+                labels.append(Label.from_dict(label_data, self.classification_type))
         
         return labels
 
@@ -311,6 +425,32 @@ Please classify this grant into the most appropriate OpenAlex research {label_ty
    Subfield: {label.display_name}{field_str}{domain_str}
    Description: {label.description}
 """
+            elif self.config.classification_type == ClassificationType.FOR_DIVISIONS:
+                # For FoR divisions
+                label_text = f"""{i}. ID: {label.id}
+   FoR Division: {label.display_name}
+   Description: {label.description}
+"""
+            elif self.config.classification_type == ClassificationType.FOR_GROUPS:
+                # For FoR groups, include division info
+                division_str = f" | Division: {label.field}" if label.field else ""
+                label_text = f"""{i}. ID: {label.id}
+   FoR Group: {label.display_name}{division_str}
+   Description: {label.description}
+"""
+            elif self.config.classification_type == ClassificationType.SEO_DIVISIONS:
+                # For SEO divisions
+                label_text = f"""{i}. ID: {label.id}
+   SEO Division: {label.display_name}
+   Description: {label.description}
+"""
+            elif self.config.classification_type == ClassificationType.SEO_GROUPS:
+                # For SEO groups, include division info
+                division_str = f" | Division: {label.field}" if label.field else ""
+                label_text = f"""{i}. ID: {label.id}
+   SEO Group: {label.display_name}{division_str}
+   Description: {label.description}
+"""
             
             formatted_labels.append(label_text)
         
@@ -335,7 +475,11 @@ Please classify this grant into the most appropriate OpenAlex research {label_ty
             ClassificationType.DOMAINS: "domains",
             ClassificationType.FIELDS: "fields", 
             ClassificationType.SUBFIELDS: "subfields",
-            ClassificationType.TOPICS: "topics"
+            ClassificationType.TOPICS: "topics",
+            ClassificationType.FOR_DIVISIONS: "FoR divisions",
+            ClassificationType.FOR_GROUPS: "FoR groups",
+            ClassificationType.SEO_DIVISIONS: "SEO divisions",
+            ClassificationType.SEO_GROUPS: "SEO groups"
         }[self.config.classification_type]
         
         return user_template.format(
@@ -353,8 +497,34 @@ Please classify this grant into the most appropriate OpenAlex research {label_ty
             ClassificationType.DOMAINS: "domain",
             ClassificationType.FIELDS: "field", 
             ClassificationType.SUBFIELDS: "subfield",
-            ClassificationType.TOPICS: "topic"
+            ClassificationType.TOPICS: "topic",
+            ClassificationType.FOR_DIVISIONS: "FoR division",
+            ClassificationType.FOR_GROUPS: "FoR group",
+            ClassificationType.SEO_DIVISIONS: "SEO division", 
+            ClassificationType.SEO_GROUPS: "SEO group"
         }[self.config.classification_type]
+        
+        # Determine if this is an ANZSRC classification
+        is_anzsrc = self.config.classification_type in [
+            ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
+            ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS
+        ]
+        
+        classification_system = "ANZSRC" if is_anzsrc else "OpenAlex"
+        
+        # Create ID examples based on classification type
+        if self.config.classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.SEO_DIVISIONS]:
+            id_example = '"30" for divisions'
+        elif self.config.classification_type in [ClassificationType.FOR_GROUPS, ClassificationType.SEO_GROUPS]:
+            id_example = '"3001" for groups'
+        elif self.config.classification_type == ClassificationType.DOMAINS:
+            id_example = '"1" for domains'
+        elif self.config.classification_type == ClassificationType.FIELDS:
+            id_example = '"23" for fields'
+        elif self.config.classification_type == ClassificationType.SUBFIELDS:
+            id_example = '"2403" for subfields'
+        else:  # TOPICS
+            id_example = '"T11881" for topics'
         
         prompt = f"""# Grant Classification Task
 
@@ -363,11 +533,11 @@ Please classify this grant into the most appropriate OpenAlex research {label_ty
 **Title:** {grant.title}
 **Summary:** {grant.summary}
 
-Please classify this grant into the most appropriate OpenAlex research {label_type_name} from the available choices.
+Please classify this grant into the most appropriate {classification_system} research {label_type_name} from the available choices.
 
 Select the {label_type_name} that best matches the research focus and content of this grant.
 
-Respond with the canonical OpenAlex ID (e.g. "1" for domains, "23" for fields, "2403" for subfields and "T11881" for topics) of your chosen {label_type_name}."""
+Respond with the canonical {classification_system} ID (e.g. {id_example}) of your chosen {label_type_name}."""
         
         return prompt
 

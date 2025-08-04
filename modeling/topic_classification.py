@@ -161,8 +161,6 @@ class PipelineConfig:
     data_path: str = "/home/lcheng/oz318/research-link-technology-landscaping/data/active_grants.json"
     base_data_dir: str = "/home/lcheng/oz318/research-link-technology-landscaping/data"
     classification_type: ClassificationType = ClassificationType.TOPICS
-    max_grants_classification: Optional[int] = None  # None means use all grants
-    max_labels_for_classification: Optional[int] = None  # None means use all labels
     log_dir: str = "pipeline_logs"
     labels: List[Label] = None
     
@@ -211,13 +209,9 @@ class PipelineConfig:
         with open(labels_path, 'r') as f:
             labels_data = json.load(f)
         
-        # Convert to Label objects and limit the number if specified
+        # Convert to Label objects
         labels = [Label.from_dict(label_data, self.classification_type) for label_data in labels_data]
         
-        if self.max_labels_for_classification is not None:
-            # Take the first N labels or could be filtered by domain/field if needed
-            labels = labels[:self.max_labels_for_classification]
-            
         return labels
 
 
@@ -397,9 +391,8 @@ def get_classification_template(cot: bool = False, multiple_correct: bool = Fals
 
 @task
 def classify_grants_task(
+    data_path: str = "/home/lcheng/oz318/research-link-technology-landscaping/data/active_grants.json",
     classification_type: Union[ClassificationType, str] = ClassificationType.SUBFIELDS, 
-    max_grants: Optional[Union[int, str]] = None, 
-    max_labels: Optional[Union[int, str]] = None,
     cot: bool = False,
     multiple_correct: bool = False
 ) -> Task:
@@ -408,48 +401,26 @@ def classify_grants_task(
     
     Args:
         classification_type: Type of classification (domains, fields, subfields, topics)
-        max_grants: Maximum number of grants to include (None for all)
-        max_labels: Maximum number of labels to include (None for all)
         cot: Whether to use chain-of-thought reasoning
         multiple_correct: Whether multiple answers are allowed
     """
     if isinstance(classification_type, str):
         classification_type = ClassificationType(classification_type.lower())
     
-    # Convert string parameters to integers if needed
-    if isinstance(max_grants, str):
-        try:
-            max_grants = int(max_grants)
-        except ValueError:
-            raise ValueError(f"max_grants must be an integer or None, got: {max_grants}")
-    
-    if isinstance(max_labels, str):
-        try:
-            max_labels = int(max_labels)
-        except ValueError:
-            raise ValueError(f"max_labels must be an integer or None, got: {max_labels}")
-    
     # Determine template from cot and multiple_correct parameters
     template = get_classification_template(cot=cot, multiple_correct=multiple_correct)
     
     config = PipelineConfig(
-        classification_type=classification_type,
-        max_grants_classification=max_grants,
-        max_labels_for_classification=max_labels
+        data_path=data_path,
+        classification_type=classification_type
     )
     
     # Load data
     data_loader = DataLoader(config)
     grants = data_loader.load_grants()
     
-    # Apply limits
-    if config.max_grants_classification is not None:
-        grants_to_use = grants[:config.max_grants_classification]
-    else:
-        grants_to_use = grants
-    
     # Create task creator to handle prompt generation
-    task_creator = InspectAITaskCreator(config, grants_to_use)
+    task_creator = InspectAITaskCreator(config, grants)
     
     # Create the template with available IDs
     available_ids = ', '.join([extract_canonical_id(label.id) for label in config.labels])
@@ -460,7 +431,7 @@ def classify_grants_task(
     )
     
     samples = []
-    for grant in grants_to_use:
+    for grant in grants:
         # Create choices from available labels using canonical IDs as option labels
         choices = []
         for label in config.labels:

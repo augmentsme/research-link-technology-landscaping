@@ -10,7 +10,7 @@ PyRLA is a high-performance Python package that provides an async-only interface
 - **Command Line Interface**: Full-featured CLI with automatic async optimization for bulk operations
 - **Utility Functions**: Helper functions for data analysis and manipulation
 - **Error Handling**: Custom exception classes for different error types
-- **Performance Optimized**: Built for speed with `aiohttp` and `asyncio` for non-blocking I/O
+- **Performance Optimized**: Built for speed with `httpx` and `asyncio` for non-blocking I/O
 
 ## Installation
 
@@ -214,7 +214,7 @@ asyncio.run(main())
 
 ## Dependencies
 
-- `aiohttp` - For async HTTP requests
+- `httpx` - For async HTTP requests
 - `asyncio` - For concurrency management (built-in)
 - `typer` - For CLI framework
 - `rich` - For beautiful terminal output

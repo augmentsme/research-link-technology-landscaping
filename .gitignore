@@ -2,6 +2,10 @@
 __pycache__/
 *.py[codz]
 *$py.class
+**/*.json
+**/*.eval
+**/logs/
+
 
 # C extensions
 *.so

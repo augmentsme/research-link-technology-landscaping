@@ -7,6 +7,7 @@ This module provides a Typer-based CLI for interacting with the RLA API.
 import traceback
 import json
 import asyncio
+import logging
 from typing import Optional, List
 from dataclasses import asdict
 import typer
@@ -18,9 +19,11 @@ from dotenv import load_dotenv
 
 from .config import APIConfig, CLIConfig, FilterConfig, StatusOptions, DisplayConfig
 from .client import RLAClient
-from .models import Researcher, Grant, Organisation
+from .models import Researcher, Grant, Organisation, SearchResponse
 from .exceptions import RLAError, RLAAuthenticationError
 from .utils import get_funding_statistics, filter_grants_by_amount, filter_researchers_by_orcid
+
+logger = logging.getLogger(__name__)
 
 # Main app
 app = typer.Typer(
@@ -648,14 +651,65 @@ def search_organisations(
             
             async def search_async():
                 async with client:
-                    response = await client.search_all_organisations(
-                        value=query,
-                        filter_query=filter_query,
-                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
-                    )
-                    # Limit results to requested amount
-                    response.results = response.results[:limit]
-                    return response
+                    # Calculate appropriate page size for efficiency
+                    page_size = min(limit, APIConfig.MAX_PAGE_SIZE)
+                    pages_needed = (limit + page_size - 1) // page_size
+                    
+                    if pages_needed == 1:
+                        # Single page request
+                        return await client.search_organisations(
+                            value=query,
+                            filter_query=filter_query,
+                            page_number=1,
+                            page_size=page_size
+                        )
+                    else:
+                        # Multiple pages needed - fetch them concurrently
+                        all_orgs = []
+                        remaining = limit
+                        
+                        # Create semaphore to limit concurrent requests
+                        semaphore = asyncio.Semaphore(APIConfig.DEFAULT_MAX_CONCURRENT)
+                        
+                        async def fetch_page(page_num: int, page_limit: int):
+                            async with semaphore:
+                                return await client.search_organisations(
+                                    value=query,
+                                    filter_query=filter_query,
+                                    page_number=page_num,
+                                    page_size=page_limit
+                                )
+                        
+                        # Fetch pages concurrently
+                        page_tasks = []
+                        for page_num in range(1, pages_needed + 1):
+                            current_page_size = min(remaining, page_size)
+                            page_tasks.append(fetch_page(page_num, current_page_size))
+                            remaining -= current_page_size
+                            if remaining <= 0:
+                                break
+                        
+                        page_results = await asyncio.gather(*page_tasks, return_exceptions=True)
+                        
+                        # Collect results from successful pages
+                        total_results = 0
+                        for result in page_results:
+                            if not isinstance(result, Exception):
+                                all_orgs.extend(result.results)
+                                total_results = result.total_results  # Keep the last total
+                            else:
+                                logger.warning(f"Failed to fetch page: {result}")
+                        
+                        # Limit to requested amount
+                        all_orgs = all_orgs[:limit]
+                        
+                        return SearchResponse(
+                            total_results=total_results,
+                            current_page=1,
+                            from_index=0,
+                            size=len(all_orgs),
+                            results=all_orgs
+                        )
             
             with Progress(
                 SpinnerColumn(),

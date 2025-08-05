@@ -5,8 +5,6 @@ Streamlit interface for topic classification analysis with interactive visualiza
 import datetime
 import json
 import re
-import sys
-import os
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -34,6 +32,9 @@ class TopicClassificationAnalyzer:
         self.classification_data: list = []
         self.classification_type: Optional[str] = None
         self.grants_data: Optional[pd.DataFrame] = None
+        self.template_type: Optional[str] = None
+        self.is_cot: bool = False
+        self.is_multiple_correct: bool = False
         
     def load_data(self) -> None:
         """Load evaluation data and classification mappings"""
@@ -46,6 +47,17 @@ class TopicClassificationAnalyzer:
         else:
             # Fallback to subfields if not specified
             self.classification_type = 'subfields'
+        
+        # Detect template type and CoT/multiple_correct settings from metadata
+        if 'metadata_template_type' in self.samples.columns:
+            self.template_type = self.samples['metadata_template_type'].iloc[0]
+            self.is_cot = 'COT' in self.template_type
+            self.is_multiple_correct = 'MULTIPLE' in self.template_type
+        else:
+            # Fallback defaults
+            self.template_type = 'SINGLE_ANSWER'
+            self.is_cot = False
+            self.is_multiple_correct = False
             
         self._load_classification_mappings()
         self._load_grants_data()
@@ -243,21 +255,52 @@ class TopicClassificationAnalyzer:
             return level.title()
             
     def _extract_classification(self, response_text: str) -> Optional[str]:
-        """Extract classification ID from model response"""
+        """Extract classification ID(s) from model response"""
         if pd.isna(response_text):
             return None
         
         # Check if this is an ANZSRC classification (uses numeric codes) or OpenAlex (alphanumeric)
         anzsrc_types = ['for_divisions', 'for_groups', 'seo_divisions', 'seo_groups']
         
-        if self.classification_type in anzsrc_types:
-            # ANZSRC uses numeric codes (e.g., "30", "3001")
-            match = re.search(r'ANSWER:\s*(["\']?)(\d+)\1', response_text)
-            return match.group(2) if match else None
+        if self.is_multiple_correct:
+            # Handle multiple correct answers (comma-separated IDs)
+            if self.classification_type in anzsrc_types:
+                # ANZSRC uses numeric codes (e.g., "30,31", "3001,3002")
+                match = re.search(r'ANSWER:\s*(["\']?)([\d,\s]+)\1', response_text)
+                if match:
+                    ids = [id_str.strip() for id_str in match.group(2).split(',') if id_str.strip()]
+                    return ','.join(ids) if ids else None
+            else:
+                # OpenAlex uses alphanumeric codes (e.g., "T11881,T12345", "23,24")
+                match = re.search(r'ANSWER:\s*(["\']?)([A-Za-z]?\d+(?:\s*,\s*[A-Za-z]?\d+)*)\1', response_text)
+                if match:
+                    ids = [id_str.strip() for id_str in match.group(2).split(',') if id_str.strip()]
+                    return ','.join(ids) if ids else None
         else:
-            # OpenAlex uses alphanumeric codes (e.g., "T11881", "23", "2403")
-            match = re.search(r'ANSWER:\s*(["\']?)([A-Za-z]?\d+)\1', response_text)
-            return match.group(2) if match else None
+            # Handle single answer
+            if self.classification_type in anzsrc_types:
+                # ANZSRC uses numeric codes (e.g., "30", "3001")
+                match = re.search(r'ANSWER:\s*(["\']?)(\d+)\1', response_text)
+                return match.group(2) if match else None
+            else:
+                # OpenAlex uses alphanumeric codes (e.g., "T11881", "23", "2403")
+                match = re.search(r'ANSWER:\s*(["\']?)([A-Za-z]?\d+)\1', response_text)
+                return match.group(2) if match else None
+        
+        return None
+    
+    def _extract_reasoning(self, response_text: str) -> Optional[str]:
+        """Extract reasoning from CoT model response (everything before ANSWER:)"""
+        if pd.isna(response_text) or not self.is_cot:
+            return None
+        
+        # Split on 'ANSWER:' and take everything before it as reasoning
+        parts = response_text.split('ANSWER:')
+        if len(parts) > 1:
+            reasoning = parts[0].strip()
+            return reasoning if reasoning else None
+        
+        return None
         
     def process_responses(self) -> None:
         """Process model responses and extract predictions"""
@@ -268,20 +311,48 @@ class TopicClassificationAnalyzer:
         model_responses = self.messages[self.messages.source == "generate"].copy()
         model_responses['predicted_id'] = model_responses['content'].apply(self._extract_classification)
         
+        # Extract reasoning for CoT responses
+        if self.is_cot:
+            model_responses['reasoning'] = model_responses['content'].apply(self._extract_reasoning)
+        
         # Merge with sample metadata
+        merge_columns = ['sample_id', 'predicted_id']
+        if self.is_cot:
+            merge_columns.append('reasoning')
+            
         self.analysis_df = self.samples.merge(
-            model_responses[['sample_id', 'predicted_id']], 
+            model_responses[merge_columns], 
             on='sample_id', 
             how='left'
         )
         
+        # Handle multiple predictions for multiple_correct setting
+        if self.is_multiple_correct:
+            # For multiple correct, we'll create separate rows for each prediction
+            # but also keep the original comma-separated format for analysis
+            self.analysis_df['predicted_ids_list'] = self.analysis_df['predicted_id'].apply(
+                lambda x: x.split(',') if pd.notna(x) and ',' in str(x) else [x] if pd.notna(x) else []
+            )
+            self.analysis_df['num_predictions'] = self.analysis_df['predicted_ids_list'].apply(len)
+        
         # Add predicted names, domains, and fields
-        if self.id_to_name:
-            self.analysis_df['predicted_name'] = self.analysis_df['predicted_id'].map(self.id_to_name)
-        if self.id_to_domain:
-            self.analysis_df['predicted_domain'] = self.analysis_df['predicted_id'].map(self.id_to_domain)
-        if self.id_to_field:
-            self.analysis_df['predicted_field'] = self.analysis_df['predicted_id'].map(self.id_to_field)
+        if self.is_multiple_correct:
+            # For multiple answers, map each ID to its name
+            self.analysis_df['predicted_names_list'] = self.analysis_df['predicted_ids_list'].apply(
+                lambda ids: [self.id_to_name.get(id_str, id_str) for id_str in ids] if ids else []
+            )
+            # Join names for display
+            self.analysis_df['predicted_name'] = self.analysis_df['predicted_names_list'].apply(
+                lambda names: ', '.join(names) if names else None
+            )
+        else:
+            # Single answer mapping
+            if self.id_to_name:
+                self.analysis_df['predicted_name'] = self.analysis_df['predicted_id'].map(self.id_to_name)
+            if self.id_to_domain:
+                self.analysis_df['predicted_domain'] = self.analysis_df['predicted_id'].map(self.id_to_domain)
+            if self.id_to_field:
+                self.analysis_df['predicted_field'] = self.analysis_df['predicted_id'].map(self.id_to_field)
         
         # Add funding information if grants data is available
         if self.grants_data is not None:
@@ -299,11 +370,31 @@ class TopicClassificationAnalyzer:
         """Get distribution of predictions by classification type"""
         if self.analysis_df is None:
             raise ValueError("Data not processed. Call process_responses() first.")
+        
+        if self.is_multiple_correct:
+            # For multiple correct answers, count each individual prediction
+            all_predictions = []
+            for ids_list in self.analysis_df['predicted_ids_list']:
+                if ids_list:
+                    all_predictions.extend(ids_list)
             
-        if 'predicted_name' in self.analysis_df.columns:
-            return self.analysis_df['predicted_name'].value_counts()
+            # Count occurrences and map to names if available
+            if all_predictions:
+                prediction_counts = pd.Series(all_predictions).value_counts()
+                if self.id_to_name:
+                    # Map IDs to names
+                    prediction_counts.index = prediction_counts.index.map(
+                        lambda x: self.id_to_name.get(x, x)
+                    )
+                return prediction_counts
+            else:
+                return pd.Series(dtype=object)
         else:
-            return self.analysis_df['predicted_id'].value_counts()
+            # Single answer logic
+            if 'predicted_name' in self.analysis_df.columns:
+                return self.analysis_df['predicted_name'].value_counts()
+            else:
+                return self.analysis_df['predicted_id'].value_counts()
     
     def get_model_info(self) -> Dict[str, any]:
         """Extract model and token usage information"""
@@ -411,6 +502,35 @@ class TopicClassificationAnalyzer:
             distributions['field'] = field_funding
             
         return distributions
+    
+    def get_reasoning_data(self) -> Optional[pd.DataFrame]:
+        """Get reasoning data for CoT responses"""
+        if not self.is_cot or self.analysis_df is None:
+            return None
+        
+        # Filter out rows without reasoning
+        reasoning_df = self.analysis_df[self.analysis_df['reasoning'].notna()].copy()
+        
+        if len(reasoning_df) == 0:
+            return None
+        
+        # Select relevant columns for reasoning display
+        columns = ['metadata_grant_title', 'predicted_name', 'reasoning']
+        if 'predicted_id' in reasoning_df.columns:
+            columns.append('predicted_id')
+        if 'metadata_grant_summary' in reasoning_df.columns:
+            columns.append('metadata_grant_summary')
+        
+        return reasoning_df[columns].reset_index(drop=True)
+    
+    def get_evaluation_settings(self) -> Dict[str, any]:
+        """Get evaluation settings information"""
+        return {
+            'template_type': self.template_type,
+            'is_cot': self.is_cot,
+            'is_multiple_correct': self.is_multiple_correct,
+            'classification_type': self.classification_type
+        }
 
 
 def main():
@@ -499,6 +619,14 @@ def main():
         if model_info['total_time'] > 0:
             st.metric("Total Evaluation Time", f"{model_info['total_time']:.1f}s")
         
+        # Add evaluation settings
+        st.markdown("---")
+        eval_settings = analyzer.get_evaluation_settings()
+        st.markdown("##### Evaluation Settings")
+        st.write(f"**Template Type:** {eval_settings['template_type']}")
+        st.write(f"**Chain of Thought:** {'✅ Yes' if eval_settings['is_cot'] else '❌ No'}")
+        st.write(f"**Multiple Correct:** {'✅ Yes' if eval_settings['is_multiple_correct'] else '❌ No'}")
+        
         # Expandable detailed stats
         with st.expander("🔧 Detailed Technical Info"):
             st.markdown("##### Model & Token Usage")
@@ -539,10 +667,29 @@ def main():
     classification_display = analyzer.get_classification_short_name()
     
     # Create tabs for different visualizations
-    tab1, tab2, tab3 = st.tabs(["📊 Classification Results", "💰 Funding Analysis", "📋 Detailed Tables"])
+    tab_names = ["📊 Classification Results", "💰 Funding Analysis", "📋 Detailed Tables"]
+    if analyzer.is_cot:
+        tab_names.insert(-1, "🧠 Reasoning Analysis")  # Insert before the last tab
+    
+    tabs = st.tabs(tab_names)
+    
+    # Map tabs to variables
+    tab1 = tabs[0]  # Classification Results
+    tab2 = tabs[1]  # Funding Analysis
+    if analyzer.is_cot:
+        tab_reasoning = tabs[2]  # Reasoning Analysis
+        tab3 = tabs[3]  # Detailed Tables
+    else:
+        tab3 = tabs[2]  # Detailed Tables
     
     with tab1:
         st.subheader(f"🎯 {classification_display} Distribution")
+        
+        # Add information about multiple predictions if applicable
+        if analyzer.is_multiple_correct:
+            if 'num_predictions' in analyzer.analysis_df.columns:
+                avg_predictions = analyzer.analysis_df['num_predictions'].mean()
+                st.info(f"📊 **Multiple Answer Mode**: On average, {avg_predictions:.1f} {classification_display.lower()}s predicted per grant")
         
         # Show top 10 labels + others
         top_10 = prediction_dist.head(10)
@@ -571,7 +718,8 @@ def main():
                 autotext.set_color('white')
                 autotext.set_fontweight('bold')
             
-            ax.set_title(f'Distribution of {classification_display}s in Dataset', fontsize=16, fontweight='bold')
+            title_suffix = " (Individual Predictions)" if analyzer.is_multiple_correct else ""
+            ax.set_title(f'Distribution of {classification_display}s in Dataset{title_suffix}', fontsize=16, fontweight='bold')
             st.pyplot(fig)
         
         with col2:
@@ -702,11 +850,82 @@ def main():
         else:
             st.info("💡 No funding data available for this evaluation.")
     
+    # Add reasoning tab if CoT is enabled
+    if analyzer.is_cot:
+        with tab_reasoning:
+            st.subheader("🧠 Chain of Thought Reasoning Analysis")
+            
+            reasoning_data = analyzer.get_reasoning_data()
+            
+            if reasoning_data is not None and len(reasoning_data) > 0:
+                st.markdown(f"Found reasoning for **{len(reasoning_data)}** samples")
+                
+                # Add search functionality
+                search_term = st.text_input("🔍 Search reasoning (press Enter to search):", key="reasoning_search")
+                
+                # Filter data based on search
+                display_data = reasoning_data
+                if search_term:
+                    mask = (
+                        reasoning_data['reasoning'].str.contains(search_term, case=False, na=False) |
+                        reasoning_data['metadata_grant_title'].str.contains(search_term, case=False, na=False)
+                    )
+                    display_data = reasoning_data[mask]
+                    st.info(f"Showing {len(display_data)} of {len(reasoning_data)} samples matching '{search_term}'")
+                
+                # Display reasoning samples
+                for idx, row in display_data.head(20).iterrows():  # Show first 20 results
+                    with st.expander(f"📝 Grant: {row['metadata_grant_title'][:100]}... → Predicted: {row['predicted_name']}"):
+                        
+                        # Grant information
+                        st.markdown("**Grant Title:**")
+                        st.write(row['metadata_grant_title'])
+                        
+                        if 'metadata_grant_summary' in row and pd.notna(row['metadata_grant_summary']):
+                            st.markdown("**Grant Summary:**")
+                            st.write(row['metadata_grant_summary'][:500] + "..." if len(str(row['metadata_grant_summary'])) > 500 else row['metadata_grant_summary'])
+                        
+                        # Prediction information
+                        st.markdown("**Predicted Classification:**")
+                        predicted_text = row['predicted_name']
+                        if 'predicted_id' in row and pd.notna(row['predicted_id']):
+                            predicted_text += f" (ID: {row['predicted_id']})"
+                        st.write(predicted_text)
+                        
+                        # Reasoning
+                        st.markdown("**Model Reasoning:**")
+                        st.write(row['reasoning'])
+                
+                if len(display_data) > 20:
+                    st.info(f"Showing first 20 of {len(display_data)} results. Use search to filter for specific content.")
+                    
+            else:
+                st.warning("⚠️ No reasoning data found. This could mean:")
+                st.write("• The evaluation was not run with Chain of Thought (CoT) enabled")
+                st.write("• The reasoning extraction failed")
+                st.write("• The evaluation file doesn't contain complete reasoning data")
+    
     with tab3:
         st.subheader("📋 Detailed Data Tables")
         
+        # Multiple predictions summary if applicable
+        if analyzer.is_multiple_correct and 'num_predictions' in analyzer.analysis_df.columns:
+            st.markdown("##### Multiple Predictions Summary")
+            pred_summary = analyzer.analysis_df['num_predictions'].value_counts().sort_index()
+            pred_summary_df = pd.DataFrame({
+                'Number of Predictions': pred_summary.index,
+                'Number of Grants': pred_summary.values,
+                'Percentage': (pred_summary.values / pred_summary.sum() * 100).round(2)
+            })
+            st.dataframe(pred_summary_df, use_container_width=True)
+            st.markdown("---")
+        
         # Classification counts table
-        st.markdown(f"##### {classification_display} Counts")
+        count_title = f"{classification_display} Counts"
+        if analyzer.is_multiple_correct:
+            count_title += " (Individual Predictions)"
+        st.markdown(f"##### {count_title}")
+        
         label_df = pd.DataFrame({
             classification_display: prediction_dist.index,
             'Count': prediction_dist.values,

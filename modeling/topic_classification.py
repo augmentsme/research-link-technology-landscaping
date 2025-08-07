@@ -1,167 +1,18 @@
+"""
+Grant Topic Classification Module
+
+This module provides functions to classify research grants into topics based on
+keyword extraction and clustering results from Inspect AI tasks.
+"""
+
 import json
-import os
+import logging
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, asdict
+from collections import defaultdict
 
-from typing import List, Dict, Any, Optional, Union
-from dataclasses import dataclass
-from enum import Enum
-from inspect_ai import Task, task
-from inspect_ai.dataset import Sample
-from inspect_ai.solver import multiple_choice
-
-# Import ANZSRC data loader - delay import to avoid path issues
-def _load_anzsrc():
-    """Lazy import and load ANZSRC data."""
-    import sys
-    import os
-    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'anzsrc'))
-    
-    # Save current directory and change to anzsrc directory
-    current_dir = os.getcwd()
-    anzsrc_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'anzsrc')
-    
-    try:
-        os.chdir(anzsrc_dir)
-        from data import load_anzsrc
-        return load_anzsrc()
-    finally:
-        os.chdir(current_dir)
-
-
-class ClassificationType(Enum):
-    """Enum for different classification types."""
-    DOMAINS = "domains"
-    FIELDS = "fields"
-    SUBFIELDS = "subfields"
-    TOPICS = "topics"
-    FOR_DIVISIONS = "for_divisions"
-    FOR_GROUPS = "for_groups"
-    SEO_DIVISIONS = "seo_divisions"
-    SEO_GROUPS = "seo_groups"
-
-
-class ClassificationTemplate(str, Enum):
-    """Templates for classification questions using OpenAlex IDs."""
-    
-    SINGLE_ANSWER = """Answer the following multiple choice question. The entire content of your response should be of the following format: 'ANSWER: $ID' (without quotes) where ID is one of the OpenAlex IDs from the choices below.
-
-{question}
-
-{choices}
-
-Available IDs: {ids}
-"""
-    
-    SINGLE_ANSWER_COT = """Answer the following multiple choice question. The last line of your response should be of the following format: 'ANSWER: $ID' (without quotes) where ID is one of the OpenAlex IDs from the choices below. Think step by step before answering.
-
-{question}
-
-{choices}
-
-Available IDs: {ids}
-"""
-    
-    MULTIPLE_ANSWER = """Answer the following multiple choice question where multiple answers may be correct. The entire content of your response should be of the following format: 'ANSWER: $IDS' (without quotes) where IDS is one or more OpenAlex IDs from the choices below, separated by commas.
-
-{question}
-
-{choices}
-
-Available IDs: {ids}
-"""
-    
-    MULTIPLE_ANSWER_COT = """Answer the following multiple choice question where multiple answers may be correct. The last line of your response should be of the following format: 'ANSWER: $IDS' (without quotes) where IDS is one or more OpenAlex IDs from the choices below, separated by commas. Think step by step before answering.
-
-{question}
-
-{choices}
-
-Available IDs: {ids}
-"""
-
-
-def extract_canonical_id(openalex_id: str) -> str:
-    """Extract canonical ID from OpenAlex URL or return as-is if already canonical."""
-    if openalex_id.startswith('https://openalex.org/'):
-        return openalex_id.split('/')[-1]
-    return openalex_id
-
-@dataclass
-class Label:
-    """Represents a classification label (domain, field, subfield, or topic)."""
-    id: str
-    display_name: str
-    description: str
-    keywords: List[str] = None
-    field: str = None
-    domain: str = None
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any], classification_type: ClassificationType) -> 'Label':
-        """Create Label from OpenAlex data dictionary or ANZSRC data."""
-        if classification_type == ClassificationType.TOPICS:
-            return cls(
-                id=data.get('id', ''),
-                display_name=data.get('display_name', ''),
-                description=data.get('description', ''),
-                keywords=data.get('keywords', []),
-                field=data.get('field', {}).get('display_name', ''),
-                domain=data.get('domain', {}).get('display_name', '')
-            )
-        elif classification_type == ClassificationType.DOMAINS:
-            return cls(
-                id=data.get('id', ''),
-                display_name=data.get('display_name', ''),
-                description=data.get('description', ''),
-                keywords=None,
-                field=None,
-                domain=None
-            )
-        elif classification_type == ClassificationType.FIELDS:
-            return cls(
-                id=data.get('id', ''),
-                display_name=data.get('display_name', ''),
-                description=data.get('description', ''),
-                keywords=None,
-                field=None,
-                domain=data.get('domain', {}).get('display_name', '') if data.get('domain') else None
-            )
-        elif classification_type == ClassificationType.SUBFIELDS:
-            return cls(
-                id=data.get('id', ''),
-                display_name=data.get('display_name', ''),
-                description=data.get('description', ''),
-                keywords=None,
-                field=data.get('field', {}).get('display_name', '') if data.get('field') else None,
-                domain=data.get('domain', {}).get('display_name', '') if data.get('domain') else None
-            )
-        elif classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
-                                     ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS]:
-            # Handle ANZSRC data structure
-            return cls(
-                id=data.get('id', ''),
-                display_name=data.get('display_name', ''),
-                description=data.get('definition', ''),  # ANZSRC uses 'definition' instead of 'description'
-                keywords=None,
-                field=data.get('division_name', ''),  # Use division_name as field for groups
-                domain=data.get('classification', '')  # FoR or SEO
-            )
-
-
-@dataclass
-class Topic(Label):
-    """Represents an OpenAlex research topic (legacy compatibility)."""
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Topic':
-        """Create Topic from OpenAlex topic dictionary."""
-        return cls(
-            id=data.get('id', ''),
-            display_name=data.get('display_name', ''),
-            description=data.get('description', ''),
-            keywords=data.get('keywords', []),
-            field=data.get('field', {}).get('display_name', ''),
-            domain=data.get('domain', {}).get('display_name', '')
-        )
+from inspect_ai.log import read_eval_log
 
 
 @dataclass
@@ -171,6 +22,9 @@ class Grant:
     title: str
     summary: str
     funding_amount: Optional[float] = None
+    funder: Optional[str] = None
+    funding_scheme: Optional[str] = None
+    status: Optional[str] = None
     
     @property
     def has_summary(self) -> bool:
@@ -184,452 +38,482 @@ class Grant:
             id=data.get('id', ''),
             title=data.get('title', ''),
             summary=data.get('grant_summary', ''),
-            funding_amount=data.get('funding_amount', None)
+            funding_amount=data.get('funding_amount', None),
+            funder=data.get('funder', None),
+            funding_scheme=data.get('funding_scheme', None),
+            status=data.get('status', None)
         )
 
 
 @dataclass
-class PipelineConfig:
-    """Configuration for the research pipeline."""
-    data_path: str = "/home/lcheng/oz318/research-link-technology-landscaping/data/active_grants.json"
-    base_data_dir: str = "/home/lcheng/oz318/research-link-technology-landscaping/data"
-    classification_type: ClassificationType = ClassificationType.TOPICS
-    log_dir: str = "pipeline_logs"
-    labels: List[Label] = None
+class GrantTopicAssignment:
+    """Represents the assignment of a grant to one or more topics."""
+    grant_id: str
+    grant_title: str
+    grant_summary: str
+    funding_amount: Optional[float]
+    assigned_topics: List[str]  # Topic names
+    topic_scores: Dict[str, float]  # Topic name -> relevance score
+    extracted_keywords: List[str]  # Keywords extracted from this grant
+    matched_keywords: Dict[str, List[str]]  # Topic name -> matched keywords
+
+
+@dataclass
+class TopicAssignmentResult:
+    """Result of the grant topic assignment process."""
+    assignments: List[GrantTopicAssignment]
+    topic_grant_counts: Dict[str, int]  # Topic name -> number of grants
+    topic_funding_totals: Dict[str, float]  # Topic name -> total funding
+    unassigned_grants: List[str]  # Grant IDs that couldn't be assigned
+    keyword_coverage: Dict[str, int]  # Keyword -> number of grants using it
     
-    def __post_init__(self):
-        """Load labels from the appropriate JSON file based on classification type."""
-        if self.labels is None:
-            self.labels = self._load_labels_from_file()
-    
-    @property
-    def labels_path(self) -> str:
-        """Get the path to the labels file based on classification type."""
-        filename = f"{self.classification_type.value}.json"
-        return os.path.join(self.base_data_dir, filename)
-    
-    @property 
-    def topics_path(self) -> str:
-        """Legacy property for backward compatibility."""
-        return os.path.join(self.base_data_dir, "topics.json")
-    
-    @property
-    def research_topics(self) -> List[Topic]:
-        """Legacy property for backward compatibility - returns labels as Topics."""
-        if self.classification_type == ClassificationType.TOPICS:
-            return [Topic(
-                id=label.id,
-                display_name=label.display_name,
-                description=label.description,
-                keywords=label.keywords or [],
-                field=label.field or '',
-                domain=label.domain or ''
-            ) for label in self.labels]
-        else:
-            # For non-topic classifications, convert to Topic format for compatibility
-            return [Topic(
-                id=label.id,
-                display_name=label.display_name,
-                description=label.description,
-                keywords=[],
-                field=label.field or '',
-                domain=label.domain or ''
-            ) for label in self.labels]
-    
-    def _load_labels_from_file(self) -> List[Label]:
-        """Load labels from the appropriate JSON file based on classification type."""
-        # Handle ANZSRC classifications
-        if self.classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
-                                        ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS]:
-            return self._load_anzsrc_labels()
-        
-        # Handle OpenAlex classifications
-        labels_path = self.labels_path
-        with open(labels_path, 'r') as f:
-            labels_data = json.load(f)
-        
-        # Convert to Label objects
-        labels = [Label.from_dict(label_data, self.classification_type) for label_data in labels_data]
-        
-        return labels
-    
-    def _load_anzsrc_labels(self) -> List[Label]:
-        """Load ANZSRC labels from the combined DataFrame."""
-        # Load ANZSRC data
-        anzsrc_df = _load_anzsrc()
-        
-        labels = []
-        
-        if self.classification_type == ClassificationType.FOR_DIVISIONS:
-            # Get FoR divisions
-            for_divisions = anzsrc_df[
-                (anzsrc_df.index.get_level_values('classification') == 'FoR') & 
-                (anzsrc_df['level'] == 'division')
-            ]
-            
-            for (classification, division_code, _), row in for_divisions.iterrows():
-                label_data = {
-                    'id': division_code,
-                    'display_name': row['division_name'],
-                    'definition': row['definition'],
-                    'classification': classification
-                }
-                labels.append(Label.from_dict(label_data, self.classification_type))
-        
-        elif self.classification_type == ClassificationType.FOR_GROUPS:
-            # Get FoR groups
-            for_groups = anzsrc_df[
-                (anzsrc_df.index.get_level_values('classification') == 'FoR') & 
-                (anzsrc_df['level'] == 'group')
-            ]
-            
-            for (classification, division_code, group_code), row in for_groups.iterrows():
-                label_data = {
-                    'id': group_code,
-                    'display_name': row['group_name'],
-                    'definition': row['definition'],
-                    'division_name': row['division_name'],
-                    'classification': classification
-                }
-                labels.append(Label.from_dict(label_data, self.classification_type))
-        
-        elif self.classification_type == ClassificationType.SEO_DIVISIONS:
-            # Get SEO divisions
-            seo_divisions = anzsrc_df[
-                (anzsrc_df.index.get_level_values('classification') == 'SEO') & 
-                (anzsrc_df['level'] == 'division')
-            ]
-            
-            for (classification, division_code, _), row in seo_divisions.iterrows():
-                label_data = {
-                    'id': division_code,
-                    'display_name': row['division_name'],
-                    'definition': row['definition'],
-                    'classification': classification
-                }
-                labels.append(Label.from_dict(label_data, self.classification_type))
-        
-        elif self.classification_type == ClassificationType.SEO_GROUPS:
-            # Get SEO groups
-            seo_groups = anzsrc_df[
-                (anzsrc_df.index.get_level_values('classification') == 'SEO') & 
-                (anzsrc_df['level'] == 'group')
-            ]
-            
-            for (classification, division_code, group_code), row in seo_groups.iterrows():
-                label_data = {
-                    'id': group_code,
-                    'display_name': row['group_name'],
-                    'definition': row['definition'],
-                    'division_name': row['division_name'],
-                    'classification': classification
-                }
-                labels.append(Label.from_dict(label_data, self.classification_type))
-        
-        return labels
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'assignments': [asdict(assignment) for assignment in self.assignments],
+            'topic_grant_counts': self.topic_grant_counts,
+            'topic_funding_totals': self.topic_funding_totals,
+            'unassigned_grants': self.unassigned_grants,
+            'keyword_coverage': self.keyword_coverage,
+            'summary': {
+                'total_grants': len(self.assignments) + len(self.unassigned_grants),
+                'assigned_grants': len(self.assignments),
+                'unassigned_grants': len(self.unassigned_grants),
+                'total_topics': len(self.topic_grant_counts),
+                'total_funding': sum(self.topic_funding_totals.values())
+            }
+        }
 
 
-
-
-class DataLoader:
-    """Handles loading and processing of grant data."""
-    
-    def __init__(self, config: PipelineConfig):
-        self.config = config
-    
-    def load_grants(self) -> List[Grant]:
-        """Load grants from available data sources."""
-        data_path = self.config.data_path
-        with open(data_path, 'r') as f:
-            raw_grants = json.load(f)
-        
-        grants = []
-        for grant_data in raw_grants:
-            grant = Grant.from_dict(grant_data)
-            if grant.has_summary:
-                grants.append(grant)
-        
-        return grants
-    
-    def load_labels(self) -> List[Label]:
-        """Load labels from the appropriate file based on classification type."""
-        return self.config.labels
-    
-    def load_topics(self) -> List[Topic]:
-        """Load topics from OpenAlex topics file (legacy compatibility)."""
-        return self.config.research_topics
-    
-
-
-
-
-
-class InspectAITaskCreator:
-    """Creates Inspect AI tasks for evaluation."""
-    
-    def __init__(self, config: PipelineConfig, grants: List[Grant]):
-        self.config = config
-        self.grants = grants
-        self.labels = config.labels
-        self.topics = config.research_topics  # For backward compatibility
-    
-    def _get_user_template(self) -> str:
-        """Get the user message template for classification."""
-        return """# Grant Classification Task
-
-## Available Research {label_type}
-
-{topics_str}
-
-## Grant to Classify
-
-**Title:** {grant_title}
-**Summary:** {grant_summary}
-
-Please classify this grant into the most appropriate OpenAlex research {label_type} from the list above.
-
-"""
-    
-    def _format_labels_for_classification(self) -> str:
-        """Format labels for classification task based on classification type."""
-        formatted_labels = []
-        
-        for i, label in enumerate(self.labels, 1):
-            if self.config.classification_type == ClassificationType.TOPICS:
-                # For topics, include keywords and field/domain info
-                keywords_str = ", ".join(label.keywords[:5]) if label.keywords else "N/A"
-                label_text = f"""{i}. ID: {label.id}
-   Topic: {label.display_name}
-   Field: {label.field} | Domain: {label.domain}
-   Description: {label.description}
-   Key Keywords: {keywords_str}
-"""
-            elif self.config.classification_type == ClassificationType.DOMAINS:
-                # For domains, simpler format
-                label_text = f"""{i}. ID: {label.id}
-   Domain: {label.display_name}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.FIELDS:
-                # For fields, include domain if available
-                domain_str = f" | Domain: {label.domain}" if label.domain else ""
-                label_text = f"""{i}. ID: {label.id}
-   Field: {label.display_name}{domain_str}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.SUBFIELDS:
-                # For subfields, include field and domain if available
-                field_str = f" | Field: {label.field}" if label.field else ""
-                domain_str = f" | Domain: {label.domain}" if label.domain else ""
-                label_text = f"""{i}. ID: {label.id}
-   Subfield: {label.display_name}{field_str}{domain_str}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.FOR_DIVISIONS:
-                # For FoR divisions
-                label_text = f"""{i}. ID: {label.id}
-   FoR Division: {label.display_name}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.FOR_GROUPS:
-                # For FoR groups, include division info
-                division_str = f" | Division: {label.field}" if label.field else ""
-                label_text = f"""{i}. ID: {label.id}
-   FoR Group: {label.display_name}{division_str}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.SEO_DIVISIONS:
-                # For SEO divisions
-                label_text = f"""{i}. ID: {label.id}
-   SEO Division: {label.display_name}
-   Description: {label.description}
-"""
-            elif self.config.classification_type == ClassificationType.SEO_GROUPS:
-                # For SEO groups, include division info
-                division_str = f" | Division: {label.field}" if label.field else ""
-                label_text = f"""{i}. ID: {label.id}
-   SEO Group: {label.display_name}{division_str}
-   Description: {label.description}
-"""
-            
-            formatted_labels.append(label_text)
-        
-        return "\n".join(formatted_labels)
-    
-    def _format_topics_for_classification(self) -> str:
-        """Format OpenAlex topics for classification task (legacy compatibility)."""
-        return self._format_labels_for_classification()
-    
-    def _concatenate_summaries(self, grants: List[Grant]) -> str:
-        """Concatenate grant summaries into a single text."""
-        summaries = [f"Grant {i+1}: {grant.summary}" for i, grant in enumerate(grants)]
-        return "\n\n".join(summaries)
-    
-    def create_classification_prompt(self, grant: Grant) -> str:
-        """Create a classification prompt for a specific grant using the user template."""
-        user_template = self._get_user_template()
-        labels_str = self._format_labels_for_classification()
-        
-        # Get the appropriate label type name for the prompt
-        label_type_name = {
-            ClassificationType.DOMAINS: "domains",
-            ClassificationType.FIELDS: "fields", 
-            ClassificationType.SUBFIELDS: "subfields",
-            ClassificationType.TOPICS: "topics",
-            ClassificationType.FOR_DIVISIONS: "FoR divisions",
-            ClassificationType.FOR_GROUPS: "FoR groups",
-            ClassificationType.SEO_DIVISIONS: "SEO divisions",
-            ClassificationType.SEO_GROUPS: "SEO groups"
-        }[self.config.classification_type]
-        
-        return user_template.format(
-            topics_str=labels_str,  # Keep the same placeholder for compatibility
-            grant_title=grant.title,
-            grant_summary=grant.summary,
-            label_type=label_type_name,
-            classification_type=self.config.classification_type.value
-        )
-    
-    def create_classification_prompt_for_multiple_choice(self, grant: Grant) -> str:
-        """Create a simplified classification prompt for multiple choice format."""
-        # Get the appropriate label type name for the prompt
-        label_type_name = {
-            ClassificationType.DOMAINS: "domain",
-            ClassificationType.FIELDS: "field", 
-            ClassificationType.SUBFIELDS: "subfield",
-            ClassificationType.TOPICS: "topic",
-            ClassificationType.FOR_DIVISIONS: "FoR division",
-            ClassificationType.FOR_GROUPS: "FoR group",
-            ClassificationType.SEO_DIVISIONS: "SEO division", 
-            ClassificationType.SEO_GROUPS: "SEO group"
-        }[self.config.classification_type]
-        
-        # Determine if this is an ANZSRC classification
-        is_anzsrc = self.config.classification_type in [
-            ClassificationType.FOR_DIVISIONS, ClassificationType.FOR_GROUPS,
-            ClassificationType.SEO_DIVISIONS, ClassificationType.SEO_GROUPS
-        ]
-        
-        classification_system = "ANZSRC" if is_anzsrc else "OpenAlex"
-        
-        # Create ID examples based on classification type
-        if self.config.classification_type in [ClassificationType.FOR_DIVISIONS, ClassificationType.SEO_DIVISIONS]:
-            id_example = '"30" for divisions'
-        elif self.config.classification_type in [ClassificationType.FOR_GROUPS, ClassificationType.SEO_GROUPS]:
-            id_example = '"3001" for groups'
-        elif self.config.classification_type == ClassificationType.DOMAINS:
-            id_example = '"1" for domains'
-        elif self.config.classification_type == ClassificationType.FIELDS:
-            id_example = '"23" for fields'
-        elif self.config.classification_type == ClassificationType.SUBFIELDS:
-            id_example = '"2403" for subfields'
-        else:  # TOPICS
-            id_example = '"T11881" for topics'
-        
-        prompt = f"""# Grant Classification Task
-
-## Grant to Classify
-
-**Title:** {grant.title}
-**Summary:** {grant.summary}
-
-Please classify this grant into the most appropriate {classification_system} research {label_type_name} from the available choices.
-
-Select the {label_type_name} that best matches the research focus and content of this grant.
-
-Respond with the canonical {classification_system} ID (e.g. {id_example}) of your chosen {label_type_name}."""
-        
-        return prompt
-
-
-def get_classification_template(cot: bool = False, multiple_correct: bool = False) -> ClassificationTemplate:
+def load_grants_data(grants_file: str) -> List[Grant]:
     """
-    Convenience function to get the appropriate template based on options.
+    Load grants data from JSON file.
     
     Args:
-        cot: Whether to use chain-of-thought reasoning
-        multiple_correct: Whether multiple answers are allowed
+        grants_file: Path to the grants JSON file
         
     Returns:
-        The appropriate ClassificationTemplate
+        List of Grant objects with summaries
     """
-    if multiple_correct:
-        return ClassificationTemplate.MULTIPLE_ANSWER_COT if cot else ClassificationTemplate.MULTIPLE_ANSWER
-    else:
-        return ClassificationTemplate.SINGLE_ANSWER_COT if cot else ClassificationTemplate.SINGLE_ANSWER
+    logger = logging.getLogger(__name__)
+    
+    with open(grants_file, 'r', encoding='utf-8') as f:
+        grants_data = json.load(f)
+    
+    grants = []
+    for grant_data in grants_data:
+        grant = Grant.from_dict(grant_data)
+        if grant.has_summary:
+            grants.append(grant)
+        else:
+            logger.debug(f"Skipping grant {grant.id} - no summary")
+    
+    logger.info(f"Loaded {len(grants)} grants with summaries from {grants_file}")
+    return grants
 
 
-@task
-def classify_grants_task(
-    data_path: str = "/home/lcheng/oz318/research-link-technology-landscaping/data/active_grants.json",
-    classification_type: Union[ClassificationType, str] = ClassificationType.SUBFIELDS, 
-    cot: bool = False,
-    multiple_correct: bool = False
-) -> Task:
+def load_topic_clusters_from_eval_log(eval_file: str) -> Tuple[Dict[str, Dict], Dict[str, str]]:
     """
-    Task for classifying grants into OpenAlex classifications.
+    Load topic clusters from Inspect AI evaluation log file.
     
     Args:
-        classification_type: Type of classification (domains, fields, subfields, topics)
-        cot: Whether to use chain-of-thought reasoning
-        multiple_correct: Whether multiple answers are allowed
-    """
-    if isinstance(classification_type, str):
-        classification_type = ClassificationType(classification_type.lower())
-    
-    # Determine template from cot and multiple_correct parameters
-    template = get_classification_template(cot=cot, multiple_correct=multiple_correct)
-    
-    config = PipelineConfig(
-        data_path=data_path,
-        classification_type=classification_type
-    )
-    
-    # Load data
-    data_loader = DataLoader(config)
-    grants = data_loader.load_grants()
-    
-    # Create task creator to handle prompt generation
-    task_creator = InspectAITaskCreator(config, grants)
-    
-    # Create the template with available IDs
-    available_ids = ', '.join([extract_canonical_id(label.id) for label in config.labels])
-    custom_template = template.value.format(
-        question="{question}",
-        choices="{choices}", 
-        ids=available_ids
-    )
-    
-    samples = []
-    for grant in grants:
-        # Create choices from available labels using canonical IDs as option labels
-        choices = []
-        for label in config.labels:
-            canonical_id = extract_canonical_id(label.id)
-            choice_text = f"<{canonical_id}> {label.display_name}: {label.description}"
-            choices.append(choice_text)
+        eval_file: Path to the clustering evaluation file
         
-        # Use the task creator to generate the user prompt (simplified for multiple choice)
-        user_input = task_creator.create_classification_prompt_for_multiple_choice(grant)
-
-        sample = Sample(
-            input=user_input,
-            choices=choices,
-            metadata={
-                "grant_id": grant.id,
-                "grant_title": grant.title,
-                "grant_summary": grant.summary,
-                "num_labels": len(config.labels),
-                "classification_type": classification_type.value,
-                "label_ids": [extract_canonical_id(label.id) for label in config.labels],
-                "label_names": [label.display_name for label in config.labels],
-                "solver_type": "multiple_choice",
-                "template_type": template.name
-            }
-        )
-        samples.append(sample)
+    Returns:
+        Tuple of (topic_clusters, keyword_to_topic_mapping)
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Loading topic clusters from {eval_file}")
     
-    return Task(
-        dataset=samples,
-        solver=multiple_choice(template=custom_template)
+    topic_clusters = {}
+    keyword_to_topic = {}
+    
+    try:
+        log = read_eval_log(eval_file)
+        
+        for sample in log.samples:
+            if sample.output and sample.output.completion:
+                try:
+                    clustering_result = json.loads(sample.output.completion)
+                    
+                    if 'topics' in clustering_result:
+                        for topic_data in clustering_result['topics']:
+                            topic_name = topic_data.get('topic_name', '')
+                            keywords = topic_data.get('keywords', [])
+                            
+                            topic_clusters[topic_name] = {
+                                'description': topic_data.get('description', ''),
+                                'keywords': keywords,
+                                'primary_keywords': topic_data.get('primary_keywords', []),
+                                'domain': topic_data.get('domain', None)
+                            }
+                            
+                            # Build keyword-to-topic mapping
+                            for keyword in keywords:
+                                keyword_to_topic[keyword.lower()] = topic_name
+                    
+                    # Also handle direct keyword_to_topic_mapping if available
+                    if 'keyword_to_topic_mapping' in clustering_result:
+                        for keyword, topic in clustering_result['keyword_to_topic_mapping'].items():
+                            keyword_to_topic[keyword.lower()] = topic
+                    
+                    logger.info(f"Loaded {len(topic_clusters)} topic clusters")
+                    break  # Take the first valid result
+                    
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Could not parse clustering result: {e}")
+                    continue
+    
+    except Exception as e:
+        logger.error(f"Error loading topic clusters: {e}")
+        raise
+    
+    return topic_clusters, keyword_to_topic
+
+
+def load_grant_keywords_from_eval_log(eval_file: str) -> Dict[str, List[str]]:
+    """
+    Load grant keywords from keyword extraction evaluation log file.
+    
+    Args:
+        eval_file: Path to the keyword extraction evaluation file
+        
+    Returns:
+        Dictionary mapping grant_id to list of keywords
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Loading grant keywords from {eval_file}")
+    
+    grant_keywords = {}
+    
+    try:
+        log = read_eval_log(eval_file)
+        
+        for sample in log.samples:
+            if sample.output and sample.output.completion:
+                try:
+                    keywords_result = json.loads(sample.output.completion)
+                    
+                    # Extract grant ID from metadata
+                    grant_id = sample.metadata.get('grant_id', '') if sample.metadata else ''
+                    if not grant_id:
+                        continue
+                    
+                    # Collect all keywords from different categories
+                    all_keywords = []
+                    
+                    if isinstance(keywords_result, dict):
+                        for key in ['keywords', 'methodology_keywords', 'application_keywords', 'technology_keywords']:
+                            if key in keywords_result and isinstance(keywords_result[key], list):
+                                all_keywords.extend(keywords_result[key])
+                    
+                    # Clean and normalize keywords
+                    clean_keywords = []
+                    for kw in all_keywords:
+                        if kw and isinstance(kw, str):
+                            clean_kw = kw.strip().lower()
+                            if clean_kw and len(clean_kw) > 2:
+                                clean_keywords.append(clean_kw)
+                    
+                    grant_keywords[grant_id] = clean_keywords
+                    
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Could not parse keywords result for sample {sample.id}: {e}")
+                    continue
+        
+        logger.info(f"Loaded keywords for {len(grant_keywords)} grants")
+        
+    except Exception as e:
+        logger.error(f"Error loading grant keywords: {e}")
+        raise
+    
+    return grant_keywords
+
+
+def find_latest_eval_file(logs_dir: str, pattern: str) -> Optional[str]:
+    """
+    Find the most recent evaluation file matching the pattern.
+    
+    Args:
+        logs_dir: Directory containing log files
+        pattern: Glob pattern to match files
+        
+    Returns:
+        Path to the most recent file or None if no files found
+    """
+    logs_path = Path(logs_dir)
+    files = list(logs_path.glob(pattern))
+    
+    if not files:
+        return None
+    
+    # Return the most recent file
+    return str(max(files, key=lambda x: x.stat().st_mtime))
+
+
+def calculate_topic_scores(
+    grant_keywords: List[str], 
+    topic_clusters: Dict[str, Dict], 
+    keyword_to_topic: Dict[str, str]
+) -> Tuple[Dict[str, float], Dict[str, List[str]]]:
+    """
+    Calculate topic scores for a grant based on keyword matches.
+    
+    Args:
+        grant_keywords: List of keywords extracted from the grant
+        topic_clusters: Dictionary of topic cluster information
+        keyword_to_topic: Mapping from keywords to topic names
+        
+    Returns:
+        Tuple of (topic_scores, matched_keywords_by_topic)
+    """
+    topic_scores = {}
+    matched_keywords_by_topic = defaultdict(list)
+    
+    # Find keyword matches
+    for keyword in grant_keywords:
+        if keyword in keyword_to_topic:
+            topic_name = keyword_to_topic[keyword]
+            matched_keywords_by_topic[topic_name].append(keyword)
+    
+    # Calculate scores for each topic based on keyword matches
+    for topic_name, matched_keywords in matched_keywords_by_topic.items():
+        if topic_name in topic_clusters:
+            # Score based on:
+            # 1. Number of matched keywords
+            # 2. Primary keywords get higher weight
+            
+            base_score = len(matched_keywords)
+            
+            # Primary keywords get bonus points
+            primary_keywords = topic_clusters[topic_name].get('primary_keywords', [])
+            primary_keyword_matches = sum(1 for kw in matched_keywords 
+                                        if kw in [pk.lower() for pk in primary_keywords])
+            primary_keyword_bonus = primary_keyword_matches * 0.5
+            
+            topic_scores[topic_name] = base_score + primary_keyword_bonus
+    
+    return topic_scores, dict(matched_keywords_by_topic)
+
+
+def assign_grant_to_topics(
+    grant: Grant,
+    grant_keywords: List[str],
+    topic_clusters: Dict[str, Dict],
+    keyword_to_topic: Dict[str, str],
+    min_keyword_matches: int = 2
+) -> Optional[GrantTopicAssignment]:
+    """
+    Assign a single grant to topics based on keyword matches.
+    
+    Args:
+        grant: Grant object
+        grant_keywords: Keywords extracted from the grant
+        topic_clusters: Dictionary of topic cluster information
+        keyword_to_topic: Mapping from keywords to topic names
+        min_keyword_matches: Minimum number of keyword matches required
+        
+    Returns:
+        GrantTopicAssignment if successful, None if unassigned
+    """
+    if not grant_keywords:
+        return None
+    
+    topic_scores, matched_keywords_by_topic = calculate_topic_scores(
+        grant_keywords, topic_clusters, keyword_to_topic
+    )
+    
+    # Filter topics by minimum keyword matches
+    qualified_topics = {}
+    qualified_matches = {}
+    
+    for topic_name, score in topic_scores.items():
+        matched_keywords = matched_keywords_by_topic.get(topic_name, [])
+        if len(matched_keywords) >= min_keyword_matches:
+            qualified_topics[topic_name] = score
+            qualified_matches[topic_name] = matched_keywords
+    
+    if not qualified_topics:
+        return None
+    
+    return GrantTopicAssignment(
+        grant_id=grant.id,
+        grant_title=grant.title,
+        grant_summary=grant.summary,
+        funding_amount=grant.funding_amount,
+        assigned_topics=list(qualified_topics.keys()),
+        topic_scores=qualified_topics,
+        extracted_keywords=grant_keywords,
+        matched_keywords=qualified_matches
+    )
+
+
+def assign_grants_to_topics(
+    grants: List[Grant],
+    grant_keywords: Dict[str, List[str]],
+    topic_clusters: Dict[str, Dict],
+    keyword_to_topic: Dict[str, str],
+    min_keyword_matches: int = 2
+) -> TopicAssignmentResult:
+    """
+    Assign all grants to topics based on keyword matches.
+    
+    Args:
+        grants: List of Grant objects
+        grant_keywords: Dictionary mapping grant_id to keywords
+        topic_clusters: Dictionary of topic cluster information
+        keyword_to_topic: Mapping from keywords to topic names
+        min_keyword_matches: Minimum number of keyword matches required
+        
+    Returns:
+        TopicAssignmentResult with all assignments
+    """
+    logger = logging.getLogger(__name__)
+    
+    assignments = []
+    topic_grant_counts = defaultdict(int)
+    topic_funding_totals = defaultdict(float)
+    unassigned_grants = []
+    keyword_coverage = defaultdict(int)
+    
+    logger.info(f"Assigning {len(grants)} grants to {len(topic_clusters)} topics")
+    
+    for grant in grants:
+        grant_kw = grant_keywords.get(grant.id, [])
+        
+        assignment = assign_grant_to_topics(
+            grant, grant_kw, topic_clusters, keyword_to_topic,
+            min_keyword_matches
+        )
+        
+        if assignment:
+            assignments.append(assignment)
+            
+            # Update statistics
+            for topic in assignment.assigned_topics:
+                topic_grant_counts[topic] += 1
+                if grant.funding_amount:
+                    topic_funding_totals[topic] += grant.funding_amount
+            
+            # Update keyword coverage
+            for keyword in assignment.extracted_keywords:
+                keyword_coverage[keyword] += 1
+        else:
+            unassigned_grants.append(grant.id)
+    
+    result = TopicAssignmentResult(
+        assignments=assignments,
+        topic_grant_counts=dict(topic_grant_counts),
+        topic_funding_totals=dict(topic_funding_totals),
+        unassigned_grants=unassigned_grants,
+        keyword_coverage=dict(keyword_coverage)
+    )
+    
+    logger.info(f"Assignment complete: {len(assignments)} grants assigned, {len(unassigned_grants)} unassigned")
+    
+    return result
+
+
+def save_topic_assignment_results(result: TopicAssignmentResult, output_file: str) -> None:
+    """
+    Save topic assignment results to JSON file.
+    
+    Args:
+        result: TopicAssignmentResult to save
+        output_file: Path to output file
+    """
+    logger = logging.getLogger(__name__)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(result.to_dict(), f, indent=2, ensure_ascii=False)
+    
+    logger.info(f"Topic assignment results saved to {output_file}")
+
+
+def classify_grants_by_topics(
+    grants_file: str,
+    logs_dir: str = "/home/lcheng/oz318/research-link-technology-landscaping/logs",
+    output_file: str = "/home/lcheng/oz318/research-link-technology-landscaping/data/grant_topic_assignments.json",
+    min_keyword_matches: int = 2,
+    clustering_eval_file: Optional[str] = None,
+    keywords_eval_file: Optional[str] = None
+) -> TopicAssignmentResult:
+    """
+    Main function to classify grants by topics using results from keyword extraction and clustering.
+    
+    Args:
+        grants_file: Path to the grants JSON file
+        logs_dir: Directory containing evaluation log files
+        output_file: Path to save results
+        min_keyword_matches: Minimum number of keyword matches required for assignment
+        clustering_eval_file: Specific clustering evaluation file (auto-detect if None)
+        keywords_eval_file: Specific keywords evaluation file (auto-detect if None)
+        
+    Returns:
+        TopicAssignmentResult
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Starting grant topic classification...")
+    
+    # Load grants data
+    logger.info("Loading grants data...")
+    grants = load_grants_data(grants_file)
+    
+    # Find evaluation files if not specified
+    if clustering_eval_file is None:
+        clustering_eval_file = find_latest_eval_file(logs_dir, "*cluster*keywords*.eval")
+        if not clustering_eval_file:
+            raise FileNotFoundError("No keyword clustering evaluation files found")
+    
+    if keywords_eval_file is None:
+        keywords_eval_file = find_latest_eval_file(logs_dir, "*extract*keywords*.eval")
+        if not keywords_eval_file:
+            raise FileNotFoundError("No keyword extraction evaluation files found")
+    
+    # Load topic clusters
+    logger.info("Loading topic clusters...")
+    topic_clusters, keyword_to_topic = load_topic_clusters_from_eval_log(clustering_eval_file)
+    
+    # Load grant keywords
+    logger.info("Loading grant keywords...")
+    grant_keywords = load_grant_keywords_from_eval_log(keywords_eval_file)
+    
+    # Assign grants to topics
+    logger.info("Assigning grants to topics...")
+    result = assign_grants_to_topics(
+        grants, grant_keywords, topic_clusters, keyword_to_topic,
+        min_keyword_matches
+    )
+    
+    # Save results
+    save_topic_assignment_results(result, output_file)
+    
+    # Print summary
+    summary = result.to_dict()['summary']
+    logger.info("\nClassification Summary:")
+    logger.info(f"Total grants processed: {summary['total_grants']}")
+    logger.info(f"Grants assigned: {summary['assigned_grants']}")
+    logger.info(f"Grants unassigned: {summary['unassigned_grants']}")
+    logger.info(f"Topics with grants: {summary['total_topics']}")
+    
+    # Top topics by grant count
+    top_topics = sorted(result.topic_grant_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    logger.info("\nTop 10 Topics by Grant Count:")
+    for topic, count in top_topics:
+        funding = result.topic_funding_totals.get(topic, 0)
+        logger.info(f"  {topic}: {count} grants, ${funding:,.0f}")
+    
+    return result
+
+
+if __name__ == "__main__":
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Run classification with default parameters
+    classify_grants_by_topics(
+        grants_file="/home/lcheng/oz318/research-link-technology-landscaping/data/active_grants.json"
     )

@@ -6,3 +6,5 @@ The runCommands tool sometimes fails to capture the command output. If that happ
 command output from the terminal. If that fails, ask the user to copy-paste the output from the terminal.
 
 Do not add error handing (e.g. try/except) to the code snippets, just assume everything works as expected. Do not use print statements in the code snippets, just assume the user will see the output in the terminal.
+
+Do not create additional markdown file, make sure you remove files that are created purely for testing purposes during a single iteration. 

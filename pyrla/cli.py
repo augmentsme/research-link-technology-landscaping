@@ -607,9 +607,12 @@ def search_organisations(
     type: Optional[str] = typer.Option(None, "--type", help="Filter by organisation type"),
     topic: Optional[str] = typer.Option(None, "--topic", help="Filter by research topic/field"),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file")
+    json_file: Optional[str] = typer.Option(None, "--json", help="Save results to JSON file"),
+    debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
 ):
     """Search for organisations in the RLA database"""
+    global debug_mode
+    debug_mode = debug
     try:
         client = get_client()
         
@@ -752,10 +755,12 @@ def search_organisations(
                 
     except RLAError as e:
         console.print(f"[red]API Error: {e}[/red]")
+        if debug_mode:
+            console.print("\n[yellow]Full traceback:[/yellow]")
+            console.print(traceback.format_exc())
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        handle_exception(e, "organisation search")
         raise typer.Exit(1)
 
 

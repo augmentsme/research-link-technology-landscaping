@@ -1,6 +1,6 @@
 # Research Link Technology Landscaping
 
-🔍 A keyword-based research analysis system for automatically discovering research topics and assigning grants to those topics based on content analysis.
+🔍 A keyword-based research analysis system for automatically extracting keywords from research grants, harmonising them, and assigning harmonised keywords to grants based on content analysis.
 
 ## Configuration
 
@@ -14,9 +14,9 @@ The system uses a centralized `config.yaml` file for all configuration settings 
 ## Features
 
 - **Keyword Extraction**: Automatically extract key research terms from grant summaries
-- **Topic Clustering**: Group related keywords into coherent research topics  
-- **Grant Assignment**: Assign grants to topics based on keyword matches
-- **Interactive Dashboard**: Visualize results with funding analysis and topic exploration
+- **Keyword Harmonisation**: Consolidate variants and synonyms into standardized terms  
+- **Grant Assignment**: Assign harmonised keywords to grants based on content matches
+- **Interactive Dashboard**: Visualize results with funding analysis and keyword exploration
 - **Centralized Configuration**: Single config file manages all system settings
 
 ## Quick Start
@@ -46,28 +46,28 @@ The analysis pipeline consists of three main steps:
    - Uses LLM to extract relevant research keywords from grant summaries
    - Generates structured keyword data for each grant
 
-2. **Cluster Keywords** (`make cluster-keywords`) 
-   - Groups related keywords into research topics
-   - Creates topic descriptions and confidence scores
-   - Outputs 9 distinct research topics
+2. **Harmonise Keywords** (`make harmonise-keywords`) 
+   - Consolidates keyword variants and synonyms into standardized terms
+   - Maps original keywords to their harmonised forms
+   - Eliminates duplicates while preserving meaning
 
-3. **Assign Topics** (`make assign-topics`)
-   - Matches grants to topics based on keyword overlap
-   - Calculates topic relevance scores
+3. **Assign Keywords** (`make assign-keywords`)
+   - Assigns harmonised keywords to grants based on content matching
+   - Creates keyword-grant associations with coverage statistics
    - Generates comprehensive assignment data
 
 ## Generated Data
 
 The workflow produces:
 
-- `data/keyword_clusters.json` - Research topics with keywords and descriptions
-- `data/grant_topic_assignments.json` - Grant-to-topic assignments with scores
+- `data/harmonised_keywords.json` - Harmonised keywords with mappings and groupings
+- `data/grant_keyword_assignments.json` - Grant-to-keyword assignments with statistics
 
 ## Dashboard Features
 
 The web dashboard (`make web-app`) provides:
 
-- **Topic Overview**: Grant distribution across research topics
+- **Keyword Overview**: Grant distribution across harmonised keywords
 - **Funding Analysis**: Financial breakdown by research area  
 - **Topic Details**: Deep dive into specific topics and their grants
 - **Data Tables**: Filterable views of all assignments
@@ -99,8 +99,8 @@ From our analysis of 10 sample grants ($41.4M total funding):
 
 ### Individual Steps  
 - `make extract-keywords` - Extract keywords from grants
-- `make cluster-keywords` - Cluster keywords into topics
-- `make assign-topics` - Assign grants to topics
+- `make harmonise-keywords` - Harmonise keyword variants into standard terms
+- `make assign-keywords` - Assign harmonised keywords to grants
 
 ### Data Collection
 - `make data` - Fetch core research data
@@ -115,7 +115,7 @@ From our analysis of 10 sample grants ($41.4M total funding):
 ```
 ├── modeling/               # Analysis pipeline
 │   ├── keywords_extraction.py   # Keyword extraction logic
-│   ├── keywords_clustering.py   # Topic clustering logic  
+│   ├── keywords_harmonisation.py  # Keyword harmonisation logic  
 │   └── topic_classification.py  # Grant assignment logic
 ├── web/                   # Dashboard interface
 │   └── app.py            # Streamlit dashboard

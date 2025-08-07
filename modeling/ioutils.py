@@ -7,8 +7,8 @@ used across the modeling pipeline for research grant analysis.
 
 import json
 import logging
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Any
+from dataclasses import dataclass
 from collections import defaultdict
 from pathlib import Path
 from inspect_ai.log import read_eval_log
@@ -16,50 +16,44 @@ from pydantic import BaseModel
 
 
 @dataclass
-class KeywordCluster:
-    """Represents a cluster of related keywords."""
-    topic_name: str
-    description: str
-    keywords: List[str]
-    primary_keywords: List[str]  # Most representative keywords
-    domain: Optional[str] = None
-
-
-@dataclass
-class ClusteringResult:
-    """Result of the keywords clustering process."""
-    clusters: List[KeywordCluster]
-    unassigned_keywords: List[str]
-    keyword_to_topic: Dict[str, str]
-    topic_statistics: Dict[str, Any]
-    total_keywords: int
+class HarmonisedKeywordGroup:
+    """Represents a group of keywords that have been harmonised to a single term."""
+    harmonised_keyword: str
+    original_keywords: List[str]  # Keywords that map to this harmonised form
+    
+    
+@dataclass  
+class KeywordHarmonisationResult:
+    """Result of the keywords harmonisation process."""
+    harmonised_keywords: List[str]
+    keyword_mappings: Dict[str, str]  # original -> harmonised
+    merged_groups: Dict[str, List[str]]  # harmonised -> list of original keywords
+    unchanged_keywords: List[str]
+    total_original_keywords: int
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            'clusters': [asdict(cluster) for cluster in self.clusters],
-            'unassigned_keywords': self.unassigned_keywords,
-            'keyword_to_topic': self.keyword_to_topic,
-            'topic_statistics': self.topic_statistics,
-            'total_keywords': self.total_keywords
+            'harmonised_keywords': self.harmonised_keywords,
+            'keyword_mappings': self.keyword_mappings,
+            'merged_groups': self.merged_groups,
+            'unchanged_keywords': self.unchanged_keywords,
+            'total_original_keywords': self.total_original_keywords
         }
 
 
-class TopicSchema(BaseModel):
-    """Schema for a single topic cluster."""
-    topic_name: str
-    description: str
-    keywords: List[str]
-    primary_keywords: List[str]
-    domain: Optional[str] = None
-
-
-class KeywordsClusteringOutput(BaseModel):
-    """Pydantic model for structured keywords clustering output."""
-    topics: List[TopicSchema]
-    unassigned_keywords: List[str]
-    topic_relationships: Dict[str, List[str]] = {}
-    keyword_to_topic_mapping: Dict[str, str] = {}
+# Import the harmonisation output model from keywords_harmonisation.py
+# This allows other modules to access it through ioutils
+try:
+    from modeling.keywords_harmonisation import KeywordsHarmonisationOutput
+except ImportError:
+    # Fallback definition if import fails
+    class KeywordsHarmonisationOutput(BaseModel):
+        """Pydantic model for structured keywords harmonisation output."""
+        harmonised_keywords: List[str]
+        keyword_mappings: Dict[str, str]
+        merged_groups: Dict[str, List[str]]
+        unchanged_keywords: List[str]
 
 
 def collect_keywords_from_evaluation_results(eval_files: List[str] = None) -> Dict[str, List[str]]:
@@ -131,75 +125,37 @@ def collect_keywords_from_evaluation_results(eval_files: List[str] = None) -> Di
             logger.info(f"  {category}: {len(keywords)} keywords")
     
     return dict(all_keywords)
-    
-        
 
 
-def process_clustering_result(clustering_output: KeywordsClusteringOutput) -> ClusteringResult:
+def process_harmonisation_result(harmonisation_output: KeywordsHarmonisationOutput) -> KeywordHarmonisationResult:
     """
-    Convert KeywordsClusteringOutput from LLM to ClusteringResult for compatibility.
+    Convert KeywordsHarmonisationOutput from LLM to KeywordHarmonisationResult for use in applications.
     
     Args:
-        clustering_output: Output from the LLM clustering task
+        harmonisation_output: Output from the LLM harmonisation task
         
     Returns:
-        ClusteringResult object with proper keyword-to-topic mapping
+        KeywordHarmonisationResult object with processed harmonisation data
     """
-    clusters = []
-    keyword_to_topic = {}
     
-    # Convert topics to KeywordCluster objects
-    for topic in clustering_output.topics:
-        cluster = KeywordCluster(
-            topic_name=topic.topic_name,
-            description=topic.description,
-            keywords=topic.keywords,
-            primary_keywords=topic.primary_keywords,
-            confidence=topic.confidence,
-            domain=topic.domain
-        )
-        clusters.append(cluster)
-        
-        # Build keyword to topic mapping
-        for keyword in topic.keywords:
-            keyword_to_topic[keyword] = topic.topic_name
-    
-    # Use provided mapping if available, otherwise build from topics
-    if clustering_output.keyword_to_topic_mapping:
-        keyword_to_topic.update(clustering_output.keyword_to_topic_mapping)
-    
-    # Calculate statistics
-    total_keywords = sum(len(c.keywords) for c in clusters) + len(clustering_output.unassigned_keywords)
-    topic_statistics = {
-        'num_topics': len(clusters),
-        'avg_keywords_per_topic': sum(len(c.keywords) for c in clusters) / len(clusters) if clusters else 0,
-        'avg_confidence': sum(c.confidence for c in clusters) / len(clusters) if clusters else 0,
-        'largest_topic': max(clusters, key=lambda c: len(c.keywords)).topic_name if clusters else None,
-        'smallest_topic': min(clusters, key=lambda c: len(c.keywords)).topic_name if clusters else None,
-        'topic_relationships': clustering_output.topic_relationships,
-        'total_assigned': sum(len(c.keywords) for c in clusters),
-        'total_unassigned': len(clustering_output.unassigned_keywords),
-        'assignment_rate': sum(len(c.keywords) for c in clusters) / total_keywords if total_keywords > 0 else 0
-    }
-    
-    return ClusteringResult(
-        clusters=clusters,
-        unassigned_keywords=clustering_output.unassigned_keywords,
-        keyword_to_topic=keyword_to_topic,
-        topic_statistics=topic_statistics,
-        total_keywords=total_keywords
+    return KeywordHarmonisationResult(
+        harmonised_keywords=harmonisation_output.harmonised_keywords,
+        keyword_mappings=harmonisation_output.keyword_mappings,
+        merged_groups=harmonisation_output.merged_groups,
+        unchanged_keywords=harmonisation_output.unchanged_keywords,
+        total_original_keywords=len(harmonisation_output.keyword_mappings)
     )
 
 
-def load_clustering_results_from_eval(eval_file: str) -> ClusteringResult:
+def load_harmonisation_results_from_eval(eval_file: str) -> KeywordHarmonisationResult:
     """
-    Load clustering results from an Inspect AI evaluation log file.
+    Load harmonisation results from an Inspect AI evaluation log file.
     
     Args:
         eval_file: Path to the evaluation log file
         
     Returns:
-        ClusteringResult object with the clustering output
+        KeywordHarmonisationResult object with the harmonisation output
     """
     logger = logging.getLogger(__name__)
     
@@ -215,26 +171,26 @@ def load_clustering_results_from_eval(eval_file: str) -> ClusteringResult:
             raise ValueError("No output found in evaluation sample")
         
         # Parse the structured output
-        clustering_output = KeywordsClusteringOutput.model_validate_json(sample.output.completion)
+        harmonisation_output = KeywordsHarmonisationOutput.model_validate_json(sample.output.completion)
         
-        # Convert to ClusteringResult
-        result = process_clustering_result(clustering_output)
+        # Convert to KeywordHarmonisationResult
+        result = process_harmonisation_result(harmonisation_output)
         
-        logger.info(f"Loaded clustering results: {len(result.clusters)} topics, {result.total_keywords} keywords")
+        logger.info(f"Loaded harmonisation results: {len(result.harmonised_keywords)} harmonised keywords from {result.total_original_keywords} original keywords")
         
         return result
         
     except Exception as e:
-        logger.error(f"Error loading clustering results from {eval_file}: {e}")
+        logger.error(f"Error loading harmonisation results from {eval_file}: {e}")
         raise
 
 
-def save_clustering_results(result: ClusteringResult, output_file: str):
+def save_harmonisation_results(result: KeywordHarmonisationResult, output_file: str):
     """
-    Save clustering results to JSON file.
+    Save harmonisation results to JSON file.
     
     Args:
-        result: ClusteringResult to save
+        result: KeywordHarmonisationResult to save
         output_file: Output file path
     """
     logger = logging.getLogger(__name__)
@@ -245,4 +201,4 @@ def save_clustering_results(result: ClusteringResult, output_file: str):
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(result.to_dict(), f, indent=2, ensure_ascii=False)
     
-    logger.info(f"Clustering results saved to: {output_path}")
+    logger.info(f"Harmonisation results saved to: {output_path}")

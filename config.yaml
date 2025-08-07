@@ -1,0 +1,49 @@
+# Configuration file for Research Link Technology Landscaping
+
+# Data directories and file paths
+data:
+  base_dir: "/home/lcheng/oz318/research-link-technology-landscaping/data"
+  grants_file: "active_grants.json"
+  keyword_clusters_file: "keyword_clusters.json"
+  grant_topic_assignments_file: "grant_topic_assignments.json"
+
+# Logs directory
+logs:
+  base_dir: "/home/lcheng/oz318/research-link-technology-landscaping/logs"
+
+# Modeling workflow configuration
+modeling:
+  # Default model for all LLM tasks
+  default_model: "openai/gpt-4o-mini"
+  
+  # Step 1: Keywords Extraction
+  extraction:
+    # Parameters used by extract_grant_keywords task
+    # Note: The task focuses on emerging research trends and innovative technologies
+    pass  # Currently no configurable parameters - behavior defined in task prompts
+    
+  # Step 2: Keywords Clustering
+  clustering:
+    # Parameters used by cluster_research_keywords task
+    # Note: The task harmonizes keywords into 12-20 focused research clusters
+    pass  # Currently no configurable parameters - behavior defined in task prompts
+    
+  # Step 3: Topic Classification
+  classification:
+    # Parameters used by classify_grants_by_topics function
+    min_keyword_matches: 2
+
+# Web dashboard configuration
+web:
+  title: "Research Technology Landscaping Dashboard"
+  icon: "🔍"
+  layout: "wide"
+  charts:
+    max_topics_displayed: 20
+    figure_width: 12
+    figure_height: 8
+
+# Development settings
+dev:
+  debug: false
+  verbose_logging: true

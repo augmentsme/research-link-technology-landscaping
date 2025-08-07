@@ -125,9 +125,13 @@ class RLAClient:
                     full_url = f"{url}?{param_str}" if param_str else url
                     logger.debug(f"Making request to {full_url}")
                     print(f"[DEBUG] API Request: {full_url}")
+                    # Also show curl command with token for easy testing
+                    print(f"[DEBUG] curl -H 'Authorization: Bearer {self.api_token}' '{full_url}'")
                 else:
                     logger.debug(f"Making request to {url}")
                     print(f"[DEBUG] API Request: {url}")
+                    # Also show curl command with token for easy testing
+                    print(f"[DEBUG] curl -H 'Authorization: Bearer {self.api_token}' '{url}'")
                 
             with httpx.Client(headers=self.headers, timeout=self.timeout) as client:
                 response = client.get(url, params=params or {})
@@ -252,9 +256,13 @@ class RLAClient:
                     full_url = f"{url}?{param_str}" if param_str else url
                     logger.debug(f"Making async request to {full_url}")
                     print(f"[DEBUG] Async API Request: {full_url}")
+                    # Also show curl command with token for easy testing
+                    print(f"[DEBUG] curl -H 'Authorization: Bearer {self.api_token}' '{full_url}'")
                 else:
                     logger.debug(f"Making async request to {url}")
                     print(f"[DEBUG] Async API Request: {url}")
+                    # Also show curl command with token for easy testing
+                    print(f"[DEBUG] curl -H 'Authorization: Bearer {self.api_token}' '{url}'")
                 
             response = await session.get(url, params=params or {})
             

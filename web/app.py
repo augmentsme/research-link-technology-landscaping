@@ -10,166 +10,83 @@ This application visualizes the keyword harmonisation workflow:
 
 import json
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 import numpy as np
 import seaborn as sns
-from inspect_ai.log import read_eval_log
+import yaml
 
 # Configure matplotlib for better plots
 plt.style.use('default')
 sns.set_palette("husl")
 
 
+def load_config(config_path: str = "config.yaml") -> Dict:
+    """Load configuration from YAML file."""
+    try:
+        # Handle relative paths by making them relative to the project root
+        if not Path(config_path).is_absolute():
+            # Try to find config relative to this file's location
+            current_dir = Path(__file__).parent.parent
+            config_path = str(current_dir / config_path)
+        
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        st.error(f"Configuration file not found: {config_path}")
+        return {}
+    except yaml.YAMLError as e:
+        st.error(f"Error parsing YAML configuration: {e}")
+        return {}
+
+
 class KeywordWorkflowAnalyzer:
     """Analyzer for the keyword harmonisation workflow"""
     
-    def __init__(self, 
-                 base_data_dir: str = "/home/lcheng/oz318/research-link-technology-landscaping/data",
-                 logs_dir: str = "/home/lcheng/oz318/research-link-technology-landscaping/logs"):
-        self.base_data_dir = Path(base_data_dir)
-        self.logs_dir = Path(logs_dir)
+    def __init__(self, config: Dict):
+        # Get paths from configuration
+        root_dir = config.get('root_dir', '.')
+        data_dirname = config.get('data_dirname', 'data')
+        
+        self.base_data_dir = Path(root_dir) / data_dirname
+        self.combined_results_file = self.base_data_dir / "combined_workflow_results.json"
         
         # Data storage
-        self.grants_data: Optional[pd.DataFrame] = None
-        self.keyword_extractions: Optional[pd.DataFrame] = None
-        self.harmonised_keywords: Dict = {}
-        self.keyword_assignments: Optional[pd.DataFrame] = None
-        self.assignment_summary: Dict = {}
+        self.combined_data: Optional[Dict] = None
 
-    def load_keyword_extractions(self) -> bool:
-        """Load keyword extraction results from evaluation logs"""
-        pattern = "*extract*keywords*.eval"
-        eval_files = list(self.logs_dir.glob(pattern))
-        
-        if not eval_files:
-            st.warning("No keyword extraction evaluation files found")
-            return False
-            
-        # Use the most recent file
-        latest_file = max(eval_files, key=lambda x: x.stat().st_mtime)
-        
-        try:
-            log = read_eval_log(str(latest_file))
-            extraction_data = []
-            
-            for sample in log.samples:
-                if sample.output and sample.output.completion:
-                    try:
-                        keywords_result = json.loads(sample.output.completion)
-                        
-                        # Collect all keywords
-                        all_keywords = []
-                        for category in ['keywords', 'methodology_keywords', 'application_keywords', 'technology_keywords']:
-                            if category in keywords_result:
-                                keywords = keywords_result[category]
-                                all_keywords.extend(keywords)
-                        
-                        extraction_data.append({
-                            'grant_id': sample.id or f"grant_{len(extraction_data)}",
-                            'keywords': all_keywords
-                        })
-                        
-                    except json.JSONDecodeError:
-                        continue
-            
-            if extraction_data:
-                self.keyword_extractions = pd.DataFrame(extraction_data)
-                return True
-            else:
-                return False
-                
-        except Exception as e:
-            st.error(f"Error loading keyword extractions: {e}")
-            return False
-
-    def load_harmonised_keywords(self) -> bool:
-        """Load keyword harmonisation results from evaluation logs"""
-        pattern = "*harmon*keywords*.eval"
-        eval_files = list(self.logs_dir.glob(pattern))
-        
-        if not eval_files:
-            st.warning("No keyword harmonisation evaluation files found")
-            return False
-            
-        # Use the most recent file
-        latest_file = max(eval_files, key=lambda x: x.stat().st_mtime)
-        
-        try:
-            log = read_eval_log(str(latest_file))
-            
-            for sample in log.samples:
-                if sample.output and sample.output.completion:
-                    try:
-                        harmonisation_result = json.loads(sample.output.completion)
-                        
-                        if 'harmonised_keywords' in harmonisation_result:
-                            self.harmonised_keywords = {
-                                'harmonised_keywords': harmonisation_result.get('harmonised_keywords', []),
-                                'keyword_mappings': harmonisation_result.get('keyword_mappings', {}),
-                                'merged_groups': harmonisation_result.get('merged_groups', {}),
-                                'unchanged_keywords': harmonisation_result.get('unchanged_keywords', [])
-                            }
-                            return True
-
-                    except json.JSONDecodeError:
-                        continue
-            
-            return False
-            
-        except Exception as e:
-            st.error(f"Error loading harmonised keywords: {e}")
-            return False
-
-    def load_keyword_assignments(self) -> bool:
-        """Load grant keyword assignment results"""
-        assignment_file = "grant_keyword_assignments.json"
-        assignment_path = self.base_data_dir / assignment_file
-        
-        if not assignment_path.exists():
-            st.warning(f"Keyword assignment file not found: {assignment_path}")
+    def load_combined_data(self) -> bool:
+        """Load combined workflow results from JSON file"""
+        if not self.combined_results_file.exists():
+            st.warning(f"Combined results file not found: {self.combined_results_file}")
             return False
             
         try:
-            with open(assignment_path, 'r') as f:
-                data = json.load(f)
-            
-            assignments = data.get('assignments', [])
-            assignment_data = []
-            
-            for assignment in assignments:
-                assignment_data.append({
-                    'grant_id': assignment['grant_id'],
-                    'grant_title': assignment['grant_title'],
-                    'harmonised_keywords': assignment.get('harmonised_keywords', [])
-                })
-            
-            if assignment_data:
-                self.keyword_assignments = pd.DataFrame(assignment_data)
-                return True
-            else:
-                return False
-                
+            with open(self.combined_results_file, 'r') as f:
+                self.combined_data = json.load(f)
+            return True
         except Exception as e:
-            st.error(f"Error loading keyword assignments: {e}")
+            st.error(f"Error loading combined results: {e}")
             return False
 
     def show_keyword_extractions_tab(self):
         """Show keyword extractions for grants"""
-        st.header("� Keywords Extracted for Grants")
+        st.header("🔤 Keywords Extracted for Grants")
         
-        if self.keyword_extractions is None:
-            st.error("No keyword extraction data available")
+        if not self.combined_data:
+            st.error("No combined workflow data available")
+            return
+        
+        grant_extractions = self.combined_data.get('grant_extractions', {})
+        
+        if not grant_extractions:
+            st.warning("No keyword extraction data found")
             return
         
         # Display each grant and its extracted keywords
-        for _, row in self.keyword_extractions.iterrows():
-            grant_id = row['grant_id']
-            keywords = row['keywords']
-            
+        for grant_id, keywords in grant_extractions.items():
             with st.expander(f"Grant: {grant_id} ({len(keywords)} keywords)"):
                 if keywords:
                     st.write(", ".join(keywords))
@@ -180,18 +97,24 @@ class KeywordWorkflowAnalyzer:
         """Show how keywords are harmonised"""
         st.header("🔗 Keywords Harmonisation")
         
-        if not self.harmonised_keywords:
-            st.error("No keyword harmonisation data available")
+        if not self.combined_data:
+            st.error("No combined workflow data available")
+            return
+        
+        harmonisation = self.combined_data.get('harmonisation', {})
+        
+        if not harmonisation:
+            st.warning("No keyword harmonisation data found")
             return
         
         # Show harmonised keywords
-        harmonised = self.harmonised_keywords.get('harmonised_keywords', [])
-        if harmonised:
+        harmonised_keywords = harmonisation.get('harmonised_keywords', [])
+        if harmonised_keywords:
             st.subheader("Harmonised Keywords:")
-            st.write(", ".join(harmonised))
+            st.write(", ".join(harmonised_keywords))
         
         # Show keyword mappings (original -> harmonised)
-        mappings = self.harmonised_keywords.get('keyword_mappings', {})
+        mappings = harmonisation.get('keyword_mappings', {})
         if mappings:
             st.subheader("Keyword Mappings (Original → Harmonised):")
             mapping_data = []
@@ -206,7 +129,7 @@ class KeywordWorkflowAnalyzer:
                 st.dataframe(df, use_container_width=True)
         
         # Show merged groups
-        merged_groups = self.harmonised_keywords.get('merged_groups', {})
+        merged_groups = harmonisation.get('merged_groups', {})
         if merged_groups:
             st.subheader("Merged Groups:")
             for harmonised_keyword, original_keywords in merged_groups.items():
@@ -217,15 +140,21 @@ class KeywordWorkflowAnalyzer:
         """Show how harmonised keywords link to grants"""
         st.header("📋 Harmonised Keywords Linked to Grants")
         
-        if self.keyword_assignments is None:
-            st.error("No keyword assignment data available")
+        if not self.combined_data:
+            st.error("No combined workflow data available")
+            return
+        
+        assignments = self.combined_data.get('assignments', [])
+        
+        if not assignments:
+            st.warning("No keyword assignment data found")
             return
         
         # Display each grant and its assigned harmonised keywords
-        for _, row in self.keyword_assignments.iterrows():
-            grant_id = row['grant_id']
-            grant_title = row['grant_title']
-            keywords = row['harmonised_keywords']
+        for assignment in assignments:
+            grant_id = assignment.get('grant_id', 'Unknown')
+            grant_title = assignment.get('grant_title', 'No title')
+            keywords = assignment.get('harmonised_keywords', [])
             
             with st.expander(f"Grant: {grant_id} - {grant_title[:100]}... ({len(keywords)} keywords)"):
                 if keywords:
@@ -234,22 +163,27 @@ class KeywordWorkflowAnalyzer:
                     st.write("No harmonised keywords assigned")
 
 def main():
+    # Load configuration
+    config = load_config("config.yaml")
+    web_config = config.get('web', {})
+    
     st.set_page_config(
         page_title="Keyword Analysis Dashboard",
-        page_icon="🔍",
-        layout="wide"
+        page_icon=web_config.get('icon', "🔍"),
+        layout=web_config.get('layout', "wide")
     )
     
-    st.title("🔍 Research Grant Keyword Analysis Dashboard")
+    st.title(f"{web_config.get('icon', '🔍')} {web_config.get('title', 'Research Grant Keyword Analysis Dashboard')}")
     
-    # Initialize analyzer
-    analyzer = KeywordWorkflowAnalyzer()
+    # Initialize analyzer with configuration
+    analyzer = KeywordWorkflowAnalyzer(config)
     
-    # Load data
-    with st.spinner("Loading data..."):
-        extractions_loaded = analyzer.load_keyword_extractions()
-        harmonisation_loaded = analyzer.load_harmonised_keywords()
-        assignments_loaded = analyzer.load_keyword_assignments()
+    # Load combined data
+    with st.spinner("Loading workflow results..."):
+        if not analyzer.load_combined_data():
+            st.error("Failed to load combined workflow results. Please ensure the data has been generated.")
+            st.info("Run `python modeling/keyword_assignment.py` to generate the combined results file.")
+            return
     
     # Create tabs
     tab1, tab2, tab3 = st.tabs([

@@ -1,18 +1,13 @@
-# Configuration file for Research Link Technology Landscaping - Modeling Workflow
-# This configuration is specifically for the modeling workflow operations:
-# - Keyword extraction, harmonisation, and assignment
-# PyRLA settings are handled separately by pyrla/config.py
 
-# Data directories and file paths
+# Top-level directory paths (used across all modules)
+root_dir: "/home/lcheng/oz318/research-link-technology-landscaping"
+data_dirname: "data"
+logs_dirname: "logs"
+
+# Data configuration
 data:
-  base_dir: "/home/lcheng/oz318/research-link-technology-landscaping/data"
   grants_file: "active_grants.json"
-  harmonised_keywords_file: "harmonised_keywords.json"
-  grant_keyword_assignments_file: "grant_keyword_assignments.json"
 
-# Logs directory
-logs:
-  base_dir: "/home/lcheng/oz318/research-link-technology-landscaping/logs"
 
 # Modeling workflow configuration
 modeling:
@@ -102,12 +97,5 @@ web:
   title: "Research Technology Landscaping Dashboard"
   icon: "🔍"
   layout: "wide"
-  charts:
-    max_keywords_displayed: 20
-    figure_width: 12
-    figure_height: 8
 
-# Development settings
-dev:
-  debug: false
-  verbose_logging: true
+

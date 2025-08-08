@@ -6,4 +6,4 @@
 - [] For each (topic t, keyword k) pair, use a smaller language model to identify if keyword belongs to topics k 
 - [] visusalsation on evolution of the topics
 
-note that the logic of keywords_harmonisation.py now correctly uses 1 big query that includes all keywords from the previous step (keywords extraction), allowing the LLM to have a holistic view of all available options. The output provides harmonised keywords and complete mappings from original keywords to their harmonised versions for consistent terminology.
+note that the logic of keyword_tasks.py (harmonisation task) now correctly uses 1 big query that includes all keywords from the previous step (keywords extraction), allowing the LLM to have a holistic view of all available options. The output provides harmonised keywords and complete mappings from original keywords to their harmonised versions for consistent terminology.

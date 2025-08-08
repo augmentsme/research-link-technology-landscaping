@@ -40,14 +40,28 @@ make web-app
 
 ## Workflow Steps
 
-The analysis pipeline consists of three main steps:
+The analysis pipeline generates a single combined JSON file containing all workflow results:
 
 1. **Extract Keywords** (`make extract-keywords`)
    - Uses LLM to extract relevant research keywords from grant summaries
-   - Generates structured keyword data for each grant
+   - Generates evaluation logs with structured keyword data
 
 2. **Harmonise Keywords** (`make harmonise-keywords`) 
    - Consolidates keyword variants and synonyms into standardized terms
+   - Creates evaluation logs with harmonised keyword mappings
+
+3. **Generate Combined Results** (`python scripts/generate_combined_results.py`)
+   - Reads from both evaluation log files 
+   - Assigns harmonised keywords to grants
+   - Creates a single `data/combined_workflow_results.json` file containing:
+     - Original keyword extractions per grant
+     - Harmonised keywords and mappings  
+     - Keyword assignments to grants
+     - Statistical summaries and funding totals
+
+4. **Launch Dashboard** (`make web-app`)
+   - Reads from the single combined JSON file
+   - Displays interactive visualizations of all results
    - Maps original keywords to their harmonised forms
    - Eliminates duplicates while preserving meaning
 
@@ -114,8 +128,7 @@ From our analysis of 10 sample grants ($41.4M total funding):
 
 ```
 ├── modeling/               # Analysis pipeline
-│   ├── keywords_extraction.py   # Keyword extraction logic
-│   ├── keywords_harmonisation.py  # Keyword harmonisation logic  
+│   ├── keyword_tasks.py         # Keyword extraction and harmonisation tasks
 │   └── topic_classification.py  # Grant assignment logic
 ├── web/                   # Dashboard interface
 │   └── app.py            # Streamlit dashboard

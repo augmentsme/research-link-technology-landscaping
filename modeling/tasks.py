@@ -148,6 +148,27 @@ class KeywordsHarmonisationOutput(BaseModel):
     keyword_mappings: List[KeywordMapping] = Field(description="List of mappings from original keyword indices to harmonised keywords")
 
 
+class KeywordGroup(BaseModel):
+    """Individual keyword group containing indices that should be harmonised together."""
+    model_config = {"extra": "forbid"}
+    
+    indices: List[int] = Field(description="List of keyword indices that should be harmonised together")
+
+
+class KeywordGroupsOutput(BaseModel):
+    """Pydantic model for keyword grouping output."""
+    model_config = {"extra": "forbid"}
+    
+    keyword_groups: List[KeywordGroup] = Field(description="List of groups of keyword indices that should be harmonised together")
+
+
+class GroupHarmonisationOutput(BaseModel):
+    """Pydantic model for harmonising a single group of keywords."""
+    model_config = {"extra": "forbid"}
+    
+    harmonised_keyword: str = Field(description="The final harmonised keyword for this group")
+
+
 
 
 def load_extracted_keywords(logs_dir) -> Dict[str, List[str]]:
@@ -235,6 +256,167 @@ def load_harmonised_keywords(logs_dir) -> Optional[Dict[str, Any]]:
         harmonisation_result["keyword_mappings"] = string_mappings
     
     return harmonisation_result
+
+
+def load_keyword_groups(logs_dir) -> Optional[List[List[int]]]:
+    """
+    Load keyword groups from the identify task evaluation results.
+    
+    Args:
+        logs_dir: Directory to search for evaluation files
+        
+    Returns:
+        List of lists where each sublist contains indices of keywords that should be harmonised together
+    """
+    try:
+        evals = evals_df(logs_dir)
+        group_evals = evals[evals.task_name == "identify"]
+        if group_evals.empty:
+            return None
+            
+        logpath = group_evals.log.iloc[0]
+        messages = messages_df(logpath)
+        content = messages[messages.role == "assistant"].content.item()
+        groups_result = json.loads(content)
+        
+        if "keyword_groups" in groups_result:
+            return [group["indices"] for group in groups_result["keyword_groups"]]
+        
+        return None
+    except Exception as e:
+        print(f"Error loading keyword groups: {e}")
+        return None
+
+
+def load_group_harmonisations(logs_dir) -> Optional[Dict[str, str]]:
+    """
+    Load harmonised keywords from the harmonise task evaluation results.
+    
+    Args:
+        logs_dir: Directory to search for evaluation files
+        
+    Returns:
+        Dictionary mapping original keywords to harmonised keywords
+    """
+    try:
+        evals = evals_df(logs_dir)
+        harmonise_group_evals = evals[evals.task_name == "harmonise"]
+        if harmonise_group_evals.empty:
+            return None
+            
+        # Load original keywords for mapping
+        all_keywords = load_extracted_keywords(logs_dir)
+        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
+        unique_keywords = sorted(set(flat_keywords))
+        
+        # Load keyword groups
+        keyword_groups = load_keyword_groups(logs_dir)
+        if not keyword_groups:
+            return None
+        
+        # Load harmonisation results for each group
+        string_mappings = {}
+        
+        log_path = harmonise_group_evals.log.iloc[0]
+        messages = messages_df(log_path)
+        
+        # Group messages by sample
+        user_messages = messages[messages.role == "user"]
+        assistant_messages = messages[messages.role == "assistant"]
+        
+        # Process each sample (each group)
+        for i in range(len(assistant_messages)):
+            try:
+                # Get assistant response
+                assistant_row = assistant_messages.iloc[i]
+                content = assistant_row['content']
+                harmonisation_result = json.loads(content)
+                
+                # Get corresponding user message to find metadata
+                user_row = user_messages.iloc[i]
+                sample_metadata = user_row.get('metadata', {}) if hasattr(user_row, 'get') else {}
+                
+                # Try different ways to access metadata
+                if not sample_metadata and hasattr(user_row, 'to_dict'):
+                    user_dict = user_row.to_dict()
+                    sample_metadata = user_dict.get('metadata', {})
+                
+                # If metadata access doesn't work, use the group index from the pattern
+                group_indices = sample_metadata.get('group_indices', [])
+                if not group_indices and i < len(keyword_groups):
+                    group_indices = keyword_groups[i]
+                
+                if "harmonised_keyword" in harmonisation_result and group_indices:
+                    harmonised_keyword = harmonisation_result["harmonised_keyword"]
+                    
+                    # Map all original keywords in this group to the harmonised keyword
+                    for idx in group_indices:
+                        if 0 <= idx < len(unique_keywords):
+                            original_keyword = unique_keywords[idx]
+                            string_mappings[original_keyword] = harmonised_keyword
+                            
+            except Exception as e:
+                print(f"Error processing sample {i}: {e}")
+                continue
+        
+        return string_mappings
+        
+    except Exception as e:
+        print(f"Error loading group harmonisations: {e}")
+        return None
+
+
+def combine_two_step_harmonisation_results(logs_dir) -> Optional[Dict[str, Any]]:
+    """
+    Combine the results from the two-step harmonisation process (identify + harmonise).
+    
+    Args:
+        logs_dir: Directory containing evaluation results
+        
+    Returns:
+        Dictionary in the same format as the original harmonise task for compatibility
+    """
+    try:
+        # Load results from both steps
+        keyword_groups = load_keyword_groups(logs_dir)
+        group_harmonisations = load_group_harmonisations(logs_dir)
+        
+        if not keyword_groups or not group_harmonisations:
+            return None
+        
+        # Load original keywords for compatibility
+        all_keywords = load_extracted_keywords(logs_dir)
+        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
+        unique_keywords = sorted(set(flat_keywords))
+        
+        # Build the result in the same format as the original harmonise task
+        keyword_mappings = []
+        
+        for group_indices in keyword_groups:
+            if not group_indices:
+                continue
+                
+            # Get the harmonised keyword for this group
+            # Use the first keyword in the group to look up the harmonised result
+            if group_indices[0] < len(unique_keywords):
+                first_keyword = unique_keywords[group_indices[0]]
+                harmonised_keyword = group_harmonisations.get(first_keyword)
+                
+                if harmonised_keyword:
+                    mapping = KeywordMapping(
+                        original_index=group_indices,
+                        harmonised=harmonised_keyword
+                    )
+                    keyword_mappings.append(mapping)
+        
+        return {
+            "keyword_mappings": group_harmonisations,  # String-based mapping for compatibility
+            "original_keyword_mappings": [mapping.dict() for mapping in keyword_mappings]  # Index-based for analysis
+        }
+        
+    except Exception as e:
+        print(f"Error combining two-step harmonisation results: {e}")
+        return None
 
 
 
@@ -472,15 +654,118 @@ CRITICAL: Your response must be valid JSON that strictly follows the required sc
     return prompt
 
 
-@task
-def harmonise() -> Task:
+def create_keyword_grouping_prompt(keywords: List[str]) -> str:
     """
-    Inspect AI task for harmonising research keywords by consolidating variants and synonyms.
+    Create a prompt for identifying groups of keywords that should be harmonised together.
     
-    This creates a single comprehensive query with ALL keywords extracted from the previous step,
-    allowing the LLM to identify and merge similar terms, spelling variants, and synonyms
-    while preserving the technical specificity and meaning of the original research keywords.
+    Args:
+        keywords: List of keywords to group
         
+    Returns:
+        Formatted prompt string
+    """
+    
+    # Build instructions text
+    instructions_text = "\n".join([f"- {instruction}" for instruction in HARMONISATION_INSTRUCTIONS])
+    
+    # Create indexed keywords list
+    unique_keywords = sorted(set(keywords))
+    keywords_text = "\n".join([f"{i}: {kw}" for i, kw in enumerate(unique_keywords)])
+    
+    prompt = f"""I have extracted {len(unique_keywords)} research keywords from grant data. Your task is to identify groups of keywords that should be harmonised together (variants, synonyms, and similar terms that represent the same concept).
+
+**Instructions for grouping:**
+{instructions_text}
+
+**Keywords to group (with indices):**
+{keywords_text}
+
+IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
+
+REQUIRED JSON SCHEMA - Follow this structure exactly:
+{{
+    "keyword_groups": [
+        {{"indices": [0, 1, 5]}},
+        {{"indices": [2, 8, 12]}},
+        {{"indices": [3]}},
+        ...
+    ]
+}}
+
+The field is REQUIRED:
+- keyword_groups: Array of group objects, each containing:
+  - indices: Array of integers representing keyword indices that should be harmonised together
+
+Rules for grouping:
+- Each keyword index (0 to {len(unique_keywords)-1}) must appear exactly once across all groups
+- Group keywords that are variants, synonyms, or represent the same concept
+- Keywords that are unique and don't have variants should be in their own group with a single index
+- Focus on semantic similarity while preserving technical precision
+- Don't create higher-level categories - just identify which keywords represent the same underlying concept
+
+For example:
+- If keywords at indices 0, 1, and 5 are variants of the same concept, use: {{"indices": [0, 1, 5]}}
+- If keyword at index 3 is unique, use: {{"indices": [3]}}
+- Every index from 0 to {len(unique_keywords)-1} must be included exactly once across all groups
+
+CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
+
+    return prompt
+
+
+def create_group_harmonisation_prompt(keywords_with_indices: List[Tuple[int, str]]) -> str:
+    """
+    Create a prompt for harmonising a specific group of keywords.
+    
+    Args:
+        keywords_with_indices: List of (index, keyword) tuples for the group
+        
+    Returns:
+        Formatted prompt string
+    """
+    
+    # Build instructions text
+    instructions_text = "\n".join([f"- {instruction}" for instruction in HARMONISATION_INSTRUCTIONS])
+    
+    # Create keywords list for this group
+    keywords_text = "\n".join([f"{idx}: {kw}" for idx, kw in keywords_with_indices])
+    
+    prompt = f"""You have been given a group of {len(keywords_with_indices)} research keywords that have been identified as variants, synonyms, or similar terms that should be harmonised into a single standardised keyword.
+
+**Instructions for harmonisation:**
+{instructions_text}
+
+**Keywords in this group:**
+{keywords_text}
+
+IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
+
+REQUIRED JSON SCHEMA - Follow this structure exactly:
+{{
+    "harmonised_keyword": "final standardised keyword"
+}}
+
+Choose the most appropriate, standardised, and widely-accepted term that best represents all the keywords in this group. Consider:
+- Scientific precision and accuracy
+- Common usage in research literature
+- Technical specificity
+- Domain conventions
+
+CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
+
+    return prompt
+
+
+
+@task
+def identify() -> Task:
+    """
+    Inspect AI task for identifying groups of keywords that should be harmonised together.
+    
+    This is the first step of a two-step harmonisation process that identifies which keywords
+    are variants, synonyms, or represent the same concept and should be grouped together.
+    This approach helps avoid token limit issues by separating grouping from harmonisation.
+    
     Returns:
         Configured Inspect AI Task
     """
@@ -489,7 +774,7 @@ def harmonise() -> Task:
         all_keywords = load_extracted_keywords(logs_dir=LOGS_DIR)
         flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
 
-        prompt = create_harmonisation_prompt(flat_keywords)
+        prompt = create_keyword_grouping_prompt(flat_keywords)
         sample = Sample(
             input=prompt,
             metadata={
@@ -500,7 +785,6 @@ def harmonise() -> Task:
         
         return [sample]
     
-    # Use hardcoded system message
     return Task(
         dataset=dataset(),
         solver=[
@@ -509,8 +793,73 @@ def harmonise() -> Task:
         ],
         config=GenerateConfig(
             response_schema=ResponseSchema(
-                name="keywords_harmonisation",
-                json_schema=json_schema(KeywordsHarmonisationOutput),
+                name="keyword_groups",
+                json_schema=json_schema(KeywordGroupsOutput),
+                strict=True
+            )
+        )
+    )
+
+
+@task
+def harmonise() -> Task:
+    """
+    Inspect AI task for harmonising individual groups of keywords.
+    
+    This is the second step of a two-step harmonisation process that takes the groups
+    identified by the identify task and determines the final harmonised keyword
+    for each group. This can be run per group to avoid token limits.
+    
+    Returns:
+        Configured Inspect AI Task
+    """
+    
+    def dataset():
+        # Load extracted keywords and identified groups
+        all_keywords = load_extracted_keywords(logs_dir=LOGS_DIR)
+        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
+        unique_keywords = sorted(set(flat_keywords))
+        
+        keyword_groups = load_keyword_groups(logs_dir=LOGS_DIR)
+        if not keyword_groups:
+            raise ValueError("No keyword groups found. Run identify task first.")
+        
+        samples = []
+        for group_idx, group_indices in enumerate(keyword_groups):
+            # Get keywords for this group
+            keywords_with_indices = [(idx, unique_keywords[idx]) for idx in group_indices 
+                                   if 0 <= idx < len(unique_keywords)]
+            
+            if not keywords_with_indices:
+                continue
+                
+            # Create prompt for this group
+            prompt = create_group_harmonisation_prompt(keywords_with_indices)
+            
+            sample = Sample(
+                input=prompt,
+                metadata={
+                    "group_index": group_idx,
+                    "group_indices": group_indices,
+                    "group_size": len(keywords_with_indices),
+                },
+                id=f"group_{group_idx}"
+            )
+            
+            samples.append(sample)
+        
+        return samples
+    
+    return Task(
+        dataset=dataset(),
+        solver=[
+            system_message(HARMONISATION_SYSTEM_MESSAGE),
+            generate(),
+        ],
+        config=GenerateConfig(
+            response_schema=ResponseSchema(
+                name="group_harmonisation",
+                json_schema=json_schema(GroupHarmonisationOutput),
                 strict=True
             )
         )

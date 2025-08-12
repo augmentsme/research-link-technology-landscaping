@@ -22,6 +22,7 @@ from inspect_ai.solver import system_message, generate, use_tools
 from inspect_ai.util import json_schema
 from inspect_ai.analysis import messages_df, evals_df
 from inspect_ai.tool import think
+from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from pydantic import BaseModel, Field
 
 
@@ -199,6 +200,188 @@ class ClassificationOutput(BaseModel):
     model_config = {"extra": "forbid"}
     
     classification: GrantClassification = Field(description="Classification result for the grant")
+
+
+# Hook classes for extracting JSON results
+@hooks(name="KeywordsExtractionHook", description="Hook to save keywords extraction results as JSON files")
+class KeywordsExtractionHook(Hooks):
+    """Hook to save keywords extraction results as JSON files."""
+    
+    async def on_sample_end(self, data: SampleEnd) -> None:
+        # Check if this is an extract task by examining the sample output
+        try:
+            # Parse the JSON response from the model
+            output_text = data.sample.output.completion if data.sample.output else ""
+            if not output_text:
+                return
+            print(output_text)
+            result_json = json.loads(output_text)
+            
+            # Check if this looks like keywords output (has the expected fields)
+            if not all(key in result_json for key in ["keywords", "methodology_keywords", "application_keywords", "technology_keywords"]):
+                return
+            
+            # Create results directory if it doesn't exist
+            results_dir = LOGS_DIR / "results" / "extract"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save individual result
+            sample_id = data.sample_id or f"sample_{hash(output_text) % 10000}"
+            output_file = results_dir / f"{sample_id}_keywords.json"
+            # print(data.sample)
+            # Add metadata to the result
+            result_with_metadata = {
+                "sample_id": sample_id,
+                "run_id": data.run_id,
+                "eval_id": data.eval_id,
+                "result": result_json,
+                "timestamp": pd.Timestamp.now().isoformat()
+            }
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result_with_metadata, f, indent=2, ensure_ascii=False)
+                
+        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+            print(f"Error saving keywords JSON for sample {data.sample_id}: {e}")
+
+@hooks(name="TaxonomyCreationHook", description="Hook to save taxonomy creation results as JSON files")
+class TaxonomyCreationHook(Hooks):
+    """Hook to save taxonomy creation results as JSON files."""
+    
+    async def on_sample_end(self, data: SampleEnd) -> None:
+        try:
+            # Parse the JSON response from the model
+            output_text = data.sample.output.completion if data.sample.output else ""
+            if not output_text:
+                return
+                
+            result_json = json.loads(output_text)
+            
+            # Check if this looks like taxonomy output (has taxonomy field with categories)
+            if "taxonomy" not in result_json:
+                return
+                
+            # Create results directory if it doesn't exist
+            results_dir = LOGS_DIR / "results" / "identify"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save taxonomy result
+            output_file = results_dir / "taxonomy.json"
+            
+            # Add metadata to the result
+            result_with_metadata = {
+                "run_id": data.run_id,
+                "eval_id": data.eval_id,
+                "sample_id": data.sample_id,
+                "result": result_json,
+                "timestamp": pd.Timestamp.now().isoformat()
+            }
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result_with_metadata, f, indent=2, ensure_ascii=False)
+                
+        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+            print(f"Error saving taxonomy JSON: {e}")
+
+@hooks(name="GrantClassificationHook", description="Hook to save grant classification results as JSON files")
+class GrantClassificationHook(Hooks):
+    """Hook to save grant classification results as JSON files."""
+    
+    async def on_sample_end(self, data: SampleEnd) -> None:
+        try:
+            # Parse the JSON response from the model
+            output_text = data.sample.output.completion if data.sample.output else ""
+            if not output_text:
+                return
+                
+            result_json = json.loads(output_text)
+            
+            # Check if this looks like classification output (has classification field)
+            if "classification" not in result_json:
+                return
+            
+            # Create results directory if it doesn't exist
+            results_dir = LOGS_DIR / "results" / "classify"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save individual result
+            sample_id = data.sample_id or f"sample_{hash(output_text) % 10000}"
+            output_file = results_dir / f"{sample_id}_classification.json"
+            
+            # Add metadata to the result
+            result_with_metadata = {
+                "sample_id": sample_id,
+                "run_id": data.run_id,
+                "eval_id": data.eval_id,
+                "result": result_json,
+                "timestamp": pd.Timestamp.now().isoformat()
+            }
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result_with_metadata, f, indent=2, ensure_ascii=False)
+                
+        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+            print(f"Error saving classification JSON for sample {data.sample_id}: {e}")
+
+@hooks(name="AggregatedResultsHook", description="Hook to save aggregated results for all tasks")
+class AggregatedResultsHook(Hooks):
+    """Hook to save aggregated results for all tasks."""
+    
+    async def on_task_end(self, data: TaskEnd) -> None:
+        try:
+            results_dir = LOGS_DIR / "results"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Check for extract task results
+            extract_dir = results_dir / "extract"
+            if extract_dir.exists() and any(extract_dir.glob("*_keywords.json")):
+                all_results = []
+                for json_file in extract_dir.glob("*_keywords.json"):
+                    try:
+                        with open(json_file, 'r', encoding='utf-8') as f:
+                            result = json.load(f)
+                            all_results.append(result)
+                    except Exception as e:
+                        print(f"Error loading {json_file}: {e}")
+                
+                if all_results:
+                    # Save aggregated results
+                    aggregated_file = results_dir / "all_keywords_extracted.json"
+                    with open(aggregated_file, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            "task_name": "extract",
+                            "total_samples": len(all_results),
+                            "results": all_results,
+                            "aggregated_timestamp": pd.Timestamp.now().isoformat()
+                        }, f, indent=2, ensure_ascii=False)
+            
+            # Check for classify task results
+            classify_dir = results_dir / "classify"
+            if classify_dir.exists() and any(classify_dir.glob("*_classification.json")):
+                all_results = []
+                for json_file in classify_dir.glob("*_classification.json"):
+                    try:
+                        with open(json_file, 'r', encoding='utf-8') as f:
+                            result = json.load(f)
+                            all_results.append(result)
+                    except Exception as e:
+                        print(f"Error loading {json_file}: {e}")
+                
+                if all_results:
+                    # Save aggregated results
+                    aggregated_file = results_dir / "all_grants_classified.json"
+                    with open(aggregated_file, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            "task_name": "classify",
+                            "total_samples": len(all_results),
+                            "results": all_results,
+                            "aggregated_timestamp": pd.Timestamp.now().isoformat()
+                        }, f, indent=2, ensure_ascii=False)
+                        
+        except Exception as e:
+            print(f"Error in aggregated results hook: {e}")
+
+
 
 
 
@@ -458,7 +641,8 @@ def extract() -> Task:
                 json_schema=json_schema(KeywordsExtractionOutput),
                 strict=True
             )
-        )
+        ),
+        hooks=["KeywordsExtractionHook", "AggregatedResultsHook"],
     )
 
 
@@ -668,9 +852,10 @@ def identify(use_keywords: bool = True) -> Task:
             response_schema=ResponseSchema(
                 name="taxonomy_creation",
                 json_schema=json_schema(TaxonomyOutput),
-                strict=True
+                # strict=True
             )
-        )
+        ),
+        hooks=["TaxonomyCreationHook", "AggregatedResultsHook"]
     )
 
 
@@ -733,7 +918,8 @@ def classify() -> Task:
                 json_schema=json_schema(ClassificationOutput),
                 strict=True
             )
-        )
+        ),
+        hooks=["GrantClassificationHook", "AggregatedResultsHook"]
     )
 
 

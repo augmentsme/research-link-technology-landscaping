@@ -1,10 +1,11 @@
 """
-Keywords Extraction and Harmonisation Tasks for Research Grants
+Keywords Extraction, Taxonomy Creation, and Grant Classification Tasks for Research Grants
 
 This module implements Inspect AI tasks for:
 1. Extracting relevant keywords from research grant titles and summaries
-2. Harmonising extracted keywords by consolidating variants and synonyms
-3. Loading and processing evaluation results
+2. Creating a 2-level taxonomy from extracted keywords
+3. Classifying research grants into the created taxonomy
+4. Loading and processing evaluation results
 """
 
 import json
@@ -69,32 +70,59 @@ KEYWORD_CATEGORIES = [
     {"name": "technology_keywords", "description": "keywords related to technologies or tools mentioned"}
 ]
 
-# Keywords harmonisation configuration
-HARMONISATION_SYSTEM_MESSAGE = """You are an expert in research terminology and knowledge organization with deep understanding of scientific vocabulary across disciplines.
+# Taxonomy creation configuration
+TAXONOMY_SYSTEM_MESSAGE = """You are an expert in research taxonomy design and knowledge organization with deep understanding of research domains across disciplines.
 
-Your task is to harmonise a list of research keywords by:
-1. Identifying and merging similar keywords, variants, and synonyms
-2. Standardizing terminology using the most commonly accepted scientific terms
-3. Resolving inconsistencies in naming conventions
-4. Preserving the semantic richness while reducing redundancy
+Your task is to create a 2-level taxonomy from research keywords that will help organize and classify research grants. The taxonomy should:
+1. Capture the main research domains and areas represented in the keywords
+2. Provide a hierarchical structure with top-level categories and sub-categories
+3. Be comprehensive enough to classify diverse research grants
+4. Use clear, standardized terminology from research literature
 
 Guidelines:
-- Merge keywords that are clearly variants of the same concept
-- Use the most standard, widely-accepted term when merging
-- Preserve technical precision - don't over-generalize
-- Maintain the granularity level appropriate for research analysis
-- Keep domain-specific terminology when it adds value
+- Create broad top-level categories that represent major research domains
+- Under each top-level category, create more specific sub-categories
+- Ensure categories are mutually exclusive where possible
+- Use terminology that researchers would recognize and understand
+- Balance comprehensiveness with usability (not too many categories)
 
-Remember: This is about cleaning up keyword variants, NOT about creating higher-level topic categories or abstractions."""
+Remember: This taxonomy will be used to classify research grants, so it should reflect the diversity and structure of research domains."""
 
-HARMONISATION_INSTRUCTIONS = [
-    "Identify and merge similar keywords, variants, and synonyms",
-    "Standardize terminology using commonly accepted scientific terms",
-    "Resolve inconsistencies in naming conventions",
-    "Preserve semantic richness while reducing redundancy",
-    "Use the most standard, widely-accepted term when merging",
-    "Preserve technical precision - don't over-generalize",
-    "Maintain appropriate granularity level for research analysis"
+TAXONOMY_INSTRUCTIONS = [
+    "Create broad top-level categories representing major research domains",
+    "Develop specific sub-categories under each top-level category",
+    "Ensure categories are mutually exclusive where possible",
+    "Use standardized terminology from research literature",
+    "Balance comprehensiveness with usability",
+    "Consider the diversity of research domains represented in the keywords"
+]
+
+# Grant classification configuration  
+CLASSIFICATION_SYSTEM_MESSAGE = """You are an expert research analyst with deep knowledge across multiple academic disciplines and extensive experience in research classification.
+
+Your task is to classify research grants into a predefined 2-level taxonomy. For each grant, you need to:
+1. Analyze the grant title and summary to understand the research domain and focus
+2. Identify the most appropriate top-level category and sub-category from the taxonomy
+3. Provide clear reasoning for your classification decisions
+4. Handle cases where grants might span multiple categories
+
+Guidelines:
+- Focus on the primary research domain and methodology of the grant
+- Consider the main applications and technologies mentioned
+- Use the grant's explicit research objectives to guide classification
+- When grants span multiple areas, choose the most prominent or primary focus
+- Provide consistent classification based on research content, not just keywords
+
+Remember: Accurate classification helps in understanding research trends and identifying related projects across the research landscape."""
+
+CLASSIFICATION_INSTRUCTIONS = [
+    "Analyze grant title and summary to understand research domain",
+    "Identify the most appropriate top-level category and sub-category",
+    "Focus on primary research domain and methodology",
+    "Consider main applications and technologies",
+    "Use explicit research objectives to guide classification",
+    "Choose primary focus when grants span multiple areas",
+    "Provide consistent classification based on research content"
 ]
 
 
@@ -133,40 +161,44 @@ class KeywordsExtractionOutput(BaseModel):
 
 
 
-class KeywordMapping(BaseModel):
-    """Individual keyword mapping from original indices to harmonised keyword."""
+class SubCategory(BaseModel):
+    """A sub-category within a top-level category."""
     model_config = {"extra": "forbid"}
     
-    original_index: List[int] = Field(description="List of indices of original keywords that map to this harmonised keyword")
-    harmonised: str = Field(description="The harmonised/standardized keyword")
+    name: str = Field(description="Name of the sub-category")
+    description: str = Field(description="Brief description of what this sub-category covers")
 
 
-class KeywordsHarmonisationOutput(BaseModel):
-    """Pydantic model for structured keywords harmonisation output."""
+class TopLevelCategory(BaseModel):
+    """A top-level category in the taxonomy."""
     model_config = {"extra": "forbid"}
     
-    keyword_mappings: List[KeywordMapping] = Field(description="List of mappings from original keyword indices to harmonised keywords")
+    name: str = Field(description="Name of the top-level category") 
+    description: str = Field(description="Brief description of what this category covers")
+    subcategories: List[SubCategory] = Field(description="List of sub-categories under this top-level category")
 
 
-class KeywordGroup(BaseModel):
-    """Individual keyword group containing indices that should be harmonised together."""
+class TaxonomyOutput(BaseModel):
+    """Pydantic model for 2-level taxonomy creation output."""
     model_config = {"extra": "forbid"}
     
-    indices: List[int] = Field(description="List of keyword indices that should be harmonised together")
+    taxonomy: List[TopLevelCategory] = Field(description="List of top-level categories with their sub-categories")
 
 
-class KeywordGroupsOutput(BaseModel):
-    """Pydantic model for keyword grouping output."""
+class GrantClassification(BaseModel):
+    """Classification result for a single grant."""
     model_config = {"extra": "forbid"}
     
-    keyword_groups: List[KeywordGroup] = Field(description="List of groups of keyword indices that should be harmonised together")
+    top_level_category: str = Field(description="The top-level category assigned to this grant")
+    subcategory: str = Field(description="The sub-category assigned to this grant")
+    reasoning: str = Field(description="Brief explanation for why this classification was chosen")
 
 
-class GroupHarmonisationOutput(BaseModel):
-    """Pydantic model for harmonising a single group of keywords."""
+class ClassificationOutput(BaseModel):
+    """Pydantic model for grant classification output."""
     model_config = {"extra": "forbid"}
     
-    harmonised_keyword: str = Field(description="The final harmonised keyword for this group")
+    classification: GrantClassification = Field(description="Classification result for the grant")
 
 
 
@@ -194,231 +226,68 @@ def load_extracted_keywords(logs_dir) -> Dict[str, List[str]]:
 
 
 
-def load_harmonised_keywords(logs_dir) -> Optional[Dict[str, Any]]:
+def load_taxonomy(logs_dir) -> Optional[Dict[str, Any]]:
     """
-    Load harmonised keywords from Inspect AI evaluation result files.
+    Load the 2-level taxonomy from the identify task evaluation results.
     
     Args:
-        logs_dir: Directory to search for harmonisation evaluation files
+        logs_dir: Directory to search for identify evaluation files
         
     Returns:
-        Dictionary containing harmonised keywords data with string-based mappings, or None if not found
-    """
-    evals = evals_df(logs_dir)
-    logpath = evals[evals.task_name == "harmonise"].log.iloc[0]
-    messages = messages_df(logpath)
-    content = messages[messages.role == "assistant"].content.item()
-    harmonisation_result = json.loads(content)
-    
-    # Convert index-based mappings to string-based mappings for compatibility
-    if "keyword_mappings" in harmonisation_result:
-        # Get the original keywords in the same order they were indexed
-        all_keywords = load_extracted_keywords(logs_dir)
-        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
-        unique_keywords = sorted(set(flat_keywords))
-        
-        # Convert index mappings to string mappings
-        index_mappings = harmonisation_result["keyword_mappings"]
-        
-        string_mappings = {}
-        # Handle new format: [{"original_index": [0, 1, 5], "harmonised": "machine learning"}, ...]
-        if isinstance(index_mappings, list) and len(index_mappings) > 0:
-            first_mapping = index_mappings[0]
-            if isinstance(first_mapping, dict) and "harmonised" in first_mapping:
-                # New format with direct harmonised keywords
-                for mapping in index_mappings:
-                    original_indices = mapping["original_index"]
-                    harmonised_keyword = mapping["harmonised"]
-                    for original_idx in original_indices:
-                        if 0 <= original_idx < len(unique_keywords):
-                            original_keyword = unique_keywords[original_idx]
-                            string_mappings[original_keyword] = harmonised_keyword
-            elif isinstance(first_mapping, dict) and "harmonised_index" in first_mapping:
-                # Old format with harmonised_index
-                harmonised_keywords = harmonisation_result.get("harmonised_keywords", [])
-                for mapping in index_mappings:
-                    original_idx = mapping["original_index"]
-                    harmonised_idx = mapping["harmonised_index"]
-                    if 0 <= original_idx < len(unique_keywords) and 0 <= harmonised_idx < len(harmonised_keywords):
-                        original_keyword = unique_keywords[original_idx]
-                        harmonised_keyword = harmonised_keywords[harmonised_idx]
-                        string_mappings[original_keyword] = harmonised_keyword
-            else:
-                # Even older dict format: {"0": 0, "1": 2, ...}
-                harmonised_keywords = harmonisation_result.get("harmonised_keywords", [])
-                for original_idx_str, harmonised_idx in index_mappings.items():
-                    original_idx = int(original_idx_str)
-                    if 0 <= original_idx < len(unique_keywords) and 0 <= harmonised_idx < len(harmonised_keywords):
-                        original_keyword = unique_keywords[original_idx]
-                        harmonised_keyword = harmonised_keywords[harmonised_idx]
-                        string_mappings[original_keyword] = harmonised_keyword
-        
-        harmonisation_result["keyword_mappings"] = string_mappings
-    
-    return harmonisation_result
-
-
-def load_keyword_groups(logs_dir) -> Optional[List[List[int]]]:
-    """
-    Load keyword groups from the identify task evaluation results.
-    
-    Args:
-        logs_dir: Directory to search for evaluation files
-        
-    Returns:
-        List of lists where each sublist contains indices of keywords that should be harmonised together
+        Dictionary containing the taxonomy structure, or None if not found
     """
     try:
         evals = evals_df(logs_dir)
-        group_evals = evals[evals.task_name == "identify"]
-        if group_evals.empty:
+        identify_evals = evals[evals.task_name == "identify"]
+        if identify_evals.empty:
             return None
             
-        logpath = group_evals.log.iloc[0]
+        logpath = identify_evals.log.iloc[0]
         messages = messages_df(logpath)
         content = messages[messages.role == "assistant"].content.item()
-        groups_result = json.loads(content)
+        taxonomy_result = json.loads(content)
         
-        if "keyword_groups" in groups_result:
-            return [group["indices"] for group in groups_result["keyword_groups"]]
-        
-        return None
+        return taxonomy_result
     except Exception as e:
-        print(f"Error loading keyword groups: {e}")
+        print(f"Error loading taxonomy: {e}")
         return None
 
 
-def load_group_harmonisations(logs_dir) -> Optional[Dict[str, str]]:
+def load_grant_classifications(logs_dir) -> Optional[Dict[str, Dict[str, Any]]]:
     """
-    Load harmonised keywords from the harmonise task evaluation results.
+    Load grant classifications from the classify task evaluation results.
     
     Args:
-        logs_dir: Directory to search for evaluation files
+        logs_dir: Directory to search for classify evaluation files
         
     Returns:
-        Dictionary mapping original keywords to harmonised keywords
+        Dictionary mapping grant IDs to their classifications, or None if not found
     """
     try:
         evals = evals_df(logs_dir)
-        harmonise_group_evals = evals[evals.task_name == "harmonise"]
-        if harmonise_group_evals.empty:
+        classify_evals = evals[evals.task_name == "classify"]
+        if classify_evals.empty:
             return None
             
-        # Load original keywords for mapping
-        all_keywords = load_extracted_keywords(logs_dir)
-        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
-        unique_keywords = sorted(set(flat_keywords))
-        
-        # Load keyword groups
-        keyword_groups = load_keyword_groups(logs_dir)
-        if not keyword_groups:
-            return None
-        
-        # Load harmonisation results for each group
-        string_mappings = {}
-        
-        log_path = harmonise_group_evals.log.iloc[0]
-        messages = messages_df(log_path)
-        
-        # Group messages by sample
-        user_messages = messages[messages.role == "user"]
+        logpath = classify_evals.log.iloc[0]
+        messages = messages_df(logpath)
         assistant_messages = messages[messages.role == "assistant"]
         
-        # Process each sample (each group)
-        for i in range(len(assistant_messages)):
-            try:
-                # Get assistant response
-                assistant_row = assistant_messages.iloc[i]
-                content = assistant_row['content']
-                harmonisation_result = json.loads(content)
-                
-                # Get corresponding user message to find metadata
-                user_row = user_messages.iloc[i]
-                sample_metadata = user_row.get('metadata', {}) if hasattr(user_row, 'get') else {}
-                
-                # Try different ways to access metadata
-                if not sample_metadata and hasattr(user_row, 'to_dict'):
-                    user_dict = user_row.to_dict()
-                    sample_metadata = user_dict.get('metadata', {})
-                
-                # If metadata access doesn't work, use the group index from the pattern
-                group_indices = sample_metadata.get('group_indices', [])
-                if not group_indices and i < len(keyword_groups):
-                    group_indices = keyword_groups[i]
-                
-                if "harmonised_keyword" in harmonisation_result and group_indices:
-                    harmonised_keyword = harmonisation_result["harmonised_keyword"]
-                    
-                    # Map all original keywords in this group to the harmonised keyword
-                    for idx in group_indices:
-                        if 0 <= idx < len(unique_keywords):
-                            original_keyword = unique_keywords[idx]
-                            string_mappings[original_keyword] = harmonised_keyword
-                            
-            except Exception as e:
-                print(f"Error processing sample {i}: {e}")
-                continue
-        
-        return string_mappings
-        
+        classifications = {}
+        for _, row in assistant_messages.iterrows():
+            content = row['content']
+            classification_result = json.loads(content)
+            
+            # Extract grant ID from the sample metadata if available
+            # This would need to be implemented based on how the samples are structured
+            # For now, we'll use the row index or sample ID
+            sample_id = row.get('sample_id', f"sample_{row.name}")
+            classifications[sample_id] = classification_result
+            
+        return classifications
     except Exception as e:
-        print(f"Error loading group harmonisations: {e}")
+        print(f"Error loading grant classifications: {e}")
         return None
-
-
-def combine_two_step_harmonisation_results(logs_dir) -> Optional[Dict[str, Any]]:
-    """
-    Combine the results from the two-step harmonisation process (identify + harmonise).
-    
-    Args:
-        logs_dir: Directory containing evaluation results
-        
-    Returns:
-        Dictionary in the same format as the original harmonise task for compatibility
-    """
-    try:
-        # Load results from both steps
-        keyword_groups = load_keyword_groups(logs_dir)
-        group_harmonisations = load_group_harmonisations(logs_dir)
-        
-        if not keyword_groups or not group_harmonisations:
-            return None
-        
-        # Load original keywords for compatibility
-        all_keywords = load_extracted_keywords(logs_dir)
-        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
-        unique_keywords = sorted(set(flat_keywords))
-        
-        # Build the result in the same format as the original harmonise task
-        keyword_mappings = []
-        
-        for group_indices in keyword_groups:
-            if not group_indices:
-                continue
-                
-            # Get the harmonised keyword for this group
-            # Use the first keyword in the group to look up the harmonised result
-            if group_indices[0] < len(unique_keywords):
-                first_keyword = unique_keywords[group_indices[0]]
-                harmonised_keyword = group_harmonisations.get(first_keyword)
-                
-                if harmonised_keyword:
-                    mapping = KeywordMapping(
-                        original_index=group_indices,
-                        harmonised=harmonised_keyword
-                    )
-                    keyword_mappings.append(mapping)
-        
-        return {
-            "keyword_mappings": group_harmonisations,  # String-based mapping for compatibility
-            "original_keyword_mappings": [mapping.dict() for mapping in keyword_mappings]  # Index-based for analysis
-        }
-        
-    except Exception as e:
-        print(f"Error combining two-step harmonisation results: {e}")
-        return None
-
-
 
 
 
@@ -596,205 +465,209 @@ def extract() -> Task:
 
 
 
-def create_harmonisation_prompt(keywords: List[str]) -> str:
+def create_taxonomy_creation_prompt(keywords: List[str]) -> str:
     """
-    Create a harmonisation prompt.
+    Create a prompt for creating a 2-level taxonomy from extracted keywords.
     
     Args:
-        keywords: List of keywords to harmonise
+        keywords: List of keywords to create taxonomy from
         
     Returns:
         Formatted prompt string
     """
     
     # Build instructions text
-    instructions_text = "\n".join([f"- {instruction}" for instruction in HARMONISATION_INSTRUCTIONS])
+    instructions_text = "\n".join([f"- {instruction}" for instruction in TAXONOMY_INSTRUCTIONS])
     
-    # Create indexed keywords list
+    # Create keyword list organized by category if available
     unique_keywords = sorted(set(keywords))
-    keywords_text = "\n".join([f"{i}: {kw}" for i, kw in enumerate(unique_keywords)])
+    keywords_text = "\n".join([f"- {kw}" for kw in unique_keywords])
     
-    prompt = f"""I have extracted {len(unique_keywords)} research keywords from grant data that need harmonisation. Please consolidate these keywords by identifying variants, synonyms, and similar terms that should be merged.
+    prompt = f"""I have extracted {len(unique_keywords)} research keywords from grant data. Your task is to create a comprehensive 2-level taxonomy that can be used to classify research grants into meaningful categories.
 
-**Instructions:**
+**Instructions for taxonomy creation:**
 {instructions_text}
 
-**Keywords to harmonise (with indices):**
+**Keywords to analyze:**
 {keywords_text}
 
 IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
 
 REQUIRED JSON SCHEMA - Follow this structure exactly:
 {{
-    "keyword_mappings": [
-        {{"original_index": [0, 1, 5], "harmonised": "machine learning"}},
-        {{"original_index": [2, 8], "harmonised": "artificial intelligence"}},
-        {{"original_index": [3], "harmonised": "neural networks"}},
-        ...
+    "taxonomy": [
+        {{
+            "name": "Computer Science and AI",
+            "description": "Research in computing, artificial intelligence, and related technologies",
+            "subcategories": [
+                {{
+                    "name": "Machine Learning",
+                    "description": "Research focused on machine learning algorithms and applications"
+                }},
+                {{
+                    "name": "Data Science",
+                    "description": "Research in data analysis, big data, and data mining"
+                }}
+            ]
+        }},
+        {{
+            "name": "Life Sciences",
+            "description": "Research in biology, medicine, and life sciences",
+            "subcategories": [
+                {{
+                    "name": "Biomedical Research", 
+                    "description": "Medical research and healthcare applications"
+                }},
+                {{
+                    "name": "Molecular Biology",
+                    "description": "Research at the molecular level of biological processes"
+                }}
+            ]
+        }}
     ]
 }}
 
-The field is REQUIRED:
-- keyword_mappings: Array of mapping objects, each containing:
-  - original_index: Array of integers representing indices of original keywords that map to this harmonised keyword
-  - harmonised: String representing the final standardized/harmonised keyword
-
-Each original keyword index (0 to {len(unique_keywords)-1}) must appear exactly once across all original_index arrays.
-Group similar/synonymous keywords together by including their indices in the same original_index array.
-
-For example:
-- If keywords at indices 0, 1, and 5 are variants of "machine learning", use: {{"original_index": [0, 1, 5], "harmonised": "machine learning"}}
-- If keyword at index 3 stands alone as "neural networks", use: {{"original_index": [3], "harmonised": "neural networks"}}
-- Every index from 0 to {len(unique_keywords)-1} must be included exactly once across all mappings
-
-Focus on semantic similarity while preserving technical precision. Don't create higher-level categories - just clean up variants and synonyms.
+Requirements:
+- Create 6-10 top-level categories that capture major research domains
+- Each top-level category should have 3-8 sub-categories  
+- Categories should be comprehensive enough to classify diverse research grants
+- Use clear, standardized terminology from research literature
+- Ensure categories are mutually exclusive where possible
+- Sub-categories should be specific enough to be meaningful for classification
 
 CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
 
     return prompt
 
 
-def create_keyword_grouping_prompt(keywords: List[str]) -> str:
+def create_taxonomy_creation_prompt_from_grants(grants: List[Grant]) -> str:
     """
-    Create a prompt for identifying groups of keywords that should be harmonised together.
-    
+    Create a prompt for creating a 2-level taxonomy by analyzing all grant titles and summaries.
+
     Args:
-        keywords: List of keywords to group
-        
+        grants: List of Grant objects
+
     Returns:
         Formatted prompt string
     """
-    
     # Build instructions text
-    instructions_text = "\n".join([f"- {instruction}" for instruction in HARMONISATION_INSTRUCTIONS])
-    
-    # Create indexed keywords list
-    unique_keywords = sorted(set(keywords))
-    keywords_text = "\n".join([f"{i}: {kw}" for i, kw in enumerate(unique_keywords)])
-    
-    prompt = f"""I have extracted {len(unique_keywords)} research keywords from grant data. Your task is to identify groups of keywords that should be harmonised together (variants, synonyms, and similar terms that represent the same concept).
+    instructions_text = "\n".join([f"- {instruction}" for instruction in TAXONOMY_INSTRUCTIONS])
 
-**Instructions for grouping:**
+    # Build grants text
+    grant_entries = []
+    for i, g in enumerate(grants, start=1):
+        title = (g.title or "").strip()
+        summary = (g.grant_summary or "").strip()
+        grant_entries.append(f"{i}. Title: {title}\n   Summary: {summary}")
+    grants_text = "\n\n".join(grant_entries)
+
+    prompt = f"""I have a collection of {len(grants)} research grants (titles and summaries). Your task is to analyze these grants and create a comprehensive 2-level taxonomy that can be used to classify research grants into meaningful categories.
+
+**Instructions for taxonomy creation:**
 {instructions_text}
 
-**Keywords to group (with indices):**
-{keywords_text}
+**Grants to analyze:**
+{grants_text}
 
 IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
 
 REQUIRED JSON SCHEMA - Follow this structure exactly:
 {{
-    "keyword_groups": [
-        {{"indices": [0, 1, 5]}},
-        {{"indices": [2, 8, 12]}},
-        {{"indices": [3]}},
-        ...
+    "taxonomy": [
+        {{
+            "name": "Computer Science and AI",
+            "description": "Research in computing, artificial intelligence, and related technologies",
+            "subcategories": [
+                {{
+                    "name": "Machine Learning",
+                    "description": "Research focused on machine learning algorithms and applications"
+                }},
+                {{
+                    "name": "Data Science",
+                    "description": "Research in data analysis, big data, and data mining"
+                }}
+            ]
+        }},
+        {{
+            "name": "Life Sciences",
+            "description": "Research in biology, medicine, and life sciences",
+            "subcategories": [
+                {{
+                    "name": "Biomedical Research",
+                    "description": "Medical research and healthcare applications"
+                }},
+                {{
+                    "name": "Molecular Biology",
+                    "description": "Research at the molecular level of biological processes"
+                }}
+            ]
+        }}
     ]
 }}
 
-The field is REQUIRED:
-- keyword_groups: Array of group objects, each containing:
-  - indices: Array of integers representing keyword indices that should be harmonised together
-
-Rules for grouping:
-- Each keyword index (0 to {len(unique_keywords)-1}) must appear exactly once across all groups
-- Group keywords that are variants, synonyms, or represent the same concept
-- Keywords that are unique and don't have variants should be in their own group with a single index
-- Focus on semantic similarity while preserving technical precision
-- Don't create higher-level categories - just identify which keywords represent the same underlying concept
-
-For example:
-- If keywords at indices 0, 1, and 5 are variants of the same concept, use: {{"indices": [0, 1, 5]}}
-- If keyword at index 3 is unique, use: {{"indices": [3]}}
-- Every index from 0 to {len(unique_keywords)-1} must be included exactly once across all groups
+Requirements:
+- Create 6-10 top-level categories that capture major research domains
+- Each top-level category should have 3-8 sub-categories
+- Categories should be comprehensive enough to classify diverse research grants
+- Use clear, standardized terminology from research literature
+- Ensure categories are mutually exclusive where possible
+- Sub-categories should be specific enough to be meaningful for classification
 
 CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
 
     return prompt
-
-
-def create_group_harmonisation_prompt(keywords_with_indices: List[Tuple[int, str]]) -> str:
-    """
-    Create a prompt for harmonising a specific group of keywords.
-    
-    Args:
-        keywords_with_indices: List of (index, keyword) tuples for the group
-        
-    Returns:
-        Formatted prompt string
-    """
-    
-    # Build instructions text
-    instructions_text = "\n".join([f"- {instruction}" for instruction in HARMONISATION_INSTRUCTIONS])
-    
-    # Create keywords list for this group
-    keywords_text = "\n".join([f"{idx}: {kw}" for idx, kw in keywords_with_indices])
-    
-    prompt = f"""You have been given a group of {len(keywords_with_indices)} research keywords that have been identified as variants, synonyms, or similar terms that should be harmonised into a single standardised keyword.
-
-**Instructions for harmonisation:**
-{instructions_text}
-
-**Keywords in this group:**
-{keywords_text}
-
-IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
-
-REQUIRED JSON SCHEMA - Follow this structure exactly:
-{{
-    "harmonised_keyword": "final standardised keyword"
-}}
-
-Choose the most appropriate, standardised, and widely-accepted term that best represents all the keywords in this group. Consider:
-- Scientific precision and accuracy
-- Common usage in research literature
-- Technical specificity
-- Domain conventions
-
-CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
-
-    return prompt
-
 
 
 @task
-def identify() -> Task:
+def identify(use_keywords: bool = True) -> Task:
     """
-    Inspect AI task for identifying groups of keywords that should be harmonised together.
-    
-    This is the first step of a two-step harmonisation process that identifies which keywords
-    are variants, synonyms, or represent the same concept and should be grouped together.
-    This approach helps avoid token limit issues by separating grouping from harmonisation.
-    
+    Inspect AI task for creating a 2-level taxonomy from either extracted keywords or directly from grants.
+
+    Args:
+        use_keywords: When True (default), build taxonomy from extracted keywords. When False, analyze all grants to build taxonomy.
+
     Returns:
         Configured Inspect AI Task
     """
-    
-    def dataset():
-        all_keywords = load_extracted_keywords(logs_dir=LOGS_DIR)
-        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
 
-        prompt = create_keyword_grouping_prompt(flat_keywords)
-        sample = Sample(
-            input=prompt,
-            metadata={
-                "total_keywords": len(flat_keywords),
-                "unique_keywords": len(set(flat_keywords)),
-            }
-        )
-        
-        return [sample]
-    
+    def dataset():
+        if use_keywords:
+            # Maintain current behavior: build taxonomy from extracted keywords
+            all_keywords = load_extracted_keywords(logs_dir=LOGS_DIR)
+            flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
+            prompt = create_taxonomy_creation_prompt(flat_keywords)
+            sample = Sample(
+                input=prompt,
+                metadata={
+                    "mode": "keywords",
+                    "total_keywords": len(flat_keywords),
+                    "unique_keywords": len(set(flat_keywords)),
+                }
+            )
+            return [sample]
+        else:
+            # New behavior: build taxonomy by analyzing all grants directly
+            grants = load_grants_data(GRANTS_FILE)
+            prompt = create_taxonomy_creation_prompt_from_grants(grants)
+            sample = Sample(
+                input=prompt,
+                metadata={
+                    "mode": "grants",
+                    "total_grants": len(grants),
+                }
+            )
+            return [sample]
+
     return Task(
         dataset=dataset(),
         solver=[
-            system_message(HARMONISATION_SYSTEM_MESSAGE),
+            system_message(TAXONOMY_SYSTEM_MESSAGE),
             generate(),
         ],
         config=GenerateConfig(
             response_schema=ResponseSchema(
-                name="keyword_groups",
-                json_schema=json_schema(KeywordGroupsOutput),
+                name="taxonomy_creation",
+                json_schema=json_schema(TaxonomyOutput),
                 strict=True
             )
         )
@@ -802,48 +675,46 @@ def identify() -> Task:
 
 
 @task
-def harmonise() -> Task:
+def classify() -> Task:
     """
-    Inspect AI task for harmonising individual groups of keywords.
+    Inspect AI task for classifying research grants into the created taxonomy.
     
-    This is the second step of a two-step harmonisation process that takes the groups
-    identified by the identify task and determines the final harmonised keyword
-    for each group. This can be run per group to avoid token limits.
+    This task takes the 2-level taxonomy created by the identify task and classifies
+    each research grant into the appropriate category and sub-category based on
+    the grant's title, summary, and research focus.
     
     Returns:
         Configured Inspect AI Task
     """
     
     def dataset():
-        # Load extracted keywords and identified groups
-        all_keywords = load_extracted_keywords(logs_dir=LOGS_DIR)
-        flat_keywords = [kw for sublist in all_keywords.values() for kw in sublist]
-        unique_keywords = sorted(set(flat_keywords))
+        # Load the taxonomy from the identify task
+        taxonomy = load_taxonomy(logs_dir=LOGS_DIR)
+        if not taxonomy:
+            raise ValueError("No taxonomy found. Run identify task first to create taxonomy.")
         
-        keyword_groups = load_keyword_groups(logs_dir=LOGS_DIR)
-        if not keyword_groups:
-            raise ValueError("No keyword groups found. Run identify task first.")
+        # Load grants data
+        grants = load_grants_data(GRANTS_FILE)
         
         samples = []
-        for group_idx, group_indices in enumerate(keyword_groups):
-            # Get keywords for this group
-            keywords_with_indices = [(idx, unique_keywords[idx]) for idx in group_indices 
-                                   if 0 <= idx < len(unique_keywords)]
+        for grant in grants:
+            # Create classification prompt for this grant
+            prompt = create_grant_classification_prompt(grant, taxonomy)
             
-            if not keywords_with_indices:
-                continue
-                
-            # Create prompt for this group
-            prompt = create_group_harmonisation_prompt(keywords_with_indices)
+            # Create metadata for tracking
+            metadata = {
+                "grant_id": grant.id,
+                "funder": grant.funder,
+                "funding_amount": grant.funding_amount,
+                "funding_scheme": grant.funding_scheme,
+                "status": grant.status,
+                "taxonomy_categories": len(taxonomy.get("taxonomy", [])) if taxonomy else 0
+            }
             
             sample = Sample(
                 input=prompt,
-                metadata={
-                    "group_index": group_idx,
-                    "group_indices": group_indices,
-                    "group_size": len(keywords_with_indices),
-                },
-                id=f"group_{group_idx}"
+                metadata=metadata,
+                id=grant.id
             )
             
             samples.append(sample)
@@ -853,15 +724,77 @@ def harmonise() -> Task:
     return Task(
         dataset=dataset(),
         solver=[
-            system_message(HARMONISATION_SYSTEM_MESSAGE),
+            system_message(CLASSIFICATION_SYSTEM_MESSAGE),
             generate(),
         ],
         config=GenerateConfig(
             response_schema=ResponseSchema(
-                name="group_harmonisation",
-                json_schema=json_schema(GroupHarmonisationOutput),
+                name="grant_classification",
+                json_schema=json_schema(ClassificationOutput),
                 strict=True
             )
         )
     )
+
+
+def create_grant_classification_prompt(grant: Grant, taxonomy: Dict[str, Any]) -> str:
+    """
+    Create a prompt for classifying a grant into the created taxonomy.
+    
+    Args:
+        grant: Grant object containing title and summary
+        taxonomy: The taxonomy structure from the identify task
+        
+    Returns:
+        Formatted prompt string
+    """
+    
+    # Build instructions text
+    instructions_text = "\n".join([f"- {instruction}" for instruction in CLASSIFICATION_INSTRUCTIONS])
+    
+    # Build taxonomy text for reference
+    taxonomy_text = ""
+    if "taxonomy" in taxonomy:
+        for top_cat in taxonomy["taxonomy"]:
+            taxonomy_text += f"\n{top_cat['name']}: {top_cat['description']}\n"
+            for sub_cat in top_cat.get('subcategories', []):
+                taxonomy_text += f"  - {sub_cat['name']}: {sub_cat['description']}\n"
+    
+    prompt = f"""You are a research analyst tasked with classifying a research grant into a predefined 2-level taxonomy.
+
+**Classification Guidelines:**
+{instructions_text}
+
+**Available Taxonomy:**
+{taxonomy_text}
+
+**Grant to Classify:**
+
+Grant Title: {grant.title}
+
+Grant Summary: {grant.grant_summary}
+
+IMPORTANT: You MUST respond with valid JSON only. Do not include explanations or any other text outside the JSON structure.
+
+REQUIRED JSON SCHEMA - Follow this structure exactly:
+{{
+    "classification": {{
+        "top_level_category": "Computer Science and AI",
+        "subcategory": "Machine Learning", 
+        "reasoning": "This grant focuses on developing new machine learning algorithms for medical image analysis, making it primarily a computer science/AI project with machine learning as the specific approach."
+    }}
+}}
+
+Requirements:
+- Choose exactly one top-level category and one sub-category from the provided taxonomy
+- The top-level category and sub-category must exist in the taxonomy
+- Provide clear reasoning (2-3 sentences) explaining why this classification was chosen
+- Focus on the primary research domain and methodology described in the grant
+- When grants span multiple areas, choose the most prominent focus
+
+CRITICAL: Your response must be valid JSON that strictly follows the required schema. No additional text, explanations, or deviations from the schema are allowed."""
+
+    return prompt
+
+
 

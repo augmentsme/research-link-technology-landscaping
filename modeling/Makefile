@@ -1,11 +1,8 @@
 extract: 
 	uv run inspect eval extract.py@extract
 
-harmonize: 
-	uv run inspect eval harmonize.py@harmonize
-
 categorise: 
-	uv run inspect eval categorise.py@categorise --max-tokens 128000
+	uv run inspect eval categorise.py@categorise
 
 refine:
 	uv run inspect eval refine.py@refine

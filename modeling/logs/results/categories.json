@@ -1,0 +1,3866 @@
+[
+  {
+    "name": "Climate-Related Financial Risk Assessment",
+    "description": "A multidisciplinary field integrating climate science, financial modeling, and risk management to evaluate the economic impacts of climate change on investments, insurance, and financial portfolios. This includes scenario-based forecasting, stress testing, and valuation adjustments for assets exposed to extreme weather, sea-level rise, and temperature shifts.",
+    "keywords": [
+      "climate-related financial risk",
+      "financial market stability",
+      "risk prioritization",
+      "financial cycle busts",
+      "liquidity constraints",
+      "financial crime detection",
+      "financial lending models",
+      "financial risk analysis",
+      "climate action",
+      "financial mathematics",
+      "economic cycle analysis",
+      "financial hedging",
+      "investment opportunity identification",
+      "liquidity risk assessment"
+    ]
+  },
+  {
+    "name": "Training and Capacity Development in Education and Workforce",
+    "description": "A comprehensive framework focused on building skills, knowledge, and competencies in individuals and institutions through tailored training programs, mentorship, curriculum design, and continuous professional development. Emphasizes equity, accessibility, and relevance to emerging job markets and societal needs.",
+    "keywords": [
+      "training and capacity development",
+      "teacher training in the United States",
+      "automated teaching assistants",
+      "educational tools",
+      "curriculum modeling",
+      "teacher collaboration",
+      "workforce retention strategies",
+      "occupational skills",
+      "occupational pathways",
+      "early career researcher",
+      "capacity building for food-insecure populations",
+      "workforce capability enhancement",
+      "digital professional development",
+      "skill-intensive industries",
+      "workforce productivity",
+      "higher education expansion",
+      "education and cultural transmission",
+      "inclusive economic development"
+    ]
+  },
+  {
+    "name": "Multi-Analytical Archaeological Approach",
+    "description": "An integrated methodology combining geophysical surveys, chemical analysis, radiometric dating, and digital modeling to reconstruct past human activities, environmental conditions, and cultural practices from archaeological sites with high spatial and temporal resolution.",
+    "keywords": [
+      "multi-analytical archaeological approach",
+      "archaeological diagnostics",
+      "archaeological records",
+      "fossil site survey",
+      "historical fuel analysis",
+      "scientific archaeological techniques",
+      "archaeological fieldwork",
+      "historical database construction",
+      "palaeoecological data",
+      "digital mapping",
+      "remote sensing of exoplanets",
+      "on-site analysis",
+      "archaeological interpretation"
+    ]
+  },
+  {
+    "name": "Prolonged Exposure and Health Impacts",
+    "description": "A research domain examining the physiological, psychological, and behavioral consequences of extended exposure to environmental stressors, including noise, pollution, extreme temperatures, and occupational hazards, with a focus on chronic disease and resilience.",
+    "keywords": [
+      "prolonged exposure",
+      "psychosocial risks",
+      "stress molecules detection",
+      "chronic pain care",
+      "mental health service design",
+      "neuro-immune system",
+      "neurological disorders",
+      "cognitive decline prediction",
+      "chronic disease care",
+      "occupational skills",
+      "occupational safety",
+      "health promotion in older adults",
+      "long-term behaviour",
+      "exposure to natural scenes",
+      "environmental health assessment"
+    ]
+  },
+  {
+    "name": "Muscle Health in Older Adults",
+    "description": "A specialized field investigating the physiological mechanisms of muscle degeneration, exercise-induced benefits, and nutritional strategies to maintain sarcopenia, mobility, and functional independence in aging populations.",
+    "keywords": [
+      "muscle health in older adults",
+      "exercise and ageing",
+      "controlled exercise training",
+      "muscle training methods",
+      "fitness costs and benefits",
+      "physical activity",
+      "older women",
+      "active transport",
+      "senior school science",
+      "health outcomes optimization",
+      "functional modeling of hearts",
+      "cardiovascular health"
+    ]
+  },
+  {
+    "name": "Bacterial Infection Treatment and Antimicrobial Strategies",
+    "description": "A rapidly evolving domain focused on developing novel antimicrobial therapies, including phage therapy, antimicrobial resistance (AMR) mitigation, and targeted delivery systems, to combat persistent and drug-resistant bacterial infections.",
+    "keywords": [
+      "bacterial infection treatment",
+      "antimicrobial resistance (AMR)",
+      "phage therapy",
+      "anti-parasitic drugs",
+      "pathogen defense in agriculture",
+      "bacterial secretion system",
+      "bacterial cargo",
+      "pathogen characterization",
+      "viral evolution",
+      "immune response mechanisms",
+      "host-directed evolution systems",
+      "microbial gene editing"
+    ]
+  },
+  {
+    "name": "Freezing Temperatures and Cryogenic Systems",
+    "description": "A domain exploring the effects and applications of low-temperature environments, including cryogenic storage, material behavior, biological preservation, and energy systems, in both natural and engineered settings.",
+    "keywords": [
+      "freezing temperatures",
+      "cryo-TEM correlation",
+      "cryogenic equipment",
+      "cold chain optimization",
+      "room-temperature sodium-sulfur batteries",
+      "low-temperature conducting materials",
+      "frozen-hydrated samples",
+      "thermal batteries",
+      "freezing of biological samples",
+      "cryopreservation protocols",
+      "low-temperature energy conversion"
+    ]
+  },
+  {
+    "name": "Active Sensing Technologies and Real-Time Monitoring",
+    "description": "The development and deployment of autonomous, intelligent sensors capable of detecting, analyzing, and responding to environmental, biological, and physical changes in real time across diverse ecosystems and urban environments.",
+    "keywords": [
+      "active sensing technologies",
+      "real-time sensing algorithms",
+      "on-site chemical processing",
+      "real-time gas monitoring",
+      "real-time neural signal processing",
+      "real-time flood response",
+      "remote sensing of meteorites",
+      "in situ analysis",
+      "real-time asset management",
+      "sensor stream pattern mining",
+      "distributed robotics",
+      "autonomous sensing",
+      "real-time video processing"
+    ]
+  },
+  {
+    "name": "Simple Analytical Platforms for Point-of-Care Diagnostics",
+    "description": "A focus on developing low-cost, portable, and user-friendly analytical devices for rapid detection of diseases, toxins, or environmental contaminants in field or community settings without requiring sophisticated infrastructure.",
+    "keywords": [
+      "simple analytical platforms",
+      "point-of-care disease diagnosis",
+      "on-site analysis",
+      "field-deployable spectroscopy",
+      "portable test kits",
+      "microfluidics",
+      "low-cost computing",
+      "accessible data exploration",
+      "digital health records analysis",
+      "rapid CO2 conversion",
+      "bacterial detection",
+      "taste and odour control"
+    ]
+  },
+  {
+    "name": "Automated Teaching Assistants and AI-Driven Education",
+    "description": "The integration of artificial intelligence and machine learning into educational systems to provide personalized tutoring, adaptive learning pathways, automated grading, and real-time feedback to students and instructors.",
+    "keywords": [
+      "automated teaching assistants",
+      "AI-driven insights",
+      "personalized query optimization",
+      "interactive data dashboards",
+      "digital teaching resources",
+      "adaptive learning",
+      "machine learning for behavioural prediction",
+      "learning management systems (LMS)",
+      "AI and machine learning",
+      "digital platforms for milk sharing",
+      "student physical activity",
+      "personalized treatment strategies"
+    ]
+  },
+  {
+    "name": "Room Temperature Detection and Thermal Sensing",
+    "description": "A specialized field focused on the development of highly sensitive, low-power, and cost-effective sensors for measuring temperature and thermal gradients in ambient, biological, and industrial environments at room temperature.",
+    "keywords": [
+      "room temperature detection",
+      "thermal stability",
+      "temperature and light responses",
+      "thermal regulation mechanisms",
+      "heat dissipation optimization",
+      "thermal property characterization",
+      "temperature forecasting",
+      "thermal batteries",
+      "thermal imaging",
+      "heat extraction optimization",
+      "low-power IoT devices"
+    ]
+  },
+  {
+    "name": "Transgenerational Phenotyping and Epigenetic Inheritance",
+    "description": "A cutting-edge field studying how environmental exposures and genetic factors influence phenotypic traits across generations through epigenetic modifications, including DNA methylation and histone regulation.",
+    "keywords": [
+      "transgenerational phenotyping",
+      "epigenetic enzyme activity",
+      "gene regulatory network modeling",
+      "developmental gene expression studies",
+      "genetic basis of traits",
+      "genetic evaluation",
+      "environmental shaping of behavior",
+      "intergenerational health effects",
+      "maternal investment",
+      "prenatal substance exposure",
+      "epigenetic regulation"
+    ]
+  },
+  {
+    "name": "Biological Feed Development and Sustainable Nutrition",
+    "description": "The design and optimization of plant- and microbial-based feeds to improve animal health, reduce environmental impact, and enhance food security through sustainable, low-emission, and nutrient-efficient formulations.",
+    "keywords": [
+      "biological feed development",
+      "natural feedstuffs",
+      "local feedstuffs",
+      "reduced fertilizer dependency",
+      "nutrient modelling",
+      "organic metal binding",
+      "enhanced photosynthetic efficiency",
+      "nutrient interaction modeling",
+      "dietary reconstruction",
+      "high protein legume",
+      "animal breeding efficiency"
+    ]
+  },
+  {
+    "name": "Intelligent Polymers and Responsive Materials",
+    "description": "Materials engineered to respond dynamically to stimuli such as temperature, pH, light, or mechanical stress, with applications in drug delivery, self-healing systems, and adaptive engineering structures.",
+    "keywords": [
+      "intelligent polymers",
+      "stimuli-responsive chemistry",
+      "light-responsive materials",
+      "cargo-responsive polymers",
+      "smart electronic skin",
+      "adaptive structures",
+      "self-healing materials",
+      "responsive materials",
+      "mechano-signalling",
+      "phase change in solids",
+      "tunable membranes"
+    ]
+  },
+  {
+    "name": "Solid-State Metal Recycling and Circular Economy",
+    "description": "A sustainable technology pathway focused on recovering and reprocessing metals from electronic waste, end-of-life vehicles, and industrial byproducts using solid-state methods to minimize environmental impact and energy use.",
+    "keywords": [
+      "solid state metal recycling",
+      "copper recovery",
+      "tyre recycling",
+      "plastic deterioration",
+      "recycling technology",
+      "circular economy",
+      "industrial waste processing",
+      "resource recovery",
+      "waste-to-resource conversion",
+      "industrial symbiosis",
+      "sustainable logistics"
+    ]
+  },
+  {
+    "name": "Corrosion Prediction Models and Material Durability",
+    "description": "The use of computational and experimental methods to predict and prevent material degradation due to corrosion in infrastructure, pipelines, and industrial systems, with a focus on early warning and mitigation.",
+    "keywords": [
+      "corrosion prediction models",
+      "chloride-induced steel corrosion",
+      "corrosion resistance engineering",
+      "material durability",
+      "harsh environment durability",
+      "structural integrity assessment",
+      "electrochemical methods",
+      "surface protection",
+      "material interaction modeling",
+      "cathodic protection"
+    ]
+  },
+  {
+    "name": "Plant Sensing and Environmental Monitoring",
+    "description": "The integration of sensors and AI to monitor plant health, stress responses, and growth patterns in real time, enabling precision agriculture and early detection of disease or nutrient deficiencies.",
+    "keywords": [
+      "plant sensing",
+      "plant physiological responses",
+      "plant roots",
+      "plant adaptation",
+      "soil-plant interaction analysis",
+      "plant-pathogen interactions",
+      "plant bioreactors",
+      "phenological analysis",
+      "crop yield maximisation",
+      "plant hormone signalling",
+      "environmental interactions in plants"
+    ]
+  },
+  {
+    "name": "On-Site Chemical Processing and Field Analysis",
+    "description": "A field focused on enabling chemical analysis, synthesis, and treatment at remote or field locations without requiring laboratory infrastructure, supporting environmental monitoring, agriculture, and emergency response.",
+    "keywords": [
+      "on-site chemical processing",
+      "field-based observation methods",
+      "field-deployable spectroscopy",
+      "on-site analysis",
+      "lab-based assays",
+      "in situ chemical analysis",
+      "remote rural delivery",
+      "field survey technologies",
+      "waste water analysis",
+      "soil moisture monitoring",
+      "environmental monitoring"
+    ]
+  },
+  {
+    "name": "CO2 Capture and Carbon Management",
+    "description": "A comprehensive approach to capturing, storing, and utilizing carbon dioxide from industrial and atmospheric sources to mitigate climate change and support carbon-negative technologies.",
+    "keywords": [
+      "CO2 capture",
+      "carbon capture assessment",
+      "carbon sequestration",
+      "carbon-neutral services",
+      "carbon-positive buildings",
+      "carbon-emitting fossil fuel utilization",
+      "renewable ammonia production",
+      "carbon storage in crops",
+      "carbon-negative technologies",
+      "carbon cycle management"
+    ]
+  },
+  {
+    "name": "Gas-Phase Reaction Engineering and Catalysis",
+    "description": "The design and optimization of chemical reactions in gaseous environments, including catalytic processes for fuel production, pollution control, and industrial synthesis, with emphasis on efficiency and scalability.",
+    "keywords": [
+      "gas-phase reaction engineering",
+      "catalytic combustion kinetics",
+      "catalytic active centres",
+      "catalytic polymerization",
+      "catalytic active centres",
+      "catalytic conversion",
+      "catalytic active sites",
+      "catalytic properties",
+      "reaction-induced porosity development",
+      "catalytic systems"
+    ]
+  },
+  {
+    "name": "Archaeological Diagnostics and Digital Reconstruction",
+    "description": "The use of advanced imaging, spectroscopy, and computational tools to diagnose and reconstruct ancient materials, structures, and human activities, combining traditional fieldwork with digital modeling.",
+    "keywords": [
+      "archaeological diagnostics",
+      "digital mapping",
+      "3D computer vision",
+      "geophysical analysis",
+      "digital drawing tools",
+      "remote sensing",
+      "digital fossil analysis",
+      "archaeological interpretation",
+      "digital archaeological records",
+      "archaeological tools"
+    ]
+  },
+  {
+    "name": "Actin Dynamics and Cellular Mechanics",
+    "description": "A cell biology field studying the structural and functional dynamics of actin filaments in cell motility, division, and signaling, with implications for disease and tissue engineering.",
+    "keywords": [
+      "actin dynamics",
+      "cellular mechanics",
+      "cellular structure",
+      "subcellular transport",
+      "mechanosensing",
+      "cell shape adaptation",
+      "cellular movement",
+      "cytoskeleton dynamics",
+      "cellular signaling",
+      "cellular microenvironment"
+    ]
+  },
+  {
+    "name": "Chemical Biology of Mitochondria and Metabolism",
+    "description": "A discipline investigating the biochemical pathways, signaling networks, and regulatory mechanisms within mitochondria that govern energy production, oxidative stress, and cellular health.",
+    "keywords": [
+      "chemical biology of mitochondria",
+      "mitochondrial function",
+      "mitochondrial respiration",
+      "metabolite regulation",
+      "cellular metabolism",
+      "oxidative stress monitoring",
+      "mitochondrial dynamics",
+      "metabolic pathway optimization",
+      "bioenergetics",
+      "mitochondrial dysfunction"
+    ]
+  },
+  {
+    "name": "Job Market Design and Economic Inclusion",
+    "description": "A policy and economic framework for designing labor markets that promote equity, access, and mobility, particularly for underrepresented groups, through targeted interventions and skill development.",
+    "keywords": [
+      "job market design",
+      "employment lifecycle analysis",
+      "workforce inclusion",
+      "inclusive economic development",
+      "gender equity in fishing",
+      "women in work",
+      "youth unemployment",
+      "economic co-benefits",
+      "workforce retention strategies",
+      "economic development through cultural strategy",
+      "occupational pathways"
+    ]
+  },
+  {
+    "name": "Multiple Moving Objects and Tracking Systems",
+    "description": "A domain focused on detecting, tracking, and predicting the movement of multiple dynamic entities—such as vehicles, animals, or people—using sensor fusion, AI, and computer vision in complex environments.",
+    "keywords": [
+      "multiple moving objects",
+      "multi-object tracking",
+      "motion tracking",
+      "robotic agents",
+      "swarm-based monitoring",
+      "vehicle-bridge interaction model",
+      "dynamic load balancing",
+      "real-time motion prediction",
+      "object detection frameworks",
+      "autonomous vehicle design"
+    ]
+  },
+  {
+    "name": "Co-Stimulatory Molecules and Immune Regulation",
+    "description": "A field in immunology studying the role of co-stimulatory signals in activating or suppressing immune responses, with applications in cancer immunotherapy and autoimmune disease treatment.",
+    "keywords": [
+      "co-stimulatory molecules",
+      "immune response mechanisms",
+      "immune recognition mechanisms",
+      "immunotherapeutic applications",
+      "immune system evasion",
+      "regulatory T cells",
+      "immune homeostasis",
+      "host-directed evolution systems",
+      "immunological cell diversification",
+      "immune modulation"
+    ]
+  },
+  {
+    "name": "Transport Service Providers and Urban Mobility",
+    "description": "An analysis of transport systems, service delivery, and policy design to improve efficiency, equity, and sustainability in urban and rural mobility, including public transit, cycling, and shared mobility.",
+    "keywords": [
+      "transport service providers",
+      "transport environments",
+      "transport project delivery",
+      "smart traffic management",
+      "commuter cycling",
+      "urban transport",
+      "public transport precinct design",
+      "reduced car dependency",
+      "commuter safety",
+      "intermodal transport",
+      "ferry and water transport"
+    ]
+  },
+  {
+    "name": "Direct-Detection Technologies in Physics and Sensing",
+    "description": "A core technology area focused on detecting physical phenomena (e.g., light, radiation, particles) without amplification or indirect measurement, enabling high-fidelity, real-time data acquisition.",
+    "keywords": [
+      "direct-detection",
+      "quantum sensing platforms",
+      "quantum dot-based photodetectors",
+      "optical-electrical bimodal systems",
+      "coherent optical imaging",
+      "real-time spectral detection",
+      "ultra-sensitive sensors",
+      "direct laser writing",
+      "particle detection",
+      "quantum sensing"
+    ]
+  },
+  {
+    "name": "Materials Design and Nanoscale Engineering",
+    "description": "The systematic design of new materials at the atomic and nanoscale level to achieve desired properties such as strength, conductivity, or biocompatibility, using computational modeling and experimental synthesis.",
+    "keywords": [
+      "materials design",
+      "nanomaterials",
+      "nanoscale material integration",
+      "2D membranes",
+      "multilayer 2D structures",
+      "nano optoelectronic coupling",
+      "nanoparticle design principles",
+      "surface nanotopography analysis",
+      "nanosheets",
+      "functionalized surfaces"
+    ]
+  },
+  {
+    "name": "Copper Recovery and Critical Mineral Enrichment",
+    "description": "A specialized process for extracting and purifying copper and other critical metals from ores, electronic waste, and industrial byproducts to support green technology and national security.",
+    "keywords": [
+      "copper recovery",
+      "critical mineral enrichment",
+      "strategic metals",
+      "mineral exploration strategy",
+      "ore-bearing sedimentary rocks",
+      "mining process optimization",
+      "metal cycling",
+      "mineral transformation",
+      "critical infrastructure management",
+      "industrial competitiveness"
+    ]
+  },
+  {
+    "name": "Democratic Fragility and Political Resilience",
+    "description": "A research field analyzing the structural and institutional vulnerabilities of democracies, including electoral integrity, public trust, and policy responsiveness, with a focus on resilience and reform.",
+    "keywords": [
+      "democratic fragility",
+      "political behavior analysis",
+      "public trust",
+      "electoral promises",
+      "policy scenario analysis",
+      "political engagement",
+      "institutional strength evaluation",
+      "transparent governance",
+      "electoral reform",
+      "civic value assessment"
+    ]
+  },
+  {
+    "name": "Immunotherapeutic Applications and Cancer Treatment",
+    "description": "The development and deployment of therapies that harness or modulate the immune system to detect and destroy cancer cells, including checkpoint inhibitors and CAR-T cell therapies.",
+    "keywords": [
+      "immunotherapeutic applications",
+      "cancer research",
+      "vaccine technology",
+      "immunostimulant",
+      "immune recognition mechanisms",
+      "immune system evasion",
+      "oncology",
+      "cancer treatments",
+      "immunological responses",
+      "tumor microenvironment"
+    ]
+  },
+  {
+    "name": "Gene Regulatory Network Modeling and Systems Biology",
+    "description": "A computational approach to modeling how genes interact and regulate each other to control cellular processes, with applications in disease, development, and synthetic biology.",
+    "keywords": [
+      "gene regulatory network modeling",
+      "genetic circuit design",
+      "genomic feature analysis",
+      "translational developmental modeling",
+      "genetic code engineering",
+      "gene evolution analysis",
+      "genetic drivers",
+      "gene expression profiling",
+      "systems biology",
+      "genomic combinations"
+    ]
+  },
+  {
+    "name": "Ocular Immunology and Eye Disease Mechanisms",
+    "description": "A specialized field studying immune responses in the eye, including autoimmune disorders like uveitis and the role of immune cells in retinal diseases and inflammation.",
+    "keywords": [
+      "ocular immunology",
+      "corneal ulcers",
+      "retina",
+      "immune recognition mechanisms",
+      "neuro-immune system",
+      "ocular surface",
+      "immune homeostasis",
+      "inflammation in eye",
+      "ocular diseases",
+      "immunological responses"
+    ]
+  },
+  {
+    "name": "Occupational Skills and Workforce Development",
+    "description": "A domain focused on identifying, developing, and certifying the skills required for modern and emerging industries, including digital, green, and health sectors.",
+    "keywords": [
+      "occupational skills",
+      "workforce development",
+      "skill-intensive industries",
+      "workforce retention strategies",
+      "workforce capability enhancement",
+      "industrial competitiveness",
+      "digital skills",
+      "green skills",
+      "healthcare workforce",
+      "professional re-engagement"
+    ]
+  },
+  {
+    "name": "Groundwater Contamination and Remediation",
+    "description": "The detection, assessment, and mitigation of pollutants in groundwater, including heavy metals, pesticides, and industrial chemicals, using advanced monitoring and treatment technologies.",
+    "keywords": [
+      "groundwater contamination",
+      "soil and groundwater remediation",
+      "heavy metal concentration analysis",
+      "pollution prevention",
+      "contaminant concentration profiling",
+      "environmental cleanup technologies",
+      "wastewater treatment in aquaculture",
+      "soil-plant interaction analysis",
+      "hydrogeology",
+      "remediation systems"
+    ]
+  },
+  {
+    "name": "Higher Education Expansion and Institutional Innovation",
+    "description": "A policy and educational domain focused on scaling access to higher education, improving quality, and integrating digital and interdisciplinary learning models.",
+    "keywords": [
+      "higher education expansion",
+      "higher education sector",
+      "curriculum modeling",
+      "student physical activity",
+      "student travel bursaries",
+      "inclusive education policy",
+      "digital learning platforms",
+      "educational innovation",
+      "educational readiness",
+      "teacher training in the United States"
+    ]
+  },
+  {
+    "name": "Novel Detection Technologies and Sensing Innovation",
+    "description": "The development of next-generation sensors and analytical tools for detecting biological, chemical, or environmental hazards with high sensitivity, specificity, and speed.",
+    "keywords": [
+      "novel detection technologies",
+      "highly sensitive detection",
+      "ultra-sensitive sensors",
+      "sensitive detection",
+      "real-time molecular analysis",
+      "biomarker measurement",
+      "microbial detection",
+      "pathogen genomics",
+      "single-molecule detection",
+      "chemical sensing"
+    ]
+  },
+  {
+    "name": "Treatment Guidelines and Clinical Decision Support",
+    "description": "A field focused on developing evidence-based, dynamic treatment protocols for diseases and conditions, supported by AI, data analytics, and real-world clinical outcomes.",
+    "keywords": [
+      "treatment guidelines",
+      "clinical training programs",
+      "personalized health diagnostics",
+      "treatment effect modeling",
+      "health interventions",
+      "patient self-management",
+      "clinical detection",
+      "treatment innovation",
+      "personalized treatment strategies",
+      "clinical pathway development"
+    ]
+  },
+  {
+    "name": "Curriculum Modeling and Educational Transformation",
+    "description": "A process of designing, simulating, and evaluating curricula to align with learning outcomes, technological advances, and societal needs, using data-driven and adaptive frameworks.",
+    "keywords": [
+      "curriculum modeling",
+      "formative assessment",
+      "interdisciplinary system optimization",
+      "educational use",
+      "inclusive classroom design",
+      "cultural diversity in education",
+      "student engagement",
+      "educational policy implementation",
+      "blended propellants",
+      "educational innovation"
+    ]
+  },
+  {
+    "name": "Hospitals and Health System Optimization",
+    "description": "A domain focused on improving hospital operations, patient outcomes, staff wellbeing, and resource allocation through data analytics, automation, and process redesign.",
+    "keywords": [
+      "hospitals",
+      "healthcare interventions",
+      "healthcare team wellbeing",
+      "patient education",
+      "health outcome modeling",
+      "health service access",
+      "patient self-management",
+      "clinical trial design",
+      "healthcare delivery",
+      "healthcare access"
+    ]
+  },
+  {
+    "name": "Visual Attention and Cognitive Processing",
+    "description": "A neuroscience and psychology field studying how humans perceive, focus, and interpret visual information, with applications in AI, design, and user experience.",
+    "keywords": [
+      "visual attention",
+      "visual working memory",
+      "neural mechanisms of attention",
+      "perceptual evaluation",
+      "visual recording",
+      "visual storytelling (film)",
+      "human perception",
+      "neurovisual experiments",
+      "cognitive architecture",
+      "attention to detail"
+    ]
+  },
+  {
+    "name": "Resource Management Algorithms and Optimization",
+    "description": "The use of computational models to allocate, monitor, and optimize the use of natural and human resources across sectors such as energy, agriculture, and water.",
+    "keywords": [
+      "resource management algorithms",
+      "resource targeting",
+      "energy system reliability",
+      "resource sustainability",
+      "efficient micro air vehicle flight",
+      "energy efficiency",
+      "optimization algorithms",
+      "resource-constrained environments",
+      "sustainable resource use",
+      "capacity building"
+    ]
+  },
+  {
+    "name": "Digital Mapping and Geospatial Analysis",
+    "description": "A field using GIS, remote sensing, and spatial modeling to map and analyze land use, environmental change, infrastructure, and human activity across scales.",
+    "keywords": [
+      "digital mapping",
+      "geographic information systems (GIS)",
+      "spatial data modeling",
+      "spatial genetics",
+      "spatial awareness",
+      "spatial quantification",
+      "spatial biology technologies",
+      "geotechnical sensing",
+      "geographic range",
+      "spatial analysis"
+    ]
+  },
+  {
+    "name": "Perceptual Evaluation and Human-Computer Interaction",
+    "description": "A field focused on assessing how humans perceive and interact with digital systems, including interfaces, visual displays, and sensory feedback.",
+    "keywords": [
+      "perceptual evaluation",
+      "user interface analytics",
+      "human-machine interface evaluation",
+      "user accessibility evaluation",
+      "interactive data dashboards",
+      "user practices",
+      "human-centered lighting",
+      "visual input",
+      "interactive sounds",
+      "sensory technologies"
+    ]
+  },
+  {
+    "name": "Artificial Tissue Growth and Regenerative Medicine",
+    "description": "The development of lab-grown tissues and organs using stem cells, biomaterials, and bioreactors to treat injuries and diseases and reduce reliance on organ transplants.",
+    "keywords": [
+      "artificial tissue growth",
+      "stem cell culture optimization",
+      "3D tissue engineering",
+      "organoid systems",
+      "tissue remodelling",
+      "regenerative medicine",
+      "biomaterials design",
+      "cellular repair mechanisms",
+      "tissue engineering",
+      "bioprinting"
+    ]
+  },
+  {
+    "name": "Cosmological Parameter Estimation and Universe Evolution",
+    "description": "A theoretical and observational field that models the origin, structure, and evolution of the universe, including dark energy, cosmic inflation, and large-scale structure formation.",
+    "keywords": [
+      "cosmological parameter",
+      "universe evolution",
+      "galactic history",
+      "stellar nucleosynthesis",
+      "cosmological framework",
+      "dark Universe",
+      "cosmic microwave background",
+      "early galaxy formation",
+      "cosmological parameter constraints",
+      "space object tracking"
+    ]
+  },
+  {
+    "name": "Social Welfare Reforms and Equity Policy",
+    "description": "A policy domain focused on redesigning social protection systems to ensure fairness, accessibility, and responsiveness to vulnerable populations, including the elderly and Indigenous communities.",
+    "keywords": [
+      "social welfare reforms",
+      "residential equity",
+      "public welfare programs",
+      "pension system sustainability",
+      "income security for elderly",
+      "social protection",
+      "community wellbeing",
+      "equity prices",
+      "inclusive public policy",
+      "social equity"
+    ]
+  },
+  {
+    "name": "Drought-Resistant Crops and Agricultural Resilience",
+    "description": "The development of plant varieties and farming practices that enhance survival and productivity under water-limited conditions, supporting food security in arid regions.",
+    "keywords": [
+      "drought-resistant crops",
+      "crop yield maximisation",
+      "plant adaptation",
+      "agricultural resilience",
+      "water-limited conditions",
+      "soil moisture mapping",
+      "enhanced photosynthetic efficiency",
+      "plant physiological responses",
+      "agricultural microbiology",
+      "sustainable farming practices"
+    ]
+  },
+  {
+    "name": "Large-Scale Image Sensors and High-Resolution Imaging",
+    "description": "The design and deployment of sensors capable of capturing high-resolution, high-dynamic-range images across vast areas, used in astronomy, environmental monitoring, and surveillance.",
+    "keywords": [
+      "large-scale image sensors",
+      "3D imaging techniques",
+      "micro-CT imaging",
+      "in vivo imaging",
+      "optical imaging",
+      "high-resolution data",
+      "remote sensing",
+      "satellite imaging",
+      "image processing pipelines",
+      "real-time imaging"
+    ]
+  },
+  {
+    "name": "Predictive Modeling Software and AI-Driven Forecasting",
+    "description": "The use of machine learning, statistical models, and simulation tools to forecast trends in climate, health, finance, and social systems with high accuracy and adaptability.",
+    "keywords": [
+      "predictive modeling software",
+      "machine learning for astrophysics",
+      "deep learning for imaging",
+      "predictive material property modeling",
+      "predictive health models",
+      "climate scenario forecasting",
+      "predictive reliability",
+      "model training robustness",
+      "AI-driven inference",
+      "statistical modeling platforms"
+    ]
+  },
+  {
+    "name": "Fish Market Safety and Food Quality Assurance",
+    "description": "A field focused on ensuring the safety, quality, and traceability of fish and seafood products from harvest to market, including pathogen control and consumer protection.",
+    "keywords": [
+      "fish market safety",
+      "seafood value addition",
+      "fishery harvest strategies",
+      "pathogen characterization",
+      "food safety management",
+      "seafood industry growth",
+      "fish and chips",
+      "fish welfare",
+      "marine food products",
+      "food safety improvement"
+    ]
+  },
+  {
+    "name": "Communication Scheduling Analysis and Network Optimization",
+    "description": "A domain focused on optimizing the timing, frequency, and routing of communication in networks to improve efficiency, reduce latency, and ensure reliability.",
+    "keywords": [
+      "communication scheduling analysis",
+      "wireless network architecture",
+      "network performance monitoring",
+      "data transmission",
+      "high-bandwidth data systems",
+      "secure transmission protocols",
+      "communication planning",
+      "network-aware computation",
+      "real-time communication",
+      "mobile device connectivity"
+    ]
+  },
+  {
+    "name": "Transport Environments and Urban Mobility Systems",
+    "description": "A systems-level study of how transport infrastructure, vehicles, and policies shape urban environments, including safety, equity, and environmental impact.",
+    "keywords": [
+      "transport environments",
+      "transport decision making",
+      "urban transport",
+      "public transport",
+      "commuter cycling",
+      "road safety",
+      "traffic flow modeling",
+      "vehicle-bridge interaction model",
+      "urban corridors",
+      "smart traffic management"
+    ]
+  },
+  {
+    "name": "Climate System Prediction and Long-Term Modeling",
+    "description": "The use of complex models to simulate and predict long-term climate trends, including temperature, precipitation, and extreme events, to inform adaptation and mitigation strategies.",
+    "keywords": [
+      "climate system prediction",
+      "climate scenario modeling",
+      "climate change effects",
+      "climate adaptation modeling",
+      "climate-fire interaction models",
+      "Southern Ocean climate system",
+      "climate resilience",
+      "climate-induced famine",
+      "climate response options",
+      "global climate mitigation strategies"
+    ]
+  },
+  {
+    "name": "Women in Work and Gender Equity",
+    "description": "A policy and research domain focused on advancing gender equity in employment, leadership, and workplace culture through targeted interventions and structural reforms.",
+    "keywords": [
+      "women in work",
+      "gender equity",
+      "gender equity in fishing",
+      "women in corporate leadership",
+      "gendered economic structures",
+      "workforce inclusion",
+      "female participation in fishing",
+      "gender and work",
+      "women's football",
+      "workplace equity"
+    ]
+  },
+  {
+    "name": "Liquidity Constraints and Financial Market Stability",
+    "description": "A financial analysis domain examining the flow of funds in markets and institutions, with a focus on identifying and mitigating liquidity risks during crises.",
+    "keywords": [
+      "liquidity constraints",
+      "financial market stability",
+      "financial cycle busts",
+      "market consistency",
+      "financial risk analysis",
+      "financial lending models",
+      "liquidity risk assessment",
+      "capital market efficiency",
+      "financial hedging",
+      "market volatility"
+    ]
+  },
+  {
+    "name": "Laser Additive Manufacturing and 3D Printing",
+    "description": "A manufacturing technology using lasers to build complex parts layer by layer, with applications in aerospace, medicine, and sustainable construction.",
+    "keywords": [
+      "laser additive manufacturing",
+      "3D printing",
+      "precision cutting of metals and ceramics",
+      "laser ablation",
+      "additive manufacturing in food",
+      "fabrication of semiconductors",
+      "high-precision manufacturing",
+      "customised manufacturing",
+      "rapid prototyping",
+      "laser-based fabrication"
+    ]
+  },
+  {
+    "name": "Historical Language Research and Linguistic Evolution",
+    "description": "A field studying the development, variation, and use of languages over time, including dialects, language contact, and sociolinguistic change.",
+    "keywords": [
+      "historical language research",
+      "linguistic variability",
+      "language contact",
+      "language loss",
+      "linguistic sources",
+      "language socialization",
+      "multilingual text analysis",
+      "language programs in schools",
+      "language ecology",
+      "historical sound"
+    ]
+  },
+  {
+    "name": "Global Health Policy Guidance and Disease Forecasting",
+    "description": "A domain focused on developing international health policies and predictive models to address pandemics, antimicrobial resistance, and global disease outbreaks.",
+    "keywords": [
+      "global health policy guidance",
+      "global disease forecasting",
+      "infectious disease modelling",
+      "pandemic response strategies",
+      "viral evolution",
+      "outbreak science",
+      "zoonotic disease risk assessment",
+      "public health campaigns",
+      "health promotion in older adults",
+      "disease and environmental stress response"
+    ]
+  },
+  {
+    "name": "Distributed Recycling Networks and Circular Economy",
+    "description": "A system-level approach to managing waste and resource recovery through decentralized, community-based, and technology-enabled recycling networks.",
+    "keywords": [
+      "distributed recycling networks",
+      "circular economy",
+      "waste management policy",
+      "plastic degradation",
+      "plastic waste",
+      "waste-to-resource conversion",
+      "resource recovery",
+      "sustainable waste management",
+      "industrial symbiosis",
+      "recycling technology"
+    ]
+  },
+  {
+    "name": "Predictive Reliability and System Failure Analysis",
+    "description": "A field focused on predicting the failure of complex systems (e.g., infrastructure, vehicles, software) using data, modeling, and real-time monitoring to improve safety and maintenance.",
+    "keywords": [
+      "predictive reliability",
+      "failure prediction",
+      "system performance modelling",
+      "robustness to misspecification",
+      "model-free control",
+      "system behavioral modeling",
+      "risk stratification",
+      "predictive maintenance",
+      "system failure",
+      "reliability engineering"
+    ]
+  },
+  {
+    "name": "Heavy Metal Concentration Analysis and Environmental Toxicity",
+    "description": "A field focused on detecting, quantifying, and assessing the environmental and health impacts of heavy metals in soil, water, and biological systems.",
+    "keywords": [
+      "heavy metal concentration analysis",
+      "inorganic toxicants",
+      "arsenic",
+      "lead-based paint removal",
+      "chemical safety",
+      "environmental toxicity",
+      "bioaccumulation",
+      "toxicity screening",
+      "soil and groundwater remediation",
+      "pollution prevention"
+    ]
+  },
+  {
+    "name": "Hypothalamic Neural Circuits and Neuroendocrine Regulation",
+    "description": "A neuroscience field studying the brain circuits in the hypothalamus that regulate hormones, stress, metabolism, and behavior through interactions with the endocrine system.",
+    "keywords": [
+      "hypothalamic neural circuits",
+      "neural resilience",
+      "neuroendocrine regulation",
+      "melatonin signaling",
+      "neurochemical analysis",
+      "stress molecules detection",
+      "neuroperception",
+      "neurobiological basis",
+      "cerebral blood vessels",
+      "neural transmission delays"
+    ]
+  },
+  {
+    "name": "Human Phenotype Prediction and Genetic Risk Assessment",
+    "description": "A field using genomic and epigenetic data to predict an individual's physical traits, disease susceptibility, and response to treatments.",
+    "keywords": [
+      "human phenotype prediction",
+      "genetic evaluation",
+      "genetic basis of traits",
+      "genomic feature analysis",
+      "genetic code engineering",
+      "genetic intervention design",
+      "gene regulatory network modeling",
+      "personalized health diagnostics",
+      "genomic combinations",
+      "genetic risk assessment"
+    ]
+  },
+  {
+    "name": "Service Efficiency Improvement and Operational Excellence",
+    "description": "A domain focused on optimizing processes, reducing waste, and enhancing service delivery in public, private, and healthcare sectors through data analytics and automation.",
+    "keywords": [
+      "service efficiency improvement",
+      "service delivery innovation",
+      "project delivery improvement",
+      "organizational assessment",
+      "performance standards",
+      "management plan implementation",
+      "workforce productivity",
+      "system performance modelling",
+      "operational efficiency",
+      "process automation"
+    ]
+  },
+  {
+    "name": "Internet of Me and Personal Data Ecosystems",
+    "description": "A concept exploring the integration of personal data, health, and behavior across digital platforms to enable personalized services and proactive decision-making.",
+    "keywords": [
+      "Internet of Me",
+      "personal data exploration",
+      "digital data collection",
+      "personal privacy protection",
+      "digital health records analysis",
+      "personalized query optimization",
+      "user-driven interaction",
+      "digital identity",
+      "data privacy",
+      "personalized health diagnostics"
+    ]
+  },
+  {
+    "name": "Superior Breeding Stock Development and Animal Genetics",
+    "description": "A field focused on improving livestock and crop productivity through selective breeding, genomic selection, and genetic engineering.",
+    "keywords": [
+      "superior breeding stock development",
+      "enhanced breeding programs",
+      "animal breeding efficiency",
+      "genetic evaluation",
+      "genetic intervention design",
+      "genomic combinations",
+      "genetic drivers",
+      "selective breeding",
+      "animal stock management",
+      "breeding programs"
+    ]
+  },
+  {
+    "name": "Magnesium Oxychloride Cement and Sustainable Construction",
+    "description": "A green alternative to traditional cement that reduces carbon emissions and improves durability, with applications in sustainable building and infrastructure.",
+    "keywords": [
+      "magnesium oxychloride cement",
+      "green building design",
+      "sustainable construction",
+      "low-carbon building solutions",
+      "concrete",
+      "non-cement-based concrete",
+      "environmental impact",
+      "energy-efficient construction materials",
+      "carbon-neutral services",
+      "construction innovation"
+    ]
+  },
+  {
+    "name": "Interactive Data Dashboards and Visualization",
+    "description": "A field focused on creating intuitive, real-time dashboards that allow users to explore complex datasets through visual, interactive, and dynamic interfaces.",
+    "keywords": [
+      "interactive data dashboards",
+      "data visualization in art",
+      "visual storytelling (film)",
+      "interactive sounds",
+      "data-driven design",
+      "data visualization",
+      "visual working memory",
+      "interactive web mapping",
+      "digital data collection",
+      "data exploration"
+    ]
+  },
+  {
+    "name": "Flexible Energy Harvesting Devices and Power Generation",
+    "description": "A technology domain focused on developing wearable, portable, and ambient devices that harvest energy from motion, light, or temperature gradients for low-power applications.",
+    "keywords": [
+      "flexible energy harvesting devices",
+      "energy harvesting",
+      "low-power computing",
+      "solar irradiation systems",
+      "wearable thermoelectric textiles",
+      "energy-efficient buildings",
+      "energy conversion efficiency",
+      "power management systems",
+      "ambient energy",
+      "energy-generating materials"
+    ]
+  },
+  {
+    "name": "Discovery of Ancient Stellar Populations and Astro-Physics",
+    "description": "A field using astronomical observations and simulations to identify and study the formation and evolution of ancient star systems and galaxies.",
+    "keywords": [
+      "discovery of ancient stellar populations",
+      "stellar nucleosynthesis",
+      "stellar compositions",
+      "galactic evolution",
+      "stellar mass measurement",
+      "astronomical events",
+      "exoplanet architecture modeling",
+      "space object tracking",
+      "galactic history",
+      "cosmological framework"
+    ]
+  },
+  {
+    "name": "Lake Condition Trends and Ecosystem Monitoring",
+    "description": "A field focused on tracking changes in lake health, biodiversity, and water quality over time to assess environmental impact and support conservation.",
+    "keywords": [
+      "lake condition trends",
+      "ecosystem function modeling",
+      "marine ecosystem degradation",
+      "biodiversity protection",
+      "ecological monitoring",
+      "water quality",
+      "lake health",
+      "ecosystem preservation",
+      "environmental change",
+      "aquatic biomonitoring"
+    ]
+  },
+  {
+    "name": "Secure Workflow Engines and Data Integrity",
+    "description": "A technology domain focused on designing secure, auditable, and tamper-resistant workflows for data processing, decision-making, and governance in high-risk environments.",
+    "keywords": [
+      "secure workflow engines",
+      "secure data infrastructure",
+      "privacy-preserving data analysis",
+      "data protection investment",
+      "privacy-compliance assessment framework",
+      "secure transmission protocols",
+      "data integrity",
+      "secure business intelligence",
+      "cybersecurity in infrastructure",
+      "trusted computing"
+    ]
+  },
+  {
+    "name": "Global Biogeochemical Cycles and Earth System Science",
+    "description": "A comprehensive study of the movement and transformation of elements (e.g., carbon, nitrogen, phosphorus) through the atmosphere, oceans, and biosphere.",
+    "keywords": [
+      "global biogeochemical cycles",
+      "carbon and nitrogen cycles",
+      "nutrient cycling",
+      "global carbon cycling",
+      "ecosystem function",
+      "biogeochemical analysis",
+      "elemental mobility",
+      "soil-plant interaction",
+      "environmental chemistry",
+      "elemental cycles"
+    ]
+  },
+  {
+    "name": "Concrete and Sustainable Construction Materials",
+    "description": "A field focused on developing and applying innovative, sustainable, and durable concrete and construction materials to reduce environmental impact and improve building performance.",
+    "keywords": [
+      "concrete",
+      "non-cement-based concrete",
+      "green building design",
+      "sustainable construction",
+      "low-carbon materials",
+      "energy-efficient buildings",
+      "construction innovation",
+      "material longevity",
+      "building permit processes",
+      "construction standards"
+    ]
+  },
+  {
+    "name": "Project Delivery Improvement and Process Management",
+    "description": "A domain focused on optimizing the planning, execution, and monitoring of projects across sectors to improve outcomes, reduce delays, and ensure cost-effectiveness.",
+    "keywords": [
+      "project delivery improvement",
+      "project cost reduction",
+      "planning systems",
+      "management triggers",
+      "workforce mapping",
+      "management cost",
+      "project delivery",
+      "operational measures",
+      "process data analytics",
+      "project delivery frameworks"
+    ]
+  },
+  {
+    "name": "Crop Yield Maximisation and Agricultural Productivity",
+    "description": "A field focused on increasing agricultural output through advanced farming techniques, biotechnology, and data-driven decision-making.",
+    "keywords": [
+      "crop yield maximisation",
+      "improving crop yields",
+      "agricultural productivity",
+      "enhanced photosynthetic efficiency",
+      "precision agriculture",
+      "soil health",
+      "agricultural trade",
+      "fertilizer efficiency",
+      "agricultural gene modulation",
+      "sustainable farming practices"
+    ]
+  },
+  {
+    "name": "Digital Drawing Tools and Creative Technologies",
+    "description": "A domain focused on developing and applying digital tools for artistic creation, design, and storytelling, including augmented reality and interactive media.",
+    "keywords": [
+      "digital drawing tools",
+      "digital art",
+      "interactive narratives",
+      "creative practice models",
+      "art and conflict",
+      "visual storytelling (film)",
+      "interactive sound",
+      "digital platforms for milk sharing",
+      "digital creativity",
+      "artistic practice"
+    ]
+  },
+  {
+    "name": "Family Involvement in Care and Support Systems",
+    "description": "A field focused on integrating family members into healthcare, elder care, and mental health support to improve outcomes and reduce isolation.",
+    "keywords": [
+      "family involvement in care",
+      "family support services",
+      "care planning",
+      "family wellbeing",
+      "unpaid carers",
+      "parental involvement in AI use",
+      "family engagement",
+      "support for Indigenous families",
+      "community care",
+      "family health"
+    ]
+  },
+  {
+    "name": "Historical Fuel Analysis and Energy Transition",
+    "description": "A field examining the historical use of fuels and energy sources to inform modern energy transitions and sustainable energy policies.",
+    "keywords": [
+      "historical fuel analysis",
+      "energy transition",
+      "fossil fuel utilization",
+      "renewable energy adoption",
+      "clean energy conversion",
+      "energy system reliability",
+      "energy efficiency",
+      "energy policy",
+      "energy balance",
+      "energy systems"
+    ]
+  },
+  {
+    "name": "Functional Testing in Plants and Bioreactor Systems",
+    "description": "A field focused on evaluating plant performance, stress responses, and bioreactor efficiency under controlled and real-world conditions.",
+    "keywords": [
+      "functional testing in plants",
+      "plant bioreactors",
+      "plant physiological responses",
+      "plant growth manipulation",
+      "bioreactor systems",
+      "plant health monitoring",
+      "biological testing platforms",
+      "functional traits",
+      "plant performance",
+      "plant stress"
+    ]
+  },
+  {
+    "name": "Open Platform and Interoperable Frameworks",
+    "description": "A design philosophy promoting open-source, modular, and interoperable systems that allow diverse technologies and data to work together seamlessly.",
+    "keywords": [
+      "open platform",
+      "interoperable frameworks",
+      "open-source modeling tools",
+      "modular nanotechnology",
+      "scalable review analysis platforms",
+      "interoperability",
+      "open science",
+      "open data databases",
+      "system integration",
+      "modular representations"
+    ]
+  },
+  {
+    "name": "Mantle Rock Characterization and Geophysical Modeling",
+    "description": "A field focused on analyzing the composition, structure, and dynamics of Earth's mantle through geophysical surveys and laboratory studies.",
+    "keywords": [
+      "mantle rock characterization",
+      "mantle melting",
+      "subduction dynamics",
+      "crustal structure analysis",
+      "geophysical analysis",
+      "geological modelling tools",
+      "mantle structure",
+      "geophysical surveys",
+      "mantle dynamics",
+      "earth structures stability"
+    ]
+  },
+  {
+    "name": "Public Funding Efficiency and Resource Allocation",
+    "description": "A policy and analytical domain focused on evaluating how public funds are used, managed, and distributed to maximize social and economic outcomes.",
+    "keywords": [
+      "public funding efficiency",
+      "funding body adoption",
+      "resource allocation systems",
+      "financial efficiency",
+      "budgetary allocations",
+      "cost-benefit optimization",
+      "policy implementation",
+      "economic impact assessment",
+      "fiscal policy improvement",
+      "funding effectiveness"
+    ]
+  },
+  {
+    "name": "Joint Motion Analysis and Biomechanics",
+    "description": "A field studying how human and animal bodies move together in complex tasks, with applications in robotics, rehabilitation, and sports science.",
+    "keywords": [
+      "joint motion analysis",
+      "biomechanics",
+      "motor circuits",
+      "mechanical-force induced chemistry",
+      "human movement",
+      "muscle training methods",
+      "neural function",
+      "motor control",
+      "biomechanical modeling",
+      "human-machine interaction"
+    ]
+  },
+  {
+    "name": "Solar Cell Technology and Photovoltaic Energy Conversion",
+    "description": "A field focused on improving the efficiency, durability, and affordability of solar energy conversion technologies for widespread deployment.",
+    "keywords": [
+      "solar cell technology",
+      "photovoltaic energy conversion",
+      "solar electricity generation",
+      "solar-driven processes",
+      "solar-to-fuel conversion",
+      "renewable energy conversion",
+      "energy harvesting",
+      "solar-driven catalysis",
+      "high-efficiency powertrains",
+      "photovoltaic systems"
+    ]
+  },
+  {
+    "name": "Fabrication of Semiconductors and Nanomaterials",
+    "description": "A core technology domain focused on the precise manufacturing of semiconductor devices and nanomaterials for electronics, sensors, and energy applications.",
+    "keywords": [
+      "fabrication of semiconductors",
+      "semiconductor nanomaterials",
+      "silicon-based single-electron transistors",
+      "CMOS-compatible fabrication",
+      "nanomaterials",
+      "semiconductor performance",
+      "device fabrication",
+      "advanced fabrication processes",
+      "semiconductor-based devices",
+      "thin-film displays"
+    ]
+  },
+  {
+    "name": "AI-Driven Inference and Machine Learning Applications",
+    "description": "A domain focused on using AI and machine learning to extract insights, make predictions, and automate decision-making across scientific, medical, and business domains.",
+    "keywords": [
+      "AI-driven inference",
+      "machine learning for behavioural prediction",
+      "deep learning platforms",
+      "machine learning in genomics",
+      "machine learning for astrophysics",
+      "AI and machine learning",
+      "machine learning for structural assessment",
+      "machine learning for event detection",
+      "predictive modeling",
+      "data-driven inference"
+    ]
+  },
+  {
+    "name": "Economic Theory Application and Policy Design",
+    "description": "A field applying economic models and theories to inform policy decisions in areas such as trade, taxation, and public spending.",
+    "keywords": [
+      "economic theory application",
+      "economic development through cultural strategy",
+      "economic improvement in LNG projects",
+      "economic base enhancement",
+      "market analysis",
+      "economic datasets",
+      "economic welfare enhancement",
+      "economic policy formulation",
+      "economic incentives",
+      "market competition analysis"
+    ]
+  },
+  {
+    "name": "Gaming Industries and Human-Computer Interaction",
+    "description": "A domain exploring how gaming technologies and immersive environments influence human behavior, learning, and social interaction.",
+    "keywords": [
+      "gaming industries",
+      "virtual reality (VR) systems",
+      "immersive simulation",
+      "interactive narratives",
+      "digital engagement tools",
+      "human-robot co-evolution",
+      "interactive sound",
+      "immersive technology",
+      "game-based learning",
+      "digital experiences"
+    ]
+  },
+  {
+    "name": "Early Career Researcher Development and Mentorship",
+    "description": "A support system focused on nurturing the skills, confidence, and career trajectories of early-stage researchers through training, funding, and community engagement.",
+    "keywords": [
+      "early career researcher",
+      "researcher development",
+      "capacity building",
+      "post-doctoral projects",
+      "research coordination",
+      "researcher mentorship",
+      "academic enablers",
+      "doctoral student retention",
+      "research training",
+      "researcher support"
+    ]
+  },
+  {
+    "name": "Quantum Dynamics and Quantum Computing",
+    "description": "A field studying the behavior of quantum systems and developing quantum computers and sensors for applications in simulation, cryptography, and sensing.",
+    "keywords": [
+      "quantum dynamics",
+      "quantum computing foundations",
+      "quantum algorithms",
+      "noisy quantum environments",
+      "quantum control protocols",
+      "quantum sensing",
+      "quantum memory prototypes",
+      "quantum electronic design automation",
+      "quantum software development",
+      "quantum devices"
+    ]
+  },
+  {
+    "name": "Phase Change in Solids and Material Transitions",
+    "description": "A materials science field studying transitions in solid-state materials (e.g., melting, crystallization, phase separation) under temperature, pressure, or stress.",
+    "keywords": [
+      "phase change in solids",
+      "solidification kinetics",
+      "phase separation",
+      "material dynamics",
+      "solid-state quantum emitters",
+      "crystalline structure",
+      "solid-state materials",
+      "material transformation",
+      "thermal stability",
+      "solid-phase reactions"
+    ]
+  },
+  {
+    "name": "Projectile Technology and Ballistic Systems",
+    "description": "A field focused on the design, simulation, and analysis of projectile motion and impact for defense, sports, and safety applications.",
+    "keywords": [
+      "projectile technology",
+      "ballistic systems",
+      "trajectory modeling",
+      "impact analysis",
+      "dynamic loading",
+      "impact resistance",
+      "mechanical durability",
+      "kinetic energy",
+      "projectile flight",
+      "ballistic testing"
+    ]
+  },
+  {
+    "name": "Stem Cell Culture Optimization and Regenerative Therapies",
+    "description": "A field focused on improving the growth, maintenance, and differentiation of stem cells for use in regenerative medicine and disease modeling.",
+    "keywords": [
+      "stem cell culture optimization",
+      "stem/progenitor cells",
+      "regenerative medicine",
+      "tissue engineering",
+      "cellular repair mechanisms",
+      "biomaterials design",
+      "organoid systems",
+      "stem cell therapies",
+      "cellular regeneration",
+      "cell differentiation"
+    ]
+  },
+  {
+    "name": "Sludge Reduction and Waste Management",
+    "description": "A field focused on reducing the volume and toxicity of sludge in wastewater treatment through advanced filtration, digestion, and recycling technologies.",
+    "keywords": [
+      "sludge reduction",
+      "wastewater treatment",
+      "waste management policy",
+      "sludge bulking",
+      "biological treatment",
+      "wastewater plant operations",
+      "waste-to-resource",
+      "sewage treatment",
+      "resource recovery",
+      "environmental cleanup"
+    ]
+  },
+  {
+    "name": "Radio Sky Survey and Astrophysical Observations",
+    "description": "A field using radio telescopes and data analysis to study celestial objects, cosmic background radiation, and large-scale structures in the universe.",
+    "keywords": [
+      "radio sky survey",
+      "radio waves",
+      "space object tracking",
+      "radio astronomy",
+      "astronomical events",
+      "galactic structure",
+      "radio telescopes",
+      "cosmic background",
+      "space-based instrumentation",
+      "astrophysical observations"
+    ]
+  },
+  {
+    "name": "Preventive Approach and Health Promotion",
+    "description": "A public health strategy focused on preventing disease and promoting well-being through education, screening, and environmental interventions.",
+    "keywords": [
+      "preventive approach",
+      "preventive health programs",
+      "health promotion in older adults",
+      "public health campaigns",
+      "disease prevention",
+      "health education",
+      "early detection",
+      "wellbeing in education",
+      "health outcome modeling",
+      "preventive policy guidelines"
+    ]
+  },
+  {
+    "name": "Infectious Disease Modelling and Outbreak Response",
+    "description": "A field using mathematical and computational models to predict and respond to the spread of infectious diseases in populations.",
+    "keywords": [
+      "infectious disease modelling",
+      "outbreak science",
+      "epidemic response",
+      "viral evolution",
+      "pathogen genomics",
+      "disease spread",
+      "public health response",
+      "epidemiological modelling",
+      "outbreak prediction",
+      "disease forecasting"
+    ]
+  },
+  {
+    "name": "Tyre Recycling and Sustainable Materials",
+    "description": "A field focused on recycling rubber and plastics from tyres into new products, reducing waste and supporting circular economy goals.",
+    "keywords": [
+      "tyre recycling",
+      "plastic degradation",
+      "recycling technology",
+      "sustainable materials",
+      "waste-to-resource",
+      "circular economy",
+      "industrial waste processing",
+      "material recovery",
+      "sustainable manufacturing",
+      "material reuse"
+    ]
+  },
+  {
+    "name": "Economic Co-Benefits and Sustainable Development",
+    "description": "A framework for identifying and measuring the economic, social, and environmental benefits of sustainable technologies and policies.",
+    "keywords": [
+      "economic co-benefits",
+      "inclusive economic development",
+      "sustainable prosperity",
+      "economic development",
+      "economic resilience",
+      "sustainable development",
+      "economic improvement",
+      "value-based modeling",
+      "economic welfare enhancement",
+      "social and economic benefits"
+    ]
+  },
+  {
+    "name": "Light-Responsive Materials and Photonic Systems",
+    "description": "A field focused on materials and devices that respond to light for applications in energy, sensing, and smart environments.",
+    "keywords": [
+      "light-responsive materials",
+      "photoinduced catalysis",
+      "light-driven ion transport",
+      "photoelectrochemical systems",
+      "photovoltaic energy conversion",
+      "light-driven degradation",
+      "photonic materials",
+      "optical systems",
+      "light harvesting",
+      "photoactive perovskites"
+    ]
+  },
+  {
+    "name": "Cell Network Engineering and Biological Systems",
+    "description": "A field focused on designing and manipulating cellular networks to improve function, communication, and response in engineered or natural systems.",
+    "keywords": [
+      "cell network engineering",
+      "cellular signaling pathway analysis",
+      "cellular communication",
+      "cellular metabolism",
+      "biological network mapping",
+      "cellular activation assays",
+      "cell-cell interaction",
+      "biological systems engineering",
+      "cellular systems",
+      "network dynamics"
+    ]
+  },
+  {
+    "name": "Personalized Health Diagnostics and Precision Medicine",
+    "description": "A field using individualized data to tailor medical diagnosis, treatment, and prevention strategies to a patient’s unique genetic, environmental, and lifestyle profile.",
+    "keywords": [
+      "personalized health diagnostics",
+      "precision medicine",
+      "personalized treatment strategies",
+      "genomic profiling",
+      "personalized care",
+      "genetic testing",
+      "biomarker identification",
+      "precision health",
+      "individualized medicine",
+      "health data integration"
+    ]
+  },
+  {
+    "name": "Technology Climate and Innovation Ecosystems",
+    "description": "A domain focused on understanding and shaping the broader ecosystem of technological innovation, including climate, policy, and investment trends.",
+    "keywords": [
+      "technology climate",
+      "innovative research",
+      "technology prototyping",
+      "digital innovation",
+      "research ecosystem development",
+      "innovation policy",
+      "technology development",
+      "emerging technologies",
+      "technology adoption",
+      "innovation systems"
+    ]
+  },
+  {
+    "name": "Preparation for Diverse Learning Environments",
+    "description": "A field focused on designing inclusive, flexible, and adaptive educational environments that support diverse learners, cultures, and learning styles.",
+    "keywords": [
+      "preparation for diverse learning environments",
+      "inclusive education policy",
+      "culturally diverse classrooms",
+      "intercultural pedagogy",
+      "cultural diversity in education",
+      "inclusive design",
+      "diverse role models in science",
+      "cultural knowledge transfer",
+      "inclusive classrooms",
+      "educational equity"
+    ]
+  },
+  {
+    "name": "Flow Control Techniques and Fluid Dynamics",
+    "description": "A field focused on managing and optimizing the flow of fluids in engineering systems, including air, water, and gases, for efficiency and safety.",
+    "keywords": [
+      "flow control techniques",
+      "fluid dynamics",
+      "turbulent flow modeling",
+      "flow over vehicles",
+      "hydrodynamic loading estimation",
+      "flow reactors",
+      "fluid inclusions",
+      "flow-based diagnostics",
+      "fluid-structure interaction",
+      "fluid transport"
+    ]
+  },
+  {
+    "name": "Rider Behaviour and Safety in Transport",
+    "description": "A field studying how individuals interact with vehicles and transport systems, with a focus on safety, risk, and behavioural patterns.",
+    "keywords": [
+      "rider behaviour",
+      "road injuries",
+      "commuter safety",
+      "driver assistance",
+      "traffic safety",
+      "vehicle-bridge interaction model",
+      "public transport safety",
+      "safety in urban robotics",
+      "driver behaviour",
+      "safety protocols"
+    ]
+  },
+  {
+    "name": "Old Age and Geriatric Health",
+    "description": "A field focused on the health, social, and cognitive challenges of older adults, including chronic disease, mental health, and care access.",
+    "keywords": [
+      "old age",
+      "health in older adults",
+      "senior school science",
+      "aging infrastructure",
+      "senior care",
+      "elderly wellbeing",
+      "age-related cognitive decline",
+      "chronic disease care",
+      "geriatric health",
+      "long-term care"
+    ]
+  },
+  {
+    "name": "Lab-Based Assays and Experimental Validation",
+    "description": "A core scientific practice involving controlled experiments and analytical tests to validate hypotheses and technologies in a laboratory setting.",
+    "keywords": [
+      "lab-based assays",
+      "wet-lab validation",
+      "experimental testing techniques",
+      "lab-scale reactor systems",
+      "experimental petrology",
+      "in vitro protein engineering",
+      "in vitro cell delivery studies",
+      "experimental design",
+      "biological testing",
+      "validation of models"
+    ]
+  },
+  {
+    "name": "Photoelectron Emission Spectroscopy and Surface Analysis",
+    "description": "A technique used to analyze the electronic structure and chemical composition of surfaces and thin films using photoemission methods.",
+    "keywords": [
+      "photoelectron emission spectroscopy",
+      "surface spectroscopy",
+      "surface analysis",
+      "electronic structure",
+      "surface properties",
+      "material surface characterization",
+      "surface chemistry",
+      "surface interaction",
+      "surface modification",
+      "surface science"
+    ]
+  },
+  {
+    "name": "Reference Material Development and Calibration",
+    "description": "A field focused on creating standardized materials used to calibrate instruments and validate analytical methods across scientific and industrial applications.",
+    "keywords": [
+      "reference material development",
+      "calibration standards",
+      "analytical standards",
+      "material standardization",
+      "quality control",
+      "standard-setting bodies",
+      "measurement accuracy",
+      "analytical methods",
+      "calibration protocols",
+      "standard reference materials"
+    ]
+  },
+  {
+    "name": "Operator Performance and Human Factors",
+    "description": "A field focused on understanding and improving human performance in complex systems, including industrial, medical, and transport environments.",
+    "keywords": [
+      "operator performance",
+      "human factors",
+      "human-machine interaction",
+      "workplace safety",
+      "human error",
+      "operator training",
+      "human performance",
+      "safety protocols",
+      "human reliability",
+      "workplace ergonomics"
+    ]
+  },
+  {
+    "name": "First Nations Students and Indigenous Education",
+    "description": "A field focused on improving educational outcomes and access for First Nations and Torres Strait Islander students through culturally responsive teaching and community engagement.",
+    "keywords": [
+      "First Nations students",
+      "Indigenous students",
+      "Indigenous education",
+      "on-country learning",
+      "Indigenous cultural values",
+      "cultural knowledge transfer",
+      "Indigenous-led education",
+      "Indigenous identity",
+      "Indigenous research capacity",
+      "cultural safety"
+    ]
+  },
+  {
+    "name": "National Security Strategy and Defence Innovation",
+    "description": "A domain focused on developing and implementing national security policies and technologies to protect critical infrastructure and populations.",
+    "keywords": [
+      "national security strategy",
+      "security frameworks for AI systems",
+      "cybersecurity in infrastructure",
+      "national security operations",
+      "security sector reforms",
+      "critical infrastructure management",
+      "surveillance data modelling",
+      "national security surveillance",
+      "defence technology",
+      "security-critical applications"
+    ]
+  },
+  {
+    "name": "Catch Allocation and Fisheries Management",
+    "description": "A field focused on the equitable and sustainable distribution of fish catch through scientific, economic, and policy-based frameworks.",
+    "keywords": [
+      "catch allocation",
+      "fishery management",
+      "fishery quota management",
+      "TACC (Total Annual Catch Catch)",
+      "SESSF (Southern and Eastern Scalefish and Shark Fishery)",
+      "fishery-dependent data",
+      "fishery observer data integration",
+      "fishery productivity",
+      "sustainable catch levels",
+      "fishery policy"
+    ]
+  },
+  {
+    "name": "Risk Prioritization and Hazard Assessment",
+    "description": "A systematic approach to identifying, evaluating, and ranking risks to inform decision-making in health, environment, and infrastructure.",
+    "keywords": [
+      "risk prioritization",
+      "risk stratification",
+      "risk analysis framework",
+      "hazard identification",
+      "risk assessment for antisocial behavior",
+      "risk communication",
+      "risk-based design",
+      "risk modeling",
+      "risk reduction",
+      "hazard assessment"
+    ]
+  },
+  {
+    "name": "Thyroid Hormone Signalling and Endocrine Regulation",
+    "description": "A field studying the molecular and physiological mechanisms of thyroid hormone action in metabolism, development, and disease.",
+    "keywords": [
+      "thyroid hormone signalling",
+      "endocrine regulation",
+      "hormonal signaling",
+      "metabolic regulation",
+      "neuroendocrine function",
+      "endocrine disorders",
+      "hormone receptors",
+      "hormonal balance",
+      "endocrine system",
+      "metabolic health"
+    ]
+  },
+  {
+    "name": "Policy Scenario Analysis and Strategic Planning",
+    "description": "A field using modeling and simulation to explore potential future policy outcomes and develop adaptive strategies for complex systems.",
+    "keywords": [
+      "policy scenario analysis",
+      "strategic foresight",
+      "policy simulation models",
+      "policy-informed research",
+      "scenario planning",
+      "policy content analysis",
+      "policy evaluation",
+      "strategic decision-making",
+      "policy consistency",
+      "policy development"
+    ]
+  },
+  {
+    "name": "Statistical Modeling Platforms and Data Science",
+    "description": "A domain focused on developing and applying statistical and machine learning models to extract insights from complex, high-dimensional datasets.",
+    "keywords": [
+      "statistical modeling platforms",
+      "statistical decomposition",
+      "regression analysis",
+      "statistical pattern recognition",
+      "statistical validation",
+      "statistical anomaly detection",
+      "data-driven modeling",
+      "data science",
+      "predictive modeling",
+      "model inference"
+    ]
+  },
+  {
+    "name": "Multi-Scale Imaging and High-Resolution Visualization",
+    "description": "A field combining imaging techniques across scales—from atomic to ecosystem—to visualize complex structures and processes in biological and environmental systems.",
+    "keywords": [
+      "multi-scale imaging",
+      "high-resolution imaging",
+      "3D imaging techniques",
+      "in vivo imaging",
+      "micro-CT imaging",
+      "optical microscopy",
+      "spatial resolution",
+      "high-resolution data",
+      "imaging technologies",
+      "image analysis"
+    ]
+  },
+  {
+    "name": "Data-Driven Biological Inference and Systems Biology",
+    "description": "A field using large-scale data to infer biological mechanisms, pathways, and network dynamics in living systems.",
+    "keywords": [
+      "data-driven biological inference",
+      "biological pathway analysis",
+      "systems biology",
+      "genomic data analysis",
+      "biological network mapping",
+      "biological systems modeling",
+      "biological data integration",
+      "multi-omics",
+      "biological function",
+      "biological insight"
+    ]
+  },
+  {
+    "name": "Customer Perceptions and Market Feedback",
+    "description": "A field focused on understanding consumer attitudes, preferences, and behaviours to improve product design and service delivery.",
+    "keywords": [
+      "customer perceptions",
+      "consumer behavior change",
+      "market research tools",
+      "public perception",
+      "user feedback",
+      "brand perception",
+      "service quality",
+      "market analysis",
+      "user experience",
+      "market responsiveness"
+    ]
+  },
+  {
+    "name": "Noisy Quantum Environments and Quantum Error Correction",
+    "description": "A field focused on understanding and mitigating errors in quantum systems due to environmental noise, enabling more reliable quantum computation.",
+    "keywords": [
+      "noisy quantum environments",
+      "quantum error correction",
+      "quantum control protocols",
+      "quantum noise",
+      "quantum stability",
+      "quantum coherence",
+      "quantum device reliability",
+      "quantum computing",
+      "quantum noise mitigation",
+      "quantum hardware"
+    ]
+  },
+  {
+    "name": "Adaptive Structures and Smart Materials",
+    "description": "A field focused on designing materials and systems that can change their shape, properties, or function in response to environmental stimuli.",
+    "keywords": [
+      "adaptive structures",
+      "smart materials",
+      "responsive materials",
+      "self-adjusting systems",
+      "smart structures",
+      "mechano-signalling",
+      "smart electronic skin",
+      "dynamic reconfiguration",
+      "smart systems",
+      "self-optimizing materials"
+    ]
+  },
+  {
+    "name": "Trophic Reconstruction and Ecosystem Dynamics",
+    "description": "A field focused on reconstructing food webs and trophic relationships in ecosystems using ecological and biological data.",
+    "keywords": [
+      "trophic reconstruction",
+      "trophic state modeling",
+      "ecosystem dynamics",
+      "food web modeling",
+      "biodiversity",
+      "ecological interactions",
+      "trophic interactions",
+      "ecosystem function",
+      "ecological balance",
+      "species interactions"
+    ]
+  },
+  {
+    "name": "Critical Infrastructure Management and Resilience",
+    "description": "A field focused on protecting and maintaining essential infrastructure (e.g., energy, water, transport) against disruptions and natural or human threats.",
+    "keywords": [
+      "critical infrastructure management",
+      "resilient infrastructure",
+      "infrastructure reliability",
+      "infrastructure damage mitigation",
+      "energy system reliability",
+      "grid load balancing",
+      "infrastructure security",
+      "system resilience",
+      "critical systems",
+      "infrastructure planning"
+    ]
+  },
+  {
+    "name": "Improving Humanitarian Coordination and Crisis Response",
+    "description": "A field focused on enhancing coordination among agencies during humanitarian crises to improve aid delivery and response effectiveness.",
+    "keywords": [
+      "improving humanitarian coordination",
+      "humanitarian protection",
+      "crisis response",
+      "emergency preparedness tools",
+      "humanitarian activities",
+      "disaster response systems",
+      "humanitarian aid",
+      "crisis management",
+      "emergency planning",
+      "crisis intervention"
+    ]
+  },
+  {
+    "name": "Wound Healing Simulation and Tissue Regeneration",
+    "description": "A field using computational and biological models to simulate wound healing and tissue repair processes for medical and engineering applications.",
+    "keywords": [
+      "wound healing simulation",
+      "tissue repair",
+      "tissue regeneration",
+      "regenerative medicine",
+      "cellular repair mechanisms",
+      "biological healing",
+      "wound healing",
+      "tissue engineering",
+      "healing processes",
+      "tissue dynamics"
+    ]
+  },
+  {
+    "name": "Global Physics Collaborations and Open Science",
+    "description": "A field promoting international scientific collaboration in physics through shared data, open access, and joint research initiatives.",
+    "keywords": [
+      "global physics collaborations",
+      "open science",
+      "scientific collaboration",
+      "data sharing",
+      "international research",
+      "scientific communities",
+      "open data",
+      "global research networks",
+      "collaborative research",
+      "scientific innovation"
+    ]
+  },
+  {
+    "name": "Genetic Intervention Design and Gene Editing",
+    "description": "A field focused on designing and applying genetic interventions, including CRISPR, to correct disease-causing mutations and improve traits.",
+    "keywords": [
+      "genetic intervention design",
+      "CRISPR-Cas13a",
+      "gene editing technologies",
+      "gene regulatory network modeling",
+      "gene therapy",
+      "genetic engineering",
+      "genetic modification",
+      "precision gene editing",
+      "gene regulation",
+      "genetic correction"
+    ]
+  },
+  {
+    "name": "Residential Equity and Housing Policy",
+    "description": "A field focused on ensuring fair access to safe, affordable, and sustainable housing for all communities, especially marginalized groups.",
+    "keywords": [
+      "residential equity",
+      "housing rights",
+      "housing standards",
+      "affordable housing",
+      "social housing",
+      "housing access",
+      "urban housing",
+      "home ownership",
+      "housing affordability",
+      "community housing"
+    ]
+  },
+  {
+    "name": "Fishing as a Public Health Intervention",
+    "description": "A field exploring how fishing and aquaculture can contribute to public health through nutrition, employment, and community well-being.",
+    "keywords": [
+      "fishing as a public health intervention",
+      "marine food products",
+      "fishery health",
+      "nutritional benefits",
+      "community health",
+      "fishing for health",
+      "food security",
+      "fish consumption",
+      "public health",
+      "marine health"
+    ]
+  },
+  {
+    "name": "Accent-Based Discrimination and Linguistic Bias",
+    "description": "A field studying the social and institutional impacts of accent-based discrimination in education, employment, and public services.",
+    "keywords": [
+      "accent-based discrimination",
+      "linguistic bias",
+      "language equity",
+      "language socialization",
+      "linguistic diversity",
+      "language policy",
+      "communication barriers",
+      "language discrimination",
+      "linguistic inclusion",
+      "language access"
+    ]
+  },
+  {
+    "name": "Historical Medicine and Traditional Healing",
+    "description": "A field studying historical medical practices and traditional healing systems to inform modern healthcare and cultural understanding.",
+    "keywords": [
+      "historical medicine",
+      "traditional healing",
+      "Indigenous healing",
+      "historical healing",
+      "herbal medicine",
+      "traditional knowledge",
+      "cultural medicine",
+      "medical history",
+      "alternative medicine",
+      "ethnopharmacology"
+    ]
+  },
+  {
+    "name": "Wireless System Architecture and Communication Networks",
+    "description": "A field focused on designing and optimizing wireless communication systems for efficiency, coverage, and security in diverse environments.",
+    "keywords": [
+      "wireless system architecture",
+      "wireless networks",
+      "5G infrastructure",
+      "network performance monitoring",
+      "mobile device connectivity",
+      "communication planning",
+      "signal processing",
+      "network design",
+      "wireless transmission",
+      "network reliability"
+    ]
+  },
+  {
+    "name": "Living Evidence and Community-Based Knowledge",
+    "description": "A field focused on integrating lived experiences and community knowledge into research and policy, especially in Indigenous and rural contexts.",
+    "keywords": [
+      "living evidence",
+      "community knowledge sharing",
+      "Indigenous knowledge",
+      "community-based research",
+      "local knowledge",
+      "cultural knowledge",
+      "community engagement",
+      "Indigenous-led conservation",
+      "cultural knowledge transfer",
+      "Indigenous research capacity"
+    ]
+  },
+  {
+    "name": "National Interests and Geopolitical Strategy",
+    "description": "A field analyzing how national policies and interests influence international relations, security, and global development.",
+    "keywords": [
+      "national interests",
+      "geopolitical strategy",
+      "Australia's geopolitical strategy",
+      "international relations",
+      "foreign policy",
+      "sovereign rights",
+      "global strategy",
+      "national security",
+      "international cooperation",
+      "global positioning"
+    ]
+  },
+  {
+    "name": "Fossil Site Survey and Paleoenvironmental Reconstruction",
+    "description": "A field focused on identifying, mapping, and interpreting fossil sites to reconstruct ancient environments and evolutionary history.",
+    "keywords": [
+      "fossil site survey",
+      "palaeoecological data",
+      "paleoenvironmental reconstruction",
+      "fossil deposits",
+      "ancient ecosystems",
+      "geological record",
+      "evolutionary history",
+      "paleoclimate",
+      "fossil record",
+      "prehistoric environments"
+    ]
+  },
+  {
+    "name": "Microstructure-Guided Alloy Design and Materials Science",
+    "description": "A field using microstructural analysis to guide the design of advanced alloys with optimized mechanical and thermal properties.",
+    "keywords": [
+      "microstructure-guided alloy design",
+      "material structure",
+      "alloy design",
+      "microstructure analysis",
+      "material properties",
+      "material optimization",
+      "metallurgy",
+      "material performance",
+      "alloy development",
+      "material characterization"
+    ]
+  },
+  {
+    "name": "Crowdsourced Annotation and Citizen Science",
+    "description": "A field leveraging public participation to annotate data, validate findings, and expand research reach in environmental, health, and cultural domains.",
+    "keywords": [
+      "crowdsourced annotation",
+      "citizen science",
+      "public participation",
+      "community-based research",
+      "data collection",
+      "public engagement",
+      "community involvement",
+      "public data",
+      "community knowledge",
+      "data sharing"
+    ]
+  },
+  {
+    "name": "Earth's Oxygenation and Atmospheric Evolution",
+    "description": "A field studying the historical changes in Earth's oxygen levels and their impact on life, climate, and biogeochemical cycles.",
+    "keywords": [
+      "Earth's oxygenation",
+      "atmospheric evolution",
+      "oxygenation events",
+      "oxygen cycle",
+      "biogeochemical cycles",
+      "oxygen levels",
+      "ancient atmosphere",
+      "oxygenation history",
+      "atmospheric chemistry",
+      "evolution of life"
+    ]
+  },
+  {
+    "name": "Rapid CO2 Conversion and Carbon Utilization",
+    "description": "A field focused on converting CO2 into useful chemicals, fuels, or building materials using catalytic and biological processes.",
+    "keywords": [
+      "rapid CO2 conversion",
+      "CO2 conversion to biofuels",
+      "carbon utilization",
+      "carbon-negative technologies",
+      "carbon capture and use",
+      "carbon-to-fuel conversion",
+      "carbon recycling",
+      "catalytic conversion",
+      "carbon utilization",
+      "CO2 transformation"
+    ]
+  },
+  {
+    "name": "Networked Counterpublics and Digital Activism",
+    "description": "A field studying how digital networks form alternative publics to challenge dominant narratives and promote marginalized voices.",
+    "keywords": [
+      "networked counterpublics",
+      "digital activism",
+      "public discourse",
+      "digital communities",
+      "online engagement",
+      "digital democracy",
+      "digital resistance",
+      "online publics",
+      "digital communication",
+      "counter-narratives"
+    ]
+  },
+  {
+    "name": "Compact Spectrometers and Portable Analytical Devices",
+    "description": "A field focused on developing small, low-cost, and field-deployable spectrometers for real-time chemical and biological analysis.",
+    "keywords": [
+      "compact spectrometers",
+      "field-deployable spectroscopy",
+      "portable analytical devices",
+      "on-site analysis",
+      "real-time detection",
+      "sensing devices",
+      "chemical analysis",
+      "portable sensors",
+      "analytical platforms",
+      "spectrum analysis"
+    ]
+  },
+  {
+    "name": "Particle Discovery and High-Energy Physics",
+    "description": "A field focused on detecting and studying subatomic particles using accelerators and detectors to understand fundamental forces and matter.",
+    "keywords": [
+      "particle discovery",
+      "high-energy physics",
+      "particle physics validation",
+      "particle detection",
+      "accelerators",
+      "fundamental physics",
+      "quantum particles",
+      "subatomic particles",
+      "particle interactions",
+      "physics experiments"
+    ]
+  },
+  {
+    "name": "Wildlife Disease Management and Zoonotic Risk",
+    "description": "A field focused on monitoring, preventing, and managing diseases in wildlife populations to reduce the risk of zoonotic transmission.",
+    "keywords": [
+      "wildlife disease management",
+      "zoonotic disease risk assessment",
+      "animal disease",
+      "pathogen transmission",
+      "disease in animals",
+      "wildlife health",
+      "zoonotic infections",
+      "disease surveillance",
+      "wildlife conservation",
+      "disease control"
+    ]
+  },
+  {
+    "name": "Event Invitations and Social Interaction Dynamics",
+    "description": "A field studying how social events and invitations influence human interaction, community building, and digital engagement.",
+    "keywords": [
+      "event invitations",
+      "social interaction",
+      "community engagement",
+      "social dynamics",
+      "event planning",
+      "social networking",
+      "digital invitations",
+      "social participation",
+      "community events",
+      "social connection"
+    ]
+  },
+  {
+    "name": "Noncommutative Geometry and Advanced Mathematical Frameworks",
+    "description": "A theoretical field using noncommutative geometry to model physical systems and quantum phenomena beyond classical mathematics.",
+    "keywords": [
+      "noncommutative geometry",
+      "mathematical innovation",
+      "theoretical frameworks",
+      "advanced mathematical models",
+      "geometric frameworks",
+      "algebraic geometry",
+      "mathematical physics",
+      "theoretical physics",
+      "non-standard geometry",
+      "mathematical modeling"
+    ]
+  },
+  {
+    "name": "Scalable Sensing Architectures and Sensor Networks",
+    "description": "A field focused on designing large-scale, distributed, and intelligent sensor networks capable of real-time monitoring and data fusion.",
+    "keywords": [
+      "scalable sensing architectures",
+      "distributed sensing",
+      "sensor networks",
+      "real-time sensing",
+      "networked sensing",
+      "sensor data analytics",
+      "distributed robotics",
+      "large-scale monitoring",
+      "sensor fusion",
+      "scalable systems"
+    ]
+  },
+  {
+    "name": "Ore-Bearing Sedimentary Rocks and Mineral Exploration",
+    "description": "A field focused on identifying and extracting valuable minerals from sedimentary rock formations through geophysical and geochemical methods.",
+    "keywords": [
+      "ore-bearing sedimentary rocks",
+      "mineral exploration strategy",
+      "mineralogy",
+      "mineral discovery",
+      "sedimentary rocks",
+      "geological modeling",
+      "mineral transformation",
+      "resource mapping",
+      "ore deposits",
+      "mineral identification"
+    ]
+  },
+  {
+    "name": "Interferometric Instrumentation and Precision Measurement",
+    "description": "A field focused on using interferometry to achieve ultra-precise measurements of distance, shape, and phase in scientific and industrial applications.",
+    "keywords": [
+      "interferometric instrumentation",
+      "interferometry",
+      "precision measurement",
+      "high-precision detection",
+      "phase measurement",
+      "distance sensing",
+      "optical interferometry",
+      "precision metrology",
+      "measurement accuracy",
+      "interferometric systems"
+    ]
+  },
+  {
+    "name": "Educational Tools and Learning Technologies",
+    "description": "A field focused on developing and evaluating tools and platforms to enhance teaching, learning, and student engagement.",
+    "keywords": [
+      "educational tools",
+      "digital learning",
+      "interactive learning",
+      "learning platforms",
+      "educational software",
+      "student engagement",
+      "digital teaching resources",
+      "interactive simulations",
+      "learning analytics",
+      "educational innovation"
+    ]
+  },
+  {
+    "name": "Rotor Burst Safety and Mechanical Failure Analysis",
+    "description": "A field focused on preventing and analyzing catastrophic mechanical failures in rotating systems, such as turbines and motors.",
+    "keywords": [
+      "rotor burst safety",
+      "mechanical failure",
+      "rotor dynamics",
+      "rotating machinery",
+      "failure analysis",
+      "mechanical reliability",
+      "rotor stress",
+      "rotor stability",
+      "mechanical integrity",
+      "rotor design"
+    ]
+  },
+  {
+    "name": "Gas-Solids Interactions and Fluidized Bed Systems",
+    "description": "A field focused on understanding and optimizing interactions between gases and solid particles in industrial processes like combustion and catalysis.",
+    "keywords": [
+      "gas-solids interactions",
+      "fluidized bed systems",
+      "gas-solid reactions",
+      "combustion dynamics",
+      "reaction kinetics",
+      "particle flow",
+      "fluid dynamics",
+      "gas-solid systems",
+      "thermal processes",
+      "reaction engineering"
+    ]
+  },
+  {
+    "name": "Multi-Scale Imaging and Biological Visualization",
+    "description": "A field combining imaging techniques across scales to visualize biological structures and processes in real time.",
+    "keywords": [
+      "multi-scale imaging",
+      "3D imaging",
+      "in vivo imaging",
+      "biological visualization",
+      "cellular imaging",
+      "microscopy imaging",
+      "spatial biology",
+      "tissue imaging",
+      "biological structures",
+      "dynamic imaging"
+    ]
+  },
+  {
+    "name": "Australian Energy Efficiency and Sustainable Power",
+    "description": "A field focused on improving energy efficiency and transitioning to sustainable power sources in Australia’s energy sector.",
+    "keywords": [
+      "Australian energy efficiency",
+      "energy efficiency",
+      "renewable energy adoption",
+      "energy system reliability",
+      "sustainable energy",
+      "energy conversion",
+      "energy performance",
+      "energy policy",
+      "energy balance",
+      "clean energy"
+    ]
+  },
+  {
+    "name": "Culturally Appropriate Methodology and Indigenous Research",
+    "description": "A field focused on developing research methods that respect and incorporate Indigenous knowledge, values, and protocols.",
+    "keywords": [
+      "culturally appropriate methodology",
+      "Indigenous research capacity",
+      "Indigenous knowledge",
+      "Indigenous-led research",
+      "Indigenous methodologies",
+      "cultural safety",
+      "Indigenous cultural values",
+      "Indigenous participation",
+      "Indigenous-led fisheries",
+      "cultural knowledge"
+    ]
+  },
+  {
+    "name": "Taste and Odour Control in Water and Food",
+    "description": "A field focused on managing and eliminating unpleasant taste and odour in water, food, and environmental samples.",
+    "keywords": [
+      "taste and odour control",
+      "water quality",
+      "taste profiles",
+      "odour control",
+      "environmental quality",
+      "taste analysis",
+      "food safety",
+      "taste testing",
+      "flavour replication",
+      "sensory evaluation"
+    ]
+  },
+  {
+    "name": "Functional Testing in Plants and Bioreactor Systems",
+    "description": "A field focused on evaluating plant performance, stress responses, and bioreactor efficiency under controlled and real-world conditions.",
+    "keywords": [
+      "functional testing in plants",
+      "plant bioreactors",
+      "plant physiological responses",
+      "plant health monitoring",
+      "bioreactor systems",
+      "plant performance",
+      "plant stress",
+      "biological testing platforms",
+      "functional traits",
+      "plant growth"
+    ]
+  },
+  {
+    "name": "Open Platform and Interoperable Frameworks",
+    "description": "A design philosophy promoting open-source, modular, and interoperable systems that allow diverse technologies and data to work together seamlessly.",
+    "keywords": [
+      "open platform",
+      "interoperable frameworks",
+      "open-source modeling tools",
+      "modular nanotechnology",
+      "scalable review analysis platforms",
+      "interoperability",
+      "open science",
+      "open data databases",
+      "system integration",
+      "modular representations"
+    ]
+  },
+  {
+    "name": "Mantle Rock Characterization and Geophysical Modeling",
+    "description": "A field focused on analyzing the composition, structure, and dynamics of Earth's mantle through geophysical surveys and laboratory studies.",
+    "keywords": [
+      "mantle rock characterization",
+      "mantle melting",
+      "subduction dynamics",
+      "crustal structure analysis",
+      "geophysical analysis",
+      "geological modelling tools",
+      "mantle structure",
+      "geophysical surveys",
+      "mantle dynamics",
+      "earth structures stability"
+    ]
+  },
+  {
+    "name": "Public Funding Efficiency and Resource Allocation",
+    "description": "A policy and analytical domain focused on evaluating how public funds are used, managed, and distributed to maximize social and economic outcomes.",
+    "keywords": [
+      "public funding efficiency",
+      "funding body adoption",
+      "resource allocation systems",
+      "financial efficiency",
+      "budgetary allocations",
+      "cost-benefit optimization",
+      "policy implementation",
+      "economic impact assessment",
+      "fiscal policy improvement",
+      "funding effectiveness"
+    ]
+  },
+  {
+    "name": "Joint Motion Analysis and Biomechanics",
+    "description": "A field studying how human and animal bodies move together in complex tasks, with applications in robotics, rehabilitation, and sports science.",
+    "keywords": [
+      "joint motion analysis",
+      "biomechanics",
+      "motor circuits",
+      "mechanical-force induced chemistry",
+      "human movement",
+      "muscle training methods",
+      "neural function",
+      "motor control",
+      "biomechanical modeling",
+      "human-machine interaction"
+    ]
+  },
+  {
+    "name": "Solar Cell Technology and Photovoltaic Energy Conversion",
+    "description": "A field focused on improving the efficiency, durability, and affordability of solar energy conversion technologies for widespread deployment.",
+    "keywords": [
+      "solar cell technology",
+      "photovoltaic energy conversion",
+      "solar electricity generation",
+      "solar-driven processes",
+      "solar-to-fuel conversion",
+      "renewable energy conversion",
+      "energy harvesting",
+      "solar-driven catalysis",
+      "high-efficiency powertrains",
+      "photovoltaic systems"
+    ]
+  },
+  {
+    "name": "Fabrication of Semiconductors and Nanomaterials",
+    "description": "A core technology domain focused on the precise manufacturing of semiconductor devices and nanomaterials for electronics, sensors, and energy applications.",
+    "keywords": [
+      "fabrication of semiconductors",
+      "semiconductor nanomaterials",
+      "silicon-based single-electron transistors",
+      "CMOS-compatible fabrication",
+      "nanomaterials",
+      "semiconductor performance",
+      "device fabrication",
+      "advanced fabrication processes",
+      "semiconductor-based devices",
+      "thin-film displays"
+    ]
+  },
+  {
+    "name": "AI-Driven Inference and Machine Learning Applications",
+    "description": "A domain focused on using AI and machine learning to extract insights, make predictions, and automate decision-making across scientific, medical, and business domains.",
+    "keywords": [
+      "AI-driven inference",
+      "machine learning for behavioural prediction",
+      "deep learning platforms",
+      "machine learning in genomics",
+      "machine learning for astrophysics",
+      "AI and machine learning",
+      "machine learning for structural assessment",
+      "machine learning for event detection",
+      "predictive modeling",
+      "data-driven inference"
+    ]
+  },
+  {
+    "name": "Economic Theory Application and Policy Design",
+    "description": "A field applying economic models and theories to inform policy decisions in areas such as trade, taxation, and public spending.",
+    "keywords": [
+      "economic theory application",
+      "economic development through cultural strategy",
+      "economic improvement in LNG projects",
+      "economic base enhancement",
+      "market analysis",
+      "economic datasets",
+      "economic welfare enhancement",
+      "economic policy formulation",
+      "economic incentives",
+      "market competition analysis"
+    ]
+  },
+  {
+    "name": "Gaming Industries and Human-Computer Interaction",
+    "description": "A domain exploring how gaming technologies and immersive environments influence human behavior, learning, and social interaction.",
+    "keywords": [
+      "gaming industries",
+      "virtual reality (VR) systems",
+      "immersive simulation",
+      "interactive narratives",
+      "digital engagement tools",
+      "human-robot co-evolution",
+      "interactive sound",
+      "immersive technology",
+      "game-based learning",
+      "digital experiences"
+    ]
+  },
+  {
+    "name": "Early Career Researcher Development and Mentorship",
+    "description": "A support system focused on nurturing the skills, confidence, and career trajectories of early-stage researchers through training, funding, and community engagement.",
+    "keywords": [
+      "early career researcher",
+      "researcher development",
+      "capacity building",
+      "post-doctoral projects",
+      "research coordination",
+      "researcher mentorship",
+      "academic enablers",
+      "doctoral student retention",
+      "research training",
+      "researcher support"
+    ]
+  },
+  {
+    "name": "Quantum Dynamics and Quantum Computing",
+    "description": "A field studying the behavior of quantum systems and developing quantum computers and sensors for applications in simulation, cryptography, and sensing.",
+    "keywords": [
+      "quantum dynamics",
+      "quantum computing foundations",
+      "quantum algorithms",
+      "noisy quantum environments",
+      "quantum control protocols",
+      "quantum sensing",
+      "quantum memory prototypes",
+      "quantum electronic design automation",
+      "quantum software development",
+      "quantum devices"
+    ]
+  },
+  {
+    "name": "Phase Change in Solids and Material Transitions",
+    "description": "A materials science field studying transitions in solid-state materials (e.g., melting, crystallization, phase separation) under temperature, pressure, or stress.",
+    "keywords": [
+      "phase change in solids",
+      "solidification kinetics",
+      "phase separation",
+      "material dynamics",
+      "solid-state quantum emitters",
+      "crystalline structure",
+      "solid-state materials",
+      "material transformation",
+      "thermal stability",
+      "solid-phase reactions"
+    ]
+  },
+  {
+    "name": "Projectile Technology and Ballistic Systems",
+    "description": "A field focused on the design, simulation, and analysis of projectile motion and impact for defense, sports, and safety applications.",
+    "keywords": [
+      "projectile technology",
+      "ballistic systems",
+      "trajectory modeling",
+      "impact analysis",
+      "dynamic loading",
+      "impact resistance",
+      "mechanical durability",
+      "kinetic energy",
+      "projectile flight",
+      "ballistic testing"
+    ]
+  },
+  {
+    "name": "Stem Cell Culture Optimization and Regenerative Therapies",
+    "description": "A field focused on improving the growth, maintenance, and differentiation of stem cells for use in regenerative medicine and disease modeling.",
+    "keywords": [
+      "stem cell culture optimization",
+      "stem/progenitor cells",
+      "regenerative medicine",
+      "tissue engineering",
+      "cellular repair mechanisms",
+      "biomaterials design",
+      "organoid systems",
+      "stem cell therapies",
+      "cellular regeneration",
+      "cell differentiation"
+    ]
+  },
+  {
+    "name": "Sludge Reduction and Waste Management",
+    "description": "A field focused on reducing the volume and toxicity of sludge in wastewater treatment through advanced filtration, digestion, and recycling technologies.",
+    "keywords": [
+      "sludge reduction",
+      "wastewater treatment",
+      "waste management policy",
+      "sludge bulking",
+      "biological treatment",
+      "waste-to-resource",
+      "resource recovery",
+      "environmental cleanup",
+      "sewage treatment",
+      "waste-to-resource"
+    ]
+  },
+  {
+    "name": "Radio Sky Survey and Astrophysical Observations",
+    "description": "A field using radio telescopes and data analysis to study celestial objects, cosmic background radiation, and large-scale structures in the universe.",
+    "keywords": [
+      "radio sky survey",
+      "radio waves",
+      "space object tracking",
+      "radio astronomy",
+      "astronomical events",
+      "galactic structure",
+      "radio telescopes",
+      "cosmic background",
+      "space-based instrumentation",
+      "astrophysical observations"
+    ]
+  },
+  {
+    "name": "Preventive Approach and Health Promotion",
+    "description": "A public health strategy focused on preventing disease and promoting well-being through education, screening, and environmental interventions.",
+    "keywords": [
+      "preventive approach",
+      "preventive health programs",
+      "health promotion in older adults",
+      "public health campaigns",
+      "disease prevention",
+      "health education",
+      "early detection",
+      "wellbeing in education",
+      "health outcome modeling",
+      "preventive policy guidelines"
+    ]
+  },
+  {
+    "name": "Infectious Disease Modelling and Outbreak Response",
+    "description": "A field using mathematical and computational models to predict and respond to the spread of infectious diseases in populations.",
+    "keywords": [
+      "infectious disease modelling",
+      "outbreak science",
+      "epidemic response",
+      "viral evolution",
+      "pathogen genomics",
+      "disease spread",
+      "public health response",
+      "epidemiological modelling",
+      "outbreak prediction",
+      "disease forecasting"
+    ]
+  },
+  {
+    "name": "Tyre Recycling and Sustainable Materials",
+    "description": "A field focused on recycling rubber and plastics from tyres into new products, reducing waste and supporting circular economy goals.",
+    "keywords": [
+      "tyre recycling",
+      "plastic degradation",
+      "recycling technology",
+      "sustainable materials",
+      "waste-to-resource",
+      "circular economy",
+      "industrial waste processing",
+      "material recovery",
+      "sustainable manufacturing",
+      "material reuse"
+    ]
+  },
+  {
+    "name": "Economic Co-Benefits and Sustainable Development",
+    "description": "A framework for identifying and measuring the economic, social, and environmental benefits of sustainable technologies and policies.",
+    "keywords": [
+      "economic co-benefits",
+      "inclusive economic development",
+      "sustainable prosperity",
+      "economic development",
+      "economic resilience",
+      "sustainable development",
+      "economic improvement",
+      "value-based modeling",
+      "economic welfare enhancement",
+      "social and economic benefits"
+    ]
+  },
+  {
+    "name": "Light-Responsive Materials and Photonic Systems",
+    "description": "A field focused on materials and devices that respond to light for applications in energy, sensing, and smart environments.",
+    "keywords": [
+      "light-responsive materials",
+      "photoinduced catalysis",
+      "light-driven ion transport",
+      "photoelectrochemical systems",
+      "photovoltaic energy conversion",
+      "light-driven degradation",
+      "photonic materials",
+      "optical systems",
+      "light harvesting",
+      "photoactive perovskites"
+    ]
+  },
+  {
+    "name": "Cell Network Engineering and Biological Systems",
+    "description": "A field focused on designing and manipulating cellular networks to improve function, communication, and response in engineered or natural systems.",
+    "keywords": [
+      "cell network engineering",
+      "cellular signaling pathway analysis",
+      "cellular communication",
+      "cellular metabolism",
+      "biological network mapping",
+      "cellular activation assays",
+      "cell-cell interaction",
+      "biological systems engineering",
+      "cellular systems",
+      "network dynamics"
+    ]
+  },
+  {
+    "name": "Personalized Health Diagnostics and Precision Medicine",
+    "description": "A field using individualized data to tailor medical diagnosis, treatment, and prevention strategies to a patient’s unique genetic, environmental, and lifestyle profile.",
+    "keywords": [
+      "personalized health diagnostics",
+      "precision medicine",
+      "personalized treatment strategies",
+      "genomic profiling",
+      "personalized care",
+      "genetic testing",
+      "biomarker identification",
+      "precision health",
+      "individualized medicine",
+      "health data integration"
+    ]
+  },
+  {
+    "name": "Technology Climate and Innovation Ecosystems",
+    "description": "A domain focused on understanding and shaping the broader ecosystem of technological innovation, including climate, policy, and investment trends.",
+    "keywords": [
+      "technology climate",
+      "innovative research",
+      "technology prototyping",
+      "digital innovation",
+      "research ecosystem development",
+      "innovation policy",
+      "technology development",
+      "emerging technologies",
+      "technology adoption",
+      "innovation systems"
+    ]
+  },
+  {
+    "name": "Preparation for Diverse Learning Environments",
+    "description": "A field focused on designing inclusive, flexible, and adaptive educational environments that support diverse learners, cultures, and learning styles.",
+    "keywords": [
+      "preparation for diverse learning environments",
+      "inclusive education policy",
+      "culturally diverse classrooms",
+      "intercultural pedagogy",
+      "cultural diversity in education",
+      "inclusive design",
+      "diverse role models in science",
+      "cultural knowledge transfer",
+      "inclusive classrooms",
+      "educational equity"
+    ]
+  },
+  {
+    "name": "Flow Control Techniques and Fluid Dynamics",
+    "description": "A field focused on managing and optimizing the flow of fluids in engineering systems, including air, water, and gases, for efficiency and safety.",
+    "keywords": [
+      "flow control techniques",
+      "fluid dynamics",
+      "turbulent flow modeling",
+      "flow over vehicles",
+      "hydrodynamic loading estimation",
+      "flow reactors",
+      "fluid inclusions",
+      "flow-based diagnostics",
+      "fluid-structure interaction",
+      "fluid transport"
+    ]
+  },
+  {
+    "name": "Rider Behaviour and Safety in Transport",
+    "description": "A field studying how individuals interact with vehicles and transport systems, with a focus on safety, risk, and behavioural patterns.",
+    "keywords": [
+      "rider behaviour",
+      "road injuries",
+      "commuter safety",
+      "driver assistance",
+      "traffic safety",
+      "vehicle-bridge interaction model",
+      "public transport safety",
+      "safety in urban robotics",
+      "driver behaviour",
+      "safety protocols"
+    ]
+  },
+  {
+    "name": "Old Age and Geriatric Health",
+    "description": "A field focused on the health, social, and cognitive challenges of older adults, including chronic disease, mental health, and care access.",
+    "keywords": [
+      "old age",
+      "health in older adults",
+      "senior school science",
+      "aging infrastructure",
+      "senior care",
+      "elderly wellbeing",
+      "age-related cognitive decline",
+      "chronic disease care",
+      "geriatric health",
+      "long-term care"
+    ]
+  },
+  {
+    "name": "Lab-Based Assays and Experimental Validation",
+    "description": "A core scientific practice involving controlled experiments and analytical tests to validate hypotheses and technologies in a laboratory setting.",
+    "keywords": [
+      "lab-based assays",
+      "wet-lab validation",
+      "experimental testing techniques",
+      "lab-scale reactor systems",
+      "experimental petrology",
+      "in vitro protein engineering",
+      "in vitro cell delivery studies",
+      "experimental design",
+      "biological testing",
+      "validation of models"
+    ]
+  },
+  {
+    "name": "Photoelectron Emission Spectroscopy and Surface Analysis",
+    "description": "A technique used to analyze the electronic structure and chemical composition of surfaces and thin films using photoemission methods.",
+    "keywords": [
+      "photoelectron emission spectroscopy",
+      "surface spectroscopy",
+      "surface analysis",
+      "electronic structure",
+      "surface properties",
+      "material surface characterization",
+      "surface chemistry",
+      "surface interaction",
+      "surface modification",
+      "surface science"
+    ]
+  },
+  {
+    "name": "Reference Material Development and Calibration",
+    "description": "A field focused on creating standardized materials used to calibrate instruments and validate analytical methods across scientific and industrial applications.",
+    "keywords": [
+      "reference material development",
+      "calibration standards",
+      "analytical standards",
+      "material standardization",
+      "quality control",
+      "standard-setting bodies",
+      "measurement accuracy",
+      "analytical methods",
+      "calibration protocols",
+      "standard reference materials"
+    ]
+  },
+  {
+    "name": "Operator Performance and Human Factors",
+    "description": "A field focused on understanding and improving human performance in complex systems, including industrial, medical, and transport environments.",
+    "keywords": [
+      "operator performance",
+      "human factors",
+      "human-machine interaction",
+      "workplace safety",
+      "human error",
+      "operator training",
+      "human performance",
+      "safety protocols",
+      "human reliability",
+      "workplace ergonomics"
+    ]
+  },
+  {
+    "name": "First Nations Students and Indigenous Education",
+    "description": "A field focused on improving educational outcomes and access for First Nations and Torres Strait Islander students through culturally responsive teaching and community engagement.",
+    "keywords": [
+      "First Nations students",
+      "Indigenous students",
+      "Indigenous education",
+      "on-country learning",
+      "Indigenous cultural values",
+      "cultural knowledge transfer",
+      "Indigenous-led education",
+      "Indigenous identity",
+      "Indigenous research capacity",
+      "cultural safety"
+    ]
+  },
+  {
+    "name": "National Security Strategy and Defence Innovation",
+    "description": "A domain focused on developing and implementing national security policies and technologies to protect critical infrastructure and populations.",
+    "keywords": [
+      "national security strategy",
+      "security frameworks for AI systems",
+      "cybersecurity in infrastructure",
+      "national security operations",
+      "security sector reforms",
+      "critical infrastructure management",
+      "surveillance data modelling",
+      "national security surveillance",
+      "defence technology",
+      "security-critical applications"
+    ]
+  },
+  {
+    "name": "Catch Allocation and Fisheries Management",
+    "description": "A field focused on the equitable and sustainable distribution of fish catch through scientific, economic, and policy-based frameworks.",
+    "keywords": [
+      "catch allocation",
+      "fishery management",
+      "fishery quota management",
+      "TACC (Total Annual Catch Catch)",
+      "SESSF (Southern and Eastern Scalefish and Shark Fishery)",
+      "fishery-dependent data",
+      "fishery observer data integration",
+      "fishery productivity",
+      "sustainable catch levels",
+      "fishery policy"
+    ]
+  },
+  {
+    "name": "Risk Prioritization and Hazard Assessment",
+    "description": "A systematic approach to identifying, evaluating, and ranking risks to inform decision-making in health, environment, and infrastructure.",
+    "keywords": [
+      "risk prioritization",
+      "risk stratification",
+      "risk analysis framework",
+      "hazard identification",
+      "risk assessment for antisocial behavior",
+      "risk communication",
+      "risk-based design",
+      "risk modeling",
+      "risk reduction",
+      "hazard assessment"
+    ]
+  },
+  {
+    "name": "Thyroid Hormone Signalling and Endocrine Regulation",
+    "description": "A field studying the molecular and physiological mechanisms of thyroid hormone action in metabolism, development, and disease.",
+    "keywords": [
+      "thyroid hormone signalling",
+      "endocrine regulation",
+      "hormonal signaling",
+      "metabolic regulation",
+      "neuroendocrine function",
+      "endocrine disorders",
+      "hormone receptors",
+      "hormonal balance",
+      "endocrine system",
+      "metabolic health"
+    ]
+  },
+  {
+    "name": "Policy Scenario Analysis and Strategic Planning",
+    "description": "A field using modeling and simulation to explore potential future policy outcomes and develop adaptive strategies for complex systems.",
+    "keywords": [
+      "policy scenario analysis",
+      "strategic foresight",
+      "policy simulation models",
+      "policy-informed research",
+      "scenario planning",
+      "policy content analysis",
+      "policy evaluation",
+      "strategic decision-making",
+      "policy consistency",
+      "policy development"
+    ]
+  },
+  {
+    "name": "Statistical Modeling Platforms and Data Science",
+    "description": "A domain focused on developing and applying statistical and machine learning models to extract insights from complex, high-dimensional datasets.",
+    "keywords": [
+      "statistical modeling platforms",
+      "statistical decomposition",
+      "regression analysis",
+      "statistical pattern recognition",
+      "statistical validation",
+      "statistical anomaly detection",
+      "data-driven modeling",
+      "data science",
+      "predictive modeling",
+      "model inference"
+    ]
+  },
+  {
+    "name": "Multi-Scale Imaging and High-Resolution Visualization",
+    "description": "A field combining imaging techniques across scales—from atomic to ecosystem—to visualize complex structures and processes in biological and environmental systems.",
+    "keywords": [
+      "multi-scale imaging",
+      "high-resolution imaging",
+      "3D imaging techniques",
+      "in vivo imaging",
+      "micro-CT imaging",
+      "optical microscopy",
+      "spatial resolution",
+      "high-resolution data",
+      "imaging technologies",
+      "image analysis"
+    ]
+  },
+  {
+    "name": "Data-Driven Biological Inference and Systems Biology",
+    "description": "A field using large-scale data to infer biological mechanisms, pathways, and network dynamics in living systems.",
+    "keywords": [
+      "data-driven biological inference",
+      "biological pathway analysis",
+      "systems biology",
+      "genomic data analysis",
+      "biological network mapping",
+      "biological systems modeling",
+      "biological data integration",
+      "multi-omics",
+      "biological function",
+      "biological insight"
+    ]
+  },
+  {
+    "name": "Customer Perceptions and Market Feedback",
+    "description": "A field focused on understanding consumer attitudes, preferences, and behaviours to improve product design and service delivery.",
+    "keywords": [
+      "customer perceptions",
+      "consumer behavior change",
+      "market research tools",
+      "public perception",
+      "user feedback",
+      "brand perception",
+      "service quality",
+      "market analysis",
+      "user experience",
+      "market responsiveness"
+    ]
+  },
+  {
+    "name": "Noisy Quantum Environments and Quantum Error Correction",
+    "description": "A field focused on understanding and mitigating errors in quantum systems due to environmental noise, enabling more reliable quantum computation.",
+    "keywords": [
+      "noisy quantum environments",
+      "quantum error correction",
+      "quantum control protocols",
+      "quantum noise",
+      "quantum stability",
+      "quantum coherence",
+      "quantum device reliability",
+      "quantum computing",
+      "quantum noise mitigation",
+      "quantum hardware"
+    ]
+  },
+  {
+    "name": "Adaptive Structures and Smart Materials",
+    "description": "A field focused on designing materials and systems that can change their shape, properties, or function in response to environmental stimuli.",
+    "keywords": [
+      "adaptive structures",
+      "smart materials",
+      "responsive materials",
+      "self-adjusting systems",
+      "smart structures",
+      "mechano-signalling",
+      "smart electronic skin",
+      "dynamic reconfiguration",
+      "smart systems",
+      "self-optimizing materials"
+    ]
+  },
+  {
+    "name": "Trophic Reconstruction and Ecosystem Dynamics",
+    "description": "A field focused on reconstructing food webs and trophic relationships in ecosystems using ecological and biological data.",
+    "keywords": [
+      "trophic reconstruction",
+      "trophic state modeling",
+      "ecosystem dynamics",
+      "food web modeling",
+      "biodiversity",
+      "ecological interactions",
+      "trophic interactions",
+      "ecosystem function",
+      "ecological balance",
+      "species interactions"
+    ]
+  },
+  {
+    "name": "Critical Infrastructure Management and Resilience",
+    "description": "A field focused on protecting and maintaining essential infrastructure (e.g., energy, water, transport) against disruptions and natural or human threats.",
+    "keywords": [
+      "critical infrastructure management",
+      "resilient infrastructure",
+      "infrastructure reliability",
+      "infrastructure damage mitigation",
+      "energy system reliability",
+      "grid load balancing",
+      "infrastructure security",
+      "system resilience",
+      "critical systems",
+      "infrastructure planning"
+    ]
+  },
+  {
+    "name": "Improving Humanitarian Coordination and Crisis Response",
+    "description": "A field focused on enhancing coordination among agencies during humanitarian crises to improve aid delivery and response effectiveness.",
+    "keywords": [
+      "improving humanitarian coordination",
+      "humanitarian protection",
+      "crisis response",
+      "emergency preparedness tools",
+      "humanitarian activities",
+      "disaster response systems",
+      "humanitarian aid",
+      "crisis management",
+      "emergency planning",
+      "crisis intervention"
+    ]
+  },
+  {
+    "name": "Wound Healing Simulation and Tissue Regeneration",
+    "description": "A field using computational and biological models to simulate wound healing and tissue repair processes for medical and engineering applications.",
+    "keywords": [
+      "wound healing simulation",
+      "tissue repair",
+      "tissue regeneration",
+      "regenerative medicine",
+      "cellular repair mechanisms",
+      "biological healing",
+      "wound healing",
+      "tissue engineering",
+      "healing processes",
+      "tissue dynamics"
+    ]
+  },
+  {
+    "name": "Global Physics Collaborations and Open Science",
+    "description": "A field promoting international scientific collaboration in physics through shared data, open access, and joint research initiatives.",
+    "keywords": [
+      "global physics collaborations",
+      "open science",
+      "scientific collaboration",
+      "data sharing",
+      "international research",
+      "scientific communities",
+      "open data",
+      "global research networks",
+      "collaborative research",
+      "scientific innovation"
+    ]
+  },
+  {
+    "name": "Genetic Intervention Design and Gene Editing",
+    "description": "A field focused on designing and applying genetic interventions, including CRISPR, to correct disease-causing mutations and improve traits.",
+    "keywords": [
+      "genetic intervention design",
+      "CRISPR-Cas13a",
+      "gene editing technologies",
+      "gene regulatory network modeling",
+      "gene therapy",
+      "genetic engineering",
+      "genetic modification",
+      "precision gene editing",
+      "gene regulation",
+      "genetic correction"
+    ]
+  },
+  {
+    "name": "Residential Equity and Housing Policy",
+    "description": "A field focused on ensuring fair access to safe, affordable, and sustainable housing for all communities, especially marginalized groups.",
+    "keywords": [
+      "residential equity",
+      "housing rights",
+      "housing standards",
+      "affordable housing",
+      "social housing",
+      "housing access",
+      "urban housing",
+      "home ownership",
+      "housing affordability",
+      "community housing"
+    ]
+  },
+  {
+    "name": "Fishing as a Public Health Intervention",
+    "description": "A field exploring how fishing and aquaculture can contribute to public health through nutrition, employment, and community well-being.",
+    "keywords": [
+      "fishing as a public health intervention",
+      "marine food products",
+      "fishery health",
+      "nutritional benefits",
+      "community health",
+      "fishing for health",
+      "food security",
+      "fish consumption",
+      "public health",
+      "marine health"
+    ]
+  },
+  {
+    "name": "Accent-Based Discrimination and Linguistic Bias",
+    "description": "A field studying the social and institutional impacts of accent-based discrimination in education, employment, and public services.",
+    "keywords": [
+      "accent-based discrimination",
+      "linguistic bias",
+      "language equity",
+      "language socialization",
+      "linguistic diversity",
+      "language policy",
+      "communication barriers",
+      "language discrimination",
+      "linguistic inclusion",
+      "language access"
+    ]
+  },
+  {
+    "name": "Historical Medicine and Traditional Healing",
+    "description": "A field studying historical medical practices and traditional healing systems to inform modern healthcare and cultural understanding.",
+    "keywords": [
+      "historical medicine",
+      "traditional healing",
+      "Indigenous healing",
+      "historical healing",
+      "herbal medicine",
+      "traditional knowledge",
+      "cultural medicine",
+      "medical history",
+      "alternative medicine",
+      "ethnopharmacology"
+    ]
+  },
+  {
+    "name": "Wireless System Architecture and Communication Networks",
+    "description": "A field focused on designing and optimizing wireless communication systems for efficiency, coverage, and security in diverse environments.",
+    "keywords": [
+      "wireless system architecture",
+      "wireless networks",
+      "5G infrastructure",
+      "network performance monitoring",
+      "mobile device connectivity",
+      "communication planning",
+      "signal processing",
+      "network design",
+      "wireless transmission",
+      "network reliability"
+    ]
+  },
+  {
+    "name": "Living Evidence and Community-Based Knowledge",
+    "description": "A field focused on integrating lived experiences and community knowledge into research and policy, especially in Indigenous and rural contexts.",
+    "keywords": [
+      "living evidence",
+      "community knowledge sharing",
+      "Indigenous knowledge",
+      "community-based research",
+      "local knowledge",
+      "cultural knowledge",
+      "community engagement",
+      "Indigenous-led conservation",
+      "cultural knowledge transfer",
+      "Indigenous research capacity"
+    ]
+  },
+  {
+    "name": "National Interests and Geopolitical Strategy",
+    "description": "A field analyzing how national policies and interests influence international relations, security, and global development.",
+    "keywords": [
+      "national interests",
+      "geopolitical strategy",
+      "Australia's geopolitical strategy",
+      "international relations",
+      "foreign policy",
+      "sovereign rights",
+      "global strategy",
+      "national security",
+      "international cooperation",
+      "global positioning"
+    ]
+  },
+  {
+    "name": "Fossil Site Survey and Paleoenvironmental Reconstruction",
+    "description": "A field focused on identifying, mapping, and interpreting fossil sites to reconstruct ancient environments and evolutionary history.",
+    "keywords": [
+      "fossil site survey",
+      "palaeoecological data",
+      "paleoenvironmental reconstruction",
+      "fossil deposits",
+      "ancient ecosystems",
+      "geological record",
+      "evolutionary history",
+      "paleoclimate",
+      "fossil record",
+      "prehistoric environments"
+    ]
+  },
+  {
+    "name": "Microstructure-Guided Alloy Design and Materials Science",
+    "description": "A field using microstructural analysis to guide the design of advanced alloys with optimized mechanical and thermal properties.",
+    "keywords": [
+      "microstructure-guided alloy design",
+      "material structure",
+      "alloy design",
+      "microstructure analysis",
+      "material properties",
+      "material optimization",
+      "metallurgy",
+      "material performance",
+      "alloy development",
+      "material characterization"
+    ]
+  },
+  {
+    "name": "Crowdsourced Annotation and Citizen Science",
+    "description": "A field leveraging public participation to annotate data, validate findings, and expand research reach in environmental, health, and cultural domains.",
+    "keywords": [
+      "crowdsourced annotation",
+      "citizen science",
+      "public participation",
+      "community-based research",
+      "data collection",
+      "public engagement",
+      "community involvement",
+      "public data",
+      "community knowledge",
+      "data sharing"
+    ]
+  },
+  {
+    "name": "Earth's Oxygenation and Atmospheric Evolution",
+    "description": "A field studying the historical changes in Earth's oxygen levels and their impact on life, climate, and biogeochemical cycles.",
+    "keywords": [
+      "Earth's oxygenation",
+      "atmospheric evolution",
+      "oxygenation events",
+      "oxygen cycle",
+      "biogeochemical cycles",
+      "oxygen levels",
+      "ancient atmosphere",
+      "oxygenation history",
+      "atmospheric chemistry",
+      "evolution of life"
+    ]
+  },
+  {
+    "name": "Rapid CO2 Conversion and Carbon Utilization",
+    "description": "A field focused on converting CO2 into useful chemicals, fuels, or building materials using catalytic and biological processes.",
+    "keywords": [
+      "rapid CO2 conversion",
+      "CO2 conversion to biofuels",
+      "carbon utilization",
+      "carbon-negative technologies",
+      "carbon capture and use",
+      "carbon-to-fuel conversion",
+      "carbon recycling",
+      "catalytic conversion",
+      "carbon utilization",
+      "CO2 transformation"
+    ]
+  },
+  {
+    "name": "Networked Counterpublics and Digital Activism",
+    "description": "A field studying how digital networks form alternative publics to challenge dominant narratives and promote marginalized voices.",
+    "keywords": [
+      "networked counterpublics",
+      "digital activism",
+      "public discourse",
+      "digital communities",
+      "online engagement",
+      "digital democracy",
+      "digital resistance",
+      "online publics",
+      "counter-narratives"
+    ]
+  },
+  {
+    "name": "Compact Spectrometers and Portable Analytical Devices",
+    "description": "A field focused on developing small, low-cost, and field-deployable spectrometers for real-time chemical and biological analysis.",
+    "keywords": [
+      "compact spectrometers",
+      "field-deployable spectroscopy",
+      "portable analytical devices",
+      "on-site analysis",
+      "real-time detection",
+      "sensing devices",
+      "chemical analysis",
+      "portable sensors",
+      "analytical platforms",
+      "spectrum analysis"
+    ]
+  },
+  {
+    "name": "Particle Discovery and High-Energy Physics",
+    "description": "A field focused on detecting and studying subatomic particles using accelerators and detectors to understand fundamental forces and matter.",
+    "keywords": [
+      "particle discovery",
+      "high-energy physics",
+      "particle physics validation",
+      "particle detection",
+      "accelerators",
+      "fundamental physics",
+      "quantum particles",
+      "subatomic particles",
+      "particle interactions",
+      "physics experiments"
+    ]
+  },
+  {
+    "name": "Wildlife Disease Management and Zoonotic Risk",
+    "description": "A field focused on monitoring, preventing, and managing diseases in wildlife populations to reduce the risk of zoonotic transmission.",
+    "keywords": [
+      "wildlife disease management",
+      "zoonotic disease risk assessment",
+      "animal disease",
+      "pathogen transmission",
+      "disease in animals",
+      "wildlife health",
+      "zoonotic infections",
+      "disease surveillance",
+      "wildlife conservation",
+      "disease control"
+    ]
+  },
+  {
+    "name": "Event Invitations and Social Interaction Dynamics",
+    "description": "A field studying how social events and invitations influence human interaction, community building, and digital engagement.",
+    "keywords": [
+      "event invitations",
+      "social interaction",
+      "community engagement",
+      "social dynamics",
+      "event planning",
+      "social networking",
+      "digital invitations",
+      "social participation",
+      "community events",
+      "social connection"
+    ]
+  },
+  {
+    "name": "Noncommutative Geometry and Advanced Mathematical Frameworks",
+    "description": "A theoretical field using noncommutative geometry to model physical systems and quantum phenomena beyond classical mathematics.",
+    "keywords": [
+      "noncommutative geometry",
+      "mathematical innovation",
+      "theoretical frameworks",
+      "advanced mathematical models",
+      "geometric frameworks",
+      "algebraic geometry",
+      "mathematical physics",
+      "theoretical physics",
+      "non-standard geometry",
+      "mathematical modeling"
+    ]
+  },
+  {
+    "name": "Scalable Sensing Architectures and Sensor Networks",
+    "description": "A field focused on designing large-scale, distributed, and intelligent sensor networks capable of real-time monitoring and data fusion.",
+    "keywords": [
+      "scalable sensing architectures",
+      "distributed sensing",
+      "sensor networks",
+      "real-time sensing",
+      "networked sensing",
+      "sensor data analytics",
+      "distributed robotics",
+      "large-scale monitoring",
+      "sensor fusion",
+      "scalable systems"
+    ]
+  },
+  {
+    "name": "Ore-Bearing Sedimentary Rocks and Mineral Exploration",
+    "description": "A field focused on identifying and extracting valuable minerals from sedimentary rock formations through geophysical and geochemical methods.",
+    "keywords": [
+      "ore-bearing sedimentary rocks",
+      "mineral exploration strategy",
+      "mineralogy",
+      "mineral discovery",
+      "sedimentary rocks",
+      "geological modeling",
+      "mineral transformation",
+      "resource mapping",
+      "ore deposits",
+      "mineral identification"
+    ]
+  },
+  {
+    "name": "Interferometric Instrumentation and Precision Measurement",
+    "description": "A field focused on using interferometry to achieve ultra-precise measurements of distance, shape, and phase in scientific and industrial applications.",
+    "keywords": [
+      "interferometric instrumentation",
+      "interferometry",
+      "precision measurement",
+      "high-precision detection",
+      "phase measurement",
+      "distance sensing",
+      "optical interferometry",
+      "precision metrology",
+      "measurement accuracy",
+      "interferometric systems"
+    ]
+  },
+  {
+    "name": "Educational Tools and Learning Technologies",
+    "description": "A field focused on developing and evaluating tools and platforms to enhance teaching, learning, and student engagement.",
+    "keywords": [
+      "educational tools",
+      "digital learning",
+      "interactive learning",
+      "learning platforms",
+      "educational software",
+      "student engagement",
+      "digital teaching resources",
+      "interactive simulations",
+      "learning analytics",
+      "educational innovation"
+    ]
+  },
+  {
+    "name": "Rotor Burst Safety and Mechanical Failure Analysis",
+    "description": "A field focused on preventing and analyzing catastrophic mechanical failures in rotating systems, such as turbines and motors.",
+    "keywords": [
+      "rotor burst safety",
+      "mechanical failure",
+      "rotor dynamics",
+      "rotating machinery",
+      "failure analysis",
+      "mechanical reliability",
+      "rotor stress",
+      "rotor stability",
+      "mechanical integrity",
+      "rotor design"
+    ]
+  },
+  {
+    "name": "Gas-Solids Interactions and Fluidized Bed Systems",
+    "description": "A field focused on understanding and optimizing interactions between gases and solid particles in industrial processes like combustion and catalysis.",
+    "keywords": [
+      "gas-solids interactions",
+      "fluidized bed systems",
+      "gas-solid reactions",
+      "combustion dynamics",
+      "reaction kinetics",
+      "particle flow",
+      "fluid dynamics",
+      "gas-solid systems",
+      "thermal processes",
+      "reaction engineering"
+    ]
+  },
+  {
+    "name": "Multi-Scale Imaging and Biological Visualization",
+    "description": "A field combining imaging techniques across scales to visualize biological structures and processes in real time.",
+    "keywords": [
+      "multi-scale imaging",
+      "3D imaging",
+      "in vivo imaging",
+      "biological visualization",
+      "cellular imaging",
+      "microscopy imaging",
+      "spatial biology",
+      "tissue imaging",
+      "biological structures",
+      "dynamic imaging"
+    ]
+  },
+  {
+    "name": "Australian Energy Efficiency and Sustainable Power",
+    "description": "A field focused on improving energy efficiency and transitioning to sustainable power sources in Australia’s energy sector.",
+    "keywords": [
+      "Australian energy efficiency",
+      "energy efficiency",
+      "renewable energy adoption",
+      "energy system reliability",
+      "sustainable energy",
+      "energy conversion",
+      "energy performance",
+      "energy policy",
+      "energy balance",
+      "clean energy"
+    ]
+  },
+  {
+    "name": "Culturally Appropriate Methodology and Indigenous Research",
+    "description": "A field focused on developing research methods that respect and incorporate Indigenous knowledge, values, and protocols.",
+    "keywords": [
+      "culturally appropriate methodology",
+      "Indigenous research capacity",
+      "Indigenous knowledge",
+      "Indigenous-led research",
+      "Indigenous methodologies",
+      "cultural safety",
+      "Indigenous cultural values",
+      "Indigenous participation",
+      "Indigenous-led fisheries",
+      "cultural knowledge"
+    ]
+  },
+  {
+    "name": "Taste and Odour Control in Water and Food",
+    "description": "A field focused on managing and eliminating unpleasant taste and odour in water, food, and environmental samples.",
+    "keywords": [
+      "taste and odour control",
+      "water quality",
+      "taste profiles",
+      "odour control",
+      "environmental quality",
+      "taste analysis",
+      "food safety",
+      "taste testing",
+      "flavour replication",
+      "sensory evaluation"
+    ]
+  }
+]

@@ -151,12 +151,12 @@ def clean_enriched_data(enriched_file_path):
         
         # Filter ARC grants and standardize funding_amount
         arc = df[df.index.str.startswith("arc")]
-        arc['funding_amount'] = arc['arc_funding_at_announcement']
+        arc.loc[:, 'funding_amount'] = arc['arc_funding_at_announcement']
         print(f"Found {len(arc)} ARC grants")
         
         # Filter NHMRC grants and standardize funding_amount  
         nhmrc = df[df.index.str.startswith("nhmrc")]
-        nhmrc['funding_amount'] = nhmrc['nhmrc_funding_amount']
+        nhmrc.loc[:, 'funding_amount'] = nhmrc['nhmrc_funding_amount']
         print(f"Found {len(nhmrc)} NHMRC grants")
         
         # Combine both datasets

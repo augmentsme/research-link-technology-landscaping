@@ -1,14 +1,24 @@
 from pathlib import Path
-# Configuration constants - hardcoded to remove config.yaml dependency
-ROOT_DIR = Path("/Users/luhancheng/Desktop/research-link-technology-landscaping/modeling")
-DATA_DIR = ROOT_DIR / "data"
-LOGS_DIR = ROOT_DIR / "logs"
-PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
-GRANTS_FILE = DATA_DIR / "grants_cleaned.json"
-RESULTS_DIR = LOGS_DIR / "results"
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+ROOT_DIR = Path(os.getenv('ROOT_DIR', 
+						  '/Users/chengluhan/research-link-technology-landscaping/modeling'))
+DATA_DIR = Path(os.getenv('DATA_DIR', str(ROOT_DIR / 'data')))
+RESULTS_DIR = Path(os.getenv('RESULTS_DIR', str(ROOT_DIR / 'results')))
+LOGS_DIR = Path(os.getenv('LOGS_DIR', str(ROOT_DIR / 'logs')))
+
+# Paths for prompts and data derived from the above
+PROMPTS_DIR = ROOT_DIR / 'PromptTemplates'
+GRANTS_FILE = DATA_DIR / 'grants_cleaned.json'
 
 # output files
-KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
-CATEGORY_PATH = RESULTS_DIR / "categories.json"
-REFINED_CATEGORY_PATH = RESULTS_DIR / "refined_categories.json"
-FOR_CODES_CLEANED_PATH = DATA_DIR / "for_codes_cleaned.json"
+KEYWORDS_PATH = RESULTS_DIR / 'keywords.json'
+TERMS_PATH = RESULTS_DIR / 'terms.json'  # Harmonized terms (clusters and categorise-compatible format)
+CATEGORY_PATH = RESULTS_DIR / 'categories.json'
+REFINED_CATEGORY_PATH = RESULTS_DIR / 'refined_categories.json'
+FOR_CODES_CLEANED_PATH = DATA_DIR / 'for_codes_cleaned.json'
+
+# review output path
+REVIEW_FILE = RESULTS_DIR / 'harmonization_review.json'

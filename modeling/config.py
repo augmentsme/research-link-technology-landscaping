@@ -4,10 +4,11 @@ ROOT_DIR = Path("/Users/luhancheng/Desktop/research-link-technology-landscaping/
 DATA_DIR = ROOT_DIR / "data"
 LOGS_DIR = ROOT_DIR / "logs"
 PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
-GRANTS_FILE = DATA_DIR / "active_grants.json"
+GRANTS_FILE = DATA_DIR / "grants_cleaned.json"
 RESULTS_DIR = LOGS_DIR / "results"
 
 # output files
 KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
 CATEGORY_PATH = RESULTS_DIR / "categories.json"
 REFINED_CATEGORY_PATH = RESULTS_DIR / "refined_categories.json"
+FOR_CODES_CLEANED_PATH = DATA_DIR / "for_codes_cleaned.json"

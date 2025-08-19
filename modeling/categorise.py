@@ -3,7 +3,7 @@
 from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import LOGS_DIR, KEYWORDS_PATH, PROMPTS_DIR, CATEGORY_PATH
+from config import LOGS_DIR, KEYWORDS_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH
 from inspect_ai.solver import system_message, generate, user_message, TaskState
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
@@ -12,22 +12,24 @@ import json
 from metric import count
 from pydantic import BaseModel, Field
 import random
+from pathlib import Path
 
 
 @scorer(metrics=[count()])
 def categories_counter():
     """
-    Scorer that counts the total number of categories generated in the categorise task.
+    Scorer that counts the total number of categories generated in the categorise task
+    and validates FOR code assignments.
     
     This provides metrics for categorization volume and effectiveness,
-    counting the total number of research categories created.
+    counting the total number of research categories created and checking FOR code compliance.
     
     Returns:
         Score with total category count as the metric
     """
     
     async def score(state: TaskState, target: Target) -> Score:
-        """Score based on total generated category count."""
+        """Score based on total generated category count and FOR code validation."""
         
         if not state.output or not state.output.completion:
             return Score(
@@ -45,12 +47,36 @@ def categories_counter():
                 
                 # Count total keywords across all categories
                 total_keywords = 0
+                for_code_assignments = {}
+                missing_for_codes = 0
+                
                 for category in result:
                     if "keywords" in category and isinstance(category["keywords"], list):
                         total_keywords += len(category["keywords"])
+                    
+                    # Check FOR code assignment
+                    for_code = category.get("for_code")
+                    if for_code:
+                        for_code_assignments[for_code] = for_code_assignments.get(for_code, 0) + 1
+                    else:
+                        missing_for_codes += 1
+                
+                # Create detailed explanation
+                for_distribution = ", ".join([f"FOR {code}: {count} categories" 
+                                            for code, count in sorted(for_code_assignments.items())])
                 
                 if total_categories > 0:
-                    explanation = f"Generated {total_categories} categories with {total_keywords} total associated keywords"
+                    explanation_parts = [
+                        f"Generated {total_categories} categories with {total_keywords} total associated keywords"
+                    ]
+                    
+                    if for_distribution:
+                        explanation_parts.append(f"FOR code distribution: {for_distribution}")
+                    
+                    if missing_for_codes > 0:
+                        explanation_parts.append(f"WARNING: {missing_for_codes} categories missing FOR codes")
+                    
+                    explanation = ". ".join(explanation_parts)
                 else:
                     explanation = "No categories generated"
                 
@@ -73,11 +99,13 @@ def categories_counter():
     return score
 
 class Category(BaseModel):
-    """A flexible research category."""
+    """A flexible research category linked to FOR codes."""
     model_config = {"extra": "forbid"}
     name: str = Field(description="Name of the category")
     description: str = Field(description="A few sentences describing what this category is about, including its scope, focus areas, and the types of research or technologies it encompasses")
     keywords: list[str] = Field(description="List of keywords associated with this category")
+    for_code: str = Field(description="The 2-digit FOR division code this category falls under (e.g., '30', '46', '51')")
+    for_division_name: str = Field(description="The name of the FOR division this category belongs to")
 
 @hooks(name="CategoriseOutputHook", description="Hook to save categorisation results as JSON files")
 class CategoriseOutputHook(Hooks):
@@ -91,13 +119,35 @@ class CategoriseOutputHook(Hooks):
         with open(CATEGORY_PATH, 'w', encoding='utf-8') as f:
             json.dump(result_json, f, indent=2, ensure_ascii=False)
 
+def load_for_codes():
+    """Load FOR codes and return top-level divisions."""
+    if not FOR_CODES_CLEANED_PATH.exists():
+        raise FileNotFoundError(f"FOR codes file not found at {FOR_CODES_CLEANED_PATH}")
+    
+    with open(FOR_CODES_CLEANED_PATH, 'r', encoding='utf-8') as f:
+        for_codes = json.load(f)
+    
+    # Extract top-level divisions (2-digit codes)
+    top_level_divisions = {}
+    for code, data in for_codes.items():
+        if len(code) == 2:  # Top-level divisions are 2-digit codes
+            top_level_divisions[code] = {
+                'code': code,
+                'name': data['name'],
+                'description': data.get('definition', {}).get('description', '')
+            }
+    
+    return top_level_divisions
+
 def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type="keywords"):
     """
     Load and sample keywords from the extracted keywords dataset.
+    Include FOR codes context for categorization.
     
     Args:
         sample_size: Number of unique keywords to sample for categorization
         random_seed: Random seed for reproducible sampling
+        keywords_type: Type of keywords to use
     """
     
     if not KEYWORDS_PATH.exists():
@@ -108,11 +158,6 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
 
     # Collect all unique keywords across all categories
     all_keywords = set()
-    # if keywords_type is None:
-    #     for record in records:
-    #         for category in ['keywords', 'methodology_keywords', 'application_keywords', 'technology_keywords']:
-    #             if category in record and isinstance(record[category], list):
-    #                 all_keywords.update(record[category])
 
     for record in records:
         if keywords_type is None:
@@ -137,9 +182,20 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
         random.seed(random_seed)
         random.shuffle(sampled_keywords)
     
+    # Load FOR codes for context
+    for_divisions = load_for_codes()
+    
+    # Create input that includes both keywords and FOR code context
+    keywords_text = ", ".join(sampled_keywords)
+    for_context = "\n\nFOR Division Context:\n" + "\n".join([
+        f"{code}: {data['name']}" for code, data in sorted(for_divisions.items(), key=lambda x: int(x[0]))
+    ])
+    
+    full_input = keywords_text + for_context
+    
     return MemoryDataset([Sample(
         id="categorise",
-        input=", ".join(sampled_keywords),
+        input=full_input,
     )])
 
 

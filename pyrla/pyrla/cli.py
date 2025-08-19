@@ -32,6 +32,10 @@ app = typer.Typer(
     epilog="Visit https://researchlink.ardc.edu.au/v3/api-docs/public for API documentation."
 )
 
+# Create subcommand groups
+grants_app = typer.Typer(name="grants", help="Commands for working with grants")
+app.add_typer(grants_app, name="grants")
+
 console = Console()
 
 # Global client instance and debug flag
@@ -74,6 +78,69 @@ def save_json_to_file(data: List[dict], filename: str) -> None:
     except Exception as e:
         console.print(f"[{DisplayConfig.ERROR_COLOR}]Error saving JSON file: {e}[/{DisplayConfig.ERROR_COLOR}]")
         raise typer.Exit(1)
+
+
+async def enrich_grants_with_summaries(client: RLAClient, input_records: List[dict], key: str = "key") -> List[dict]:
+    """Enrich grant records with grant summaries from the RLA API"""
+    enriched_records = []
+    semaphore = asyncio.Semaphore(APIConfig.DEFAULT_MAX_CONCURRENT)
+    
+    async def enrich_single_record(record: dict, index: int):
+        async with semaphore:
+            try:
+                # Only use key-based search strategy
+                grant = None
+                
+                # Search by key if it exists
+                if key in record and record[key]:
+                    key_value = record[key]
+                    
+                    try:
+                        # Search by key filter
+                        response = await client.search_grants(
+                            value="",
+                            filter_query=f"key:{key_value}",
+                            page_size=1
+                        )
+                        
+                        if response.results:
+                            grant = response.results[0]
+                        else:
+                            # Try extracting ID from key (e.g., "nhmrc/1047630" -> "1047630") as fallback
+                            if '/' in key_value:
+                                extracted_id = key_value.split('/')[-1]
+                                try:
+                                    grant = await client.get_grant(extracted_id)
+                                except RLAError:
+                                    logger.debug(f"Failed to get grant by extracted ID '{extracted_id}' from key '{key_value}'")
+                            
+                    except RLAError as e:
+                        logger.debug(f"Search by key '{key_value}' failed: {e}")
+                else:
+                    logger.warning(f"Record {index + 1}: No '{key}' field found in record")
+                
+                # Create enriched record
+                enriched_record = record.copy()
+                if grant and grant.grant_summary:
+                    enriched_record['grant_summary'] = grant.grant_summary
+                    logger.info(f"Enriched record {index + 1}: Found grant summary")
+                else:
+                    enriched_record['grant_summary'] = ""
+                    logger.warning(f"Record {index + 1}: No grant summary found for {key} '{record.get(key, f'No {key} found')}'")
+                
+                return enriched_record
+                
+            except Exception as e:
+                logger.error(f"Error processing record {index + 1}: {e}")
+                enriched_record = record.copy()
+                enriched_record['grant_summary'] = ""
+                return enriched_record
+    
+    # Process all records concurrently
+    tasks = [enrich_single_record(record, i) for i, record in enumerate(input_records)]
+    enriched_records = await asyncio.gather(*tasks, return_exceptions=False)
+    
+    return enriched_records
 
 
 def handle_exception(e: Exception, operation: str = "operation"):
@@ -223,9 +290,12 @@ def test_connection():
 def get_item(
     item_type: str = typer.Argument(..., help="Type of item to get (researcher, grant, organisation)"),
     item_id: str = typer.Argument(..., help="ID of the item to retrieve"),
-    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file")
+    json_file: Optional[str] = typer.Option(None, "--json", help="Save result to JSON file"),
+    debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
 ):
     """Get a specific item by type and ID"""
+    global debug_mode
+    debug_mode = debug
     try:
         client = get_client()
         
@@ -277,9 +347,12 @@ def get_item(
                 
     except RLAError as e:
         console.print(f"[red]API Error: {e}[/red]")
+        if debug_mode:
+            console.print("\n[yellow]Full traceback:[/yellow]")
+            console.print(traceback.format_exc())
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        handle_exception(e, "get item")
         raise typer.Exit(1)
 
 
@@ -434,11 +507,12 @@ def search_researchers(
 
 
 
-@app.command("grants")
+@grants_app.command("search")
 def search_grants(
     query: str = typer.Argument("", help="Search query for grants (empty returns all grants)"),
     limit: int = typer.Option(CLIConfig.DEFAULT_LIMIT, "--limit", "-l", help="Maximum number of results to return"),
     all_results: bool = typer.Option(False, "--all", help="Fetch all results from all pages (ignores --limit)"),
+    ids: Optional[str] = typer.Option(None, "--ids", help="Get specific grants by comma-separated list of IDs"),
     status: Optional[str] = typer.Option(None, "--status", help=f"Filter by grant status ({'/'.join(StatusOptions.GRANT_STATUSES)})"),
     funder: Optional[str] = typer.Option(None, "--funder", help="Filter by funder name"),
     funding_scheme: Optional[str] = typer.Option(None, "--funding-scheme", help="Filter by funding scheme"),
@@ -459,92 +533,142 @@ def search_grants(
     try:
         client = get_client()
         
-        # Build filter query from individual parameters
-        filter_query = build_filter_query(
-            FilterConfig.GRANT_FILTERS,
-            status=status,
-            funder=funder,
-            funding_scheme=funding_scheme,
-            funding_amount=funding_amount,
-            country=country,
-            state=state,
-            for_subject=for_subject,
-            seo_subject=seo_subject
-        )
-        
-        # Build advanced query for topic-based search
-        advanced_query = build_advanced_query(topic=topic) if topic else ""
-        
-        # Handle --all option or limit-based fetching
-        if all_results:
-            console.print("[yellow]Fetching ALL grants from all pages...[/yellow]")
+        # Handle specific grant IDs
+        if ids:
+            # Parse comma-separated IDs
+            grant_ids = [id.strip() for id in ids.split(',') if id.strip()]
+            console.print(f"[yellow]Fetching {len(grant_ids)} specific grants by ID...[/yellow]")
             
-            async def fetch_all_async():
+            async def fetch_grants_by_ids():
                 async with client:
-                    response = await client.search_all_grants(
-                        value=query,
-                        filter_query=filter_query,
-                        advanced_search_query=advanced_query,
-                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
-                    )
-                    return response
+                    grants = []
+                    semaphore = asyncio.Semaphore(APIConfig.DEFAULT_MAX_CONCURRENT)
+                    
+                    async def fetch_single_grant(grant_id: str):
+                        async with semaphore:
+                            try:
+                                return await client.get_grant(grant_id)
+                            except RLAError as e:
+                                logger.warning(f"Failed to fetch grant {grant_id}: {e}")
+                                return None
+                    
+                    # Fetch all grants concurrently
+                    tasks = [fetch_single_grant(grant_id) for grant_id in grant_ids]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Filter out None results and exceptions
+                    for result in results:
+                        if isinstance(result, Grant):
+                            grants.append(result)
+                        elif isinstance(result, Exception):
+                            logger.warning(f"Exception fetching grant: {result}")
+                    
+                    return grants
             
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Fetching all grants...", total=None)
-                response = run_async(fetch_all_async())
-                progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
+                task = progress.add_task("Fetching grants by ID...", total=None)
+                grants = run_async(fetch_grants_by_ids())
+                progress.update(task, completed=100, description=f"Fetched {len(grants)} grants")
             
-            grants = response.results
-        elif limit > APIConfig.MAX_PAGE_SIZE:
-            # For larger limits, use async bulk fetching
-            console.print(f"[yellow]Fetching {limit} results using concurrent requests...[/yellow]")
-            
-            async def fetch_limited_async():
-                async with client:
-                    # Use search_all but limit results
-                    response = await client.search_all_grants(
-                        value=query,
-                        filter_query=filter_query,
-                        advanced_search_query=advanced_query,
-                        max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
-                    )
-                    # Limit results to requested amount
-                    response.results = response.results[:limit]
-                    return response
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Fetching grants concurrently...", total=None)
-                response = run_async(fetch_limited_async())
-                progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
-            
-            grants = response.results
+            # Create a mock response for consistency
+            response = SearchResponse(
+                total_results=len(grants),
+                current_page=1,
+                from_index=0,
+                size=len(grants),
+                results=grants
+            )
         else:
-            # Single page fetch
-            page_size = min(limit, APIConfig.MAX_PAGE_SIZE)
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Searching grants...", total=None)
-                response = client.search_grants_sync(
-                    value=query,
-                    filter_query=filter_query,
-                    page_number=1,
-                    page_size=page_size,
-                    advanced_search_query=advanced_query
-                )
-                progress.update(task, completed=100)
+            # Build filter query from individual parameters
+            filter_query = build_filter_query(
+                FilterConfig.GRANT_FILTERS,
+                status=status,
+                funder=funder,
+                funding_scheme=funding_scheme,
+                funding_amount=funding_amount,
+                country=country,
+                state=state,
+                for_subject=for_subject,
+                seo_subject=seo_subject
+            )
             
-            grants = response.results
+            # Build advanced query for topic-based search
+            advanced_query = build_advanced_query(topic=topic) if topic else ""
+            
+            # Handle --all option or limit-based fetching
+            if all_results:
+                console.print("[yellow]Fetching ALL grants from all pages...[/yellow]")
+                
+                async def fetch_all_async():
+                    async with client:
+                        response = await client.search_all_grants(
+                            value=query,
+                            filter_query=filter_query,
+                            advanced_search_query=advanced_query,
+                            max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
+                        )
+                        return response
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Fetching all grants...", total=None)
+                    response = run_async(fetch_all_async())
+                    progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
+                
+                grants = response.results
+            elif limit > APIConfig.MAX_PAGE_SIZE:
+                # For larger limits, use async bulk fetching
+                console.print(f"[yellow]Fetching {limit} results using concurrent requests...[/yellow]")
+                
+                async def fetch_limited_async():
+                    async with client:
+                        # Use search_all but limit results
+                        response = await client.search_all_grants(
+                            value=query,
+                            filter_query=filter_query,
+                            advanced_search_query=advanced_query,
+                            max_concurrent=APIConfig.DEFAULT_MAX_CONCURRENT
+                        )
+                        # Limit results to requested amount
+                        response.results = response.results[:limit]
+                        return response
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Fetching grants concurrently...", total=None)
+                    response = run_async(fetch_limited_async())
+                    progress.update(task, completed=100, description=f"Fetched {len(response.results)} grants")
+                
+                grants = response.results
+            else:
+                # Single page fetch
+                page_size = min(limit, APIConfig.MAX_PAGE_SIZE)
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Searching grants...", total=None)
+                    response = client.search_grants_sync(
+                        value=query,
+                        filter_query=filter_query,
+                        page_number=1,
+                        page_size=page_size,
+                        advanced_search_query=advanced_query
+                    )
+                    progress.update(task, completed=100)
+                
+                grants = response.results
             
         if min_amount:
             grants = filter_grants_by_amount(grants, min_amount=min_amount)
@@ -594,6 +718,75 @@ def search_grants(
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@grants_app.command("enrich")
+def enrich_grants(
+    input_file: str = typer.Argument(..., help="JSON file with grant records to enrich with grant_summary"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Output file for enriched results (default: input_file_enriched.json)"),
+    key: str = typer.Option("key", "--key", help="Field name to use as the search key (default: 'key')"),
+    debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
+):
+    """Enrich grant records from a JSON file with grant summaries from the RLA API"""
+    global debug_mode
+    debug_mode = debug
+    try:
+        client = get_client()
+        
+        console.print(f"[yellow]Processing input file: {input_file}[/yellow]")
+        
+        # Load JSON file
+        try:
+            with open(input_file, 'r', encoding='utf-8') as f:
+                input_records = json.load(f)
+        except FileNotFoundError:
+            console.print(f"[red]Error: Input file '{input_file}' not found[/red]")
+            raise typer.Exit(1)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error: Invalid JSON in input file '{input_file}': {e}[/red]")
+            raise typer.Exit(1)
+        
+        if not isinstance(input_records, list):
+            console.print(f"[red]Error: Input file must contain a JSON array of records[/red]")
+            raise typer.Exit(1)
+        
+        console.print(f"[yellow]Found {len(input_records)} records to process...[/yellow]")
+        
+        async def enrich_records_async():
+            async with client:
+                return await enrich_grants_with_summaries(client, input_records, key)
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Enriching grant records with summaries...", total=None)
+            enriched_records = run_async(enrich_records_async())
+            progress.update(task, completed=100, description=f"Processed {len(enriched_records)} records")
+        
+        # Count successful enrichments
+        successful_count = sum(1 for record in enriched_records if record.get('grant_summary', ''))
+        console.print(f"[green]Successfully enriched {successful_count}/{len(enriched_records)} records with grant summaries[/green]")
+        
+        # Determine output file
+        if not output_file:
+            output_file = input_file.replace('.json', '_enriched.json')
+            if output_file == input_file:  # If input doesn't end with .json
+                output_file = input_file + '_enriched.json'
+        
+        # Save enriched records
+        save_json_to_file(enriched_records, output_file)
+        
+    except RLAError as e:
+        console.print(f"[red]API Error: {e}[/red]")
+        if debug_mode:
+            console.print("\n[yellow]Full traceback:[/yellow]")
+            console.print(traceback.format_exc())
+        raise typer.Exit(1)
+    except Exception as e:
+        handle_exception(e, "grant enrichment")
         raise typer.Exit(1)
 
 

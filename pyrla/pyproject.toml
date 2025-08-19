@@ -1,25 +1,13 @@
 [project]
 name = "pyrla"
 version = "0.1.0"
-description = "Python interface for Research Link Australia (RLA) API"
+description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "httpx",
-    "typer",
-    "rich",
-    "python-dotenv"
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "typer>=0.16.1",
 ]
-
-[project.optional-dependencies]
-dev = ["pytest", "black", "isort", "flake8"]
-
 [project.scripts]
 pyrla = "pyrla.cli:app"
-
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = ["pyrla"]

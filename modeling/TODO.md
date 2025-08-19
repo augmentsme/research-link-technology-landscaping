@@ -1,0 +1,1 @@
+can you populate the selected_categories and selected_subcategories fields in on_sample_end in #sym:ClassificationOutputHook ? Note that the only 

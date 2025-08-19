@@ -3,7 +3,7 @@
 from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import LOGS_DIR, KEYWORDS_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH
+from config import LOGS_DIR, KEYWORDS_PATH, TERMS_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH
 from inspect_ai.solver import system_message, generate, user_message, TaskState
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
@@ -139,7 +139,8 @@ def load_for_codes():
     
     return top_level_divisions
 
-def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type="keywords"):
+def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type="keywords", 
+                use_harmonized: bool = False):
     """
     Load and sample keywords from the extracted keywords dataset.
     Include FOR codes context for categorization.
@@ -148,12 +149,23 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
         sample_size: Number of unique keywords to sample for categorization
         random_seed: Random seed for reproducible sampling
         keywords_type: Type of keywords to use
+        use_harmonized: Whether to use harmonized terms instead of raw keywords
     """
     
-    if not KEYWORDS_PATH.exists():
-        raise FileNotFoundError(f"Keywords file not found at {KEYWORDS_PATH}. Please run the 'extract' task first.")
+    # Choose input file based on whether to use harmonized terms
+    if use_harmonized:
+        keywords_file = TERMS_PATH
+        if not keywords_file.exists():
+            print("Harmonized terms file not found. Run harmonization first or set use_harmonized=False")
+            print("Falling back to original keywords file...")
+            keywords_file = KEYWORDS_PATH
+    else:
+        keywords_file = KEYWORDS_PATH
     
-    with open(KEYWORDS_PATH, 'r', encoding='utf-8') as f:
+    if not keywords_file.exists():
+        raise FileNotFoundError(f"Keywords file not found at {keywords_file}. Please run the 'extract' task first.")
+    
+    with open(keywords_file, 'r', encoding='utf-8') as f:
         records = json.load(f)
 
     # Collect all unique keywords across all categories
@@ -165,7 +177,8 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
                 if category in record and isinstance(record[category], list):
                     all_keywords.update(record[category])
         else:
-            all_keywords.update(record[keywords_type])
+            if keywords_type in record and isinstance(record[keywords_type], list):
+                all_keywords.update(record[keywords_type])
 
     # Convert to sorted list for consistent ordering
     sorted_keywords = sorted(list(all_keywords))
@@ -200,7 +213,8 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
 
 
 @task
-def categorise(sample_size: int = 5000, random_seed: int = 42, target_categories: int = 50, keywords_type="keywords"):
+def categorise(sample_size: int = 5000, random_seed: int = 42, target_categories: int = 50, 
+              keywords_type="keywords", use_harmonized: bool = False):
     """
     Categorise sampled keywords into research categories.
     
@@ -212,13 +226,15 @@ def categorise(sample_size: int = 5000, random_seed: int = 42, target_categories
         random_seed: Random seed for reproducible sampling (default: 42)
         target_categories: Target number of categories to generate (default: 50)
         keywords_type: Type of keywords to use (default: "keywords")
+        use_harmonized: Whether to use harmonized terms instead of raw keywords (default: False)
     """
     # Calculate bounds (±10%)
     lower_bound = int(target_categories * 0.9)
     upper_bound = int(target_categories * 1.1)
     
     return Task(
-        dataset=load_dataset(sample_size=sample_size, random_seed=random_seed, keywords_type=keywords_type),
+        dataset=load_dataset(sample_size=sample_size, random_seed=random_seed, 
+                           keywords_type=keywords_type, use_harmonized=use_harmonized),
         solver=[
             system_message(str(PROMPTS_DIR / "categorise.txt"), 
                           target_categories=target_categories,

@@ -142,7 +142,9 @@ def record_to_sample(record: dict) -> Sample:
             "title": record["title"],
             "summary": record["grant_summary"],
             "funding_amount": record["funding_amount"],
-            "funder": record["funder"]
+            "funder": record["funder"],
+            "start_year": record["start_year"],
+            "end_year": record["end_year"],
         }
     )
 

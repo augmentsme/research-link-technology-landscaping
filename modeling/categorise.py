@@ -1,10 +1,8 @@
-
-
 from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import LOGS_DIR, KEYWORDS_PATH, TERMS_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH
-from inspect_ai.solver import system_message, generate, user_message, TaskState
+from config import KEYWORDS_FINAL_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH, NUM_TARGET_CATEGORIES, SAMPLE_SIZE, KEYWORDS_TYPE
+from inspect_ai.solver import system_message, generate, user_message, TaskState, use_tools, chain_of_thought
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
 from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
@@ -16,20 +14,19 @@ from pathlib import Path
 
 
 @scorer(metrics=[count()])
-def categories_counter():
+def categories_discrepancy():
     """
-    Scorer that counts the total number of categories generated in the categorise task
-    and validates FOR code assignments.
+    Scorer that computes the discrepancy between expected and actual number of categories.
     
-    This provides metrics for categorization volume and effectiveness,
-    counting the total number of research categories created and checking FOR code compliance.
+    This provides metrics for categorization accuracy by measuring how close
+    the generated category count is to the target number.
     
     Returns:
-        Score with total category count as the metric
+        Score with negative discrepancy as the metric (higher is better, 0 is perfect)
     """
     
     async def score(state: TaskState, target: Target) -> Score:
-        """Score based on total generated category count and FOR code validation."""
+        """Score based on category count discrepancy from target."""
         
         if not state.output or not state.output.completion:
             return Score(
@@ -38,62 +35,147 @@ def categories_counter():
             )
         
         try:
-            # Parse the categorisation result - expecting an array of categories
+            # Expect strictly the CategoryList shape: an object with a 'categories' key
             result = json.loads(state.output.completion)
+            if not isinstance(result, dict) or "categories" not in result or not isinstance(result["categories"], list):
+                return Score(
+                    value=-float('inf'),
+                    explanation="Expected an object with a top-level 'categories' key containing a list"
+                )
+
+            categories_list = result["categories"]
             
-            # Count categories - result should be an array
-            if isinstance(result, list):
-                total_categories = len(result)
-                
-                # Count total keywords across all categories
-                total_keywords = 0
-                for_code_assignments = {}
-                missing_for_codes = 0
-                
-                for category in result:
-                    if "keywords" in category and isinstance(category["keywords"], list):
-                        total_keywords += len(category["keywords"])
-                    
-                    # Check FOR code assignment
-                    for_code = category.get("for_code")
-                    if for_code:
-                        for_code_assignments[for_code] = for_code_assignments.get(for_code, 0) + 1
-                    else:
-                        missing_for_codes += 1
-                
-                # Create detailed explanation
-                for_distribution = ", ".join([f"FOR {code}: {count} categories" 
-                                            for code, count in sorted(for_code_assignments.items())])
-                
-                if total_categories > 0:
-                    explanation_parts = [
-                        f"Generated {total_categories} categories with {total_keywords} total associated keywords"
-                    ]
-                    
-                    if for_distribution:
-                        explanation_parts.append(f"FOR code distribution: {for_distribution}")
-                    
-                    if missing_for_codes > 0:
-                        explanation_parts.append(f"WARNING: {missing_for_codes} categories missing FOR codes")
-                    
-                    explanation = ". ".join(explanation_parts)
+            # Get target number from task metadata (this will be passed from the task)
+            # For now, use NUM_TARGET_CATEGORIES as default
+            target_categories = getattr(state.metadata, 'num_target_categories', NUM_TARGET_CATEGORIES)
+            
+            # Count categories and keywords
+            actual_categories = len(categories_list)
+            total_keywords = 0
+            for_code_assignments = {}
+            missing_for_codes = 0
+
+            for category in categories_list:
+                if "keywords" in category and isinstance(category["keywords"], list):
+                    total_keywords += len(category["keywords"])
+
+                for_code = category.get("for_code")
+                if for_code:
+                    for_code_assignments[for_code] = for_code_assignments.get(for_code, 0) + 1
                 else:
-                    explanation = "No categories generated"
-                
-                return Score(
-                    value=total_categories,
-                    explanation=explanation
-                )
-            else:
-                return Score(
-                    value=0,
-                    explanation="Expected array of categories but got different format"
-                )
+                    missing_for_codes += 1
+
+            # Calculate discrepancy (negative so higher scores are better)
+            discrepancy = abs(actual_categories - target_categories)
+            score_value = -discrepancy
+            
+            # Create explanation text
+            for_distribution = ", ".join([
+                f"FOR {code}: {count} categories" for code, count in sorted(for_code_assignments.items())
+            ])
+
+            explanation_parts = [
+                f"Generated {actual_categories} categories (target: {target_categories}, discrepancy: {discrepancy})",
+                f"Total keywords: {total_keywords}"
+            ]
+            
+            if for_distribution:
+                explanation_parts.append(f"FOR code distribution: {for_distribution}")
+            if missing_for_codes > 0:
+                explanation_parts.append(f"WARNING: {missing_for_codes} categories missing FOR codes")
+
+            explanation = ". ".join(explanation_parts)
+
+            return Score(value=score_value, explanation=explanation)
                 
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             return Score(
                 value="incorrect", 
                 explanation=f"Error parsing categorisation result: {str(e)}"
+            )
+    
+    return score
+
+
+@scorer(metrics=[count()])
+def keywords_coverage():
+    """
+    Scorer that computes the discrepancy between input keywords and keywords covered by categories.
+    
+    This measures how well the categorization covers the input keywords by comparing
+    the number of unique keywords in the input with those assigned to categories.
+    
+    Returns:
+        Score with negative coverage discrepancy (higher is better, 0 means perfect coverage)
+    """
+    
+    async def score(state: TaskState, target: Target) -> Score:
+        """Score based on keyword coverage discrepancy."""
+        
+        if not state.output or not state.output.completion:
+            return Score(
+                value="incorrect", 
+                explanation="No categorisation output to score"
+            )
+        
+        try:
+            # Parse the categorization result
+            result = json.loads(state.output.completion)
+            if not isinstance(result, dict) or "categories" not in result or not isinstance(result["categories"], list):
+                return Score(
+                    value=-float('inf'),
+                    explanation="Expected an object with a top-level 'categories' key containing a list"
+                )
+
+            categories_list = result["categories"]
+            
+            # Extract all keywords from the input
+            input_text = state.input
+            # The input contains keywords followed by FOR context, separated by "\n\nFOR Division Context:"
+            keywords_part = input_text.split("\n\nFOR Division Context:")[0]
+            input_keywords = set(keyword.strip() for keyword in keywords_part.split(","))
+            
+            # Extract all keywords from the categorization result
+            covered_keywords = set()
+            for category in categories_list:
+                if "keywords" in category and isinstance(category["keywords"], list):
+                    covered_keywords.update(keyword.strip() for keyword in category["keywords"])
+            
+            # Calculate coverage metrics
+            total_input_keywords = len(input_keywords)
+            total_covered_keywords = len(covered_keywords)
+            
+            # Find intersection (keywords that are both in input and covered)
+            correctly_covered = input_keywords.intersection(covered_keywords)
+            
+            # Find keywords that are covered but not in input (potential hallucinations)
+            extra_keywords = covered_keywords - input_keywords
+            
+            # Find keywords that are in input but not covered (missed keywords)
+            missed_keywords = input_keywords - covered_keywords
+            
+            # Calculate coverage percentage
+            coverage_percentage = len(correctly_covered) / total_input_keywords * 100 if total_input_keywords > 0 else 0
+            
+            # Score based on coverage (negative missed keywords so higher is better)
+            score_value = -len(missed_keywords)
+            
+            explanation_parts = [
+                f"Input keywords: {total_input_keywords}",
+                f"Covered keywords: {total_covered_keywords}",
+                f"Correctly covered: {len(correctly_covered)} ({coverage_percentage:.1f}%)",
+                f"Missed keywords: {len(missed_keywords)}",
+                f"Extra keywords: {len(extra_keywords)}"
+            ]
+            
+            explanation = ". ".join(explanation_parts)
+
+            return Score(value=score_value, explanation=explanation)
+                
+        except (json.JSONDecodeError, KeyError, TypeError, IndexError) as e:
+            return Score(
+                value="incorrect", 
+                explanation=f"Error analyzing keyword coverage: {str(e)}"
             )
     
     return score
@@ -106,6 +188,11 @@ class Category(BaseModel):
     keywords: list[str] = Field(description="List of keywords associated with this category")
     for_code: str = Field(description="The 2-digit FOR division code this category falls under (e.g., '30', '46', '51')")
     for_division_name: str = Field(description="The name of the FOR division this category belongs to")
+
+class CategoryList(BaseModel):
+    """A list of research categories."""
+    model_config = {"extra": "forbid"}
+    categories: list[Category] = Field(description="List of research categories")
 
 @hooks(name="CategoriseOutputHook", description="Hook to save categorisation results as JSON files")
 class CategoriseOutputHook(Hooks):
@@ -139,8 +226,7 @@ def load_for_codes():
     
     return top_level_divisions
 
-def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type="keywords", 
-                use_harmonized: bool = False):
+def load_dataset(sample_size: int, random_seed: int, keywords_type: str):
     """
     Load and sample keywords from the extracted keywords dataset.
     Include FOR codes context for categorization.
@@ -153,14 +239,8 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
     """
     
     # Choose input file based on whether to use harmonized terms
-    if use_harmonized:
-        keywords_file = TERMS_PATH
-        if not keywords_file.exists():
-            print("Harmonized terms file not found. Run harmonization first or set use_harmonized=False")
-            print("Falling back to original keywords file...")
-            keywords_file = KEYWORDS_PATH
-    else:
-        keywords_file = KEYWORDS_PATH
+
+    keywords_file = KEYWORDS_FINAL_PATH
     
     if not keywords_file.exists():
         raise FileNotFoundError(f"Keywords file not found at {keywords_file}. Please run the 'extract' task first.")
@@ -213,44 +293,52 @@ def load_dataset(sample_size: int = 10000, random_seed: int = 42, keywords_type=
 
 
 @task
-def categorise(sample_size: int = 5000, random_seed: int = 42, target_categories: int = 50, 
-              keywords_type="keywords", use_harmonized: bool = False):
+def categorise(num_target_categories: int = NUM_TARGET_CATEGORIES, sample_size: int = SAMPLE_SIZE, keywords_type: str = KEYWORDS_TYPE, random_seed: int = 42):
     """
-    Categorise sampled keywords into research categories.
+    Categorise sampled keywords into research categories with comprehensive scoring.
     
     This task samples a subset of extracted keywords to ensure manageable
-    token count and focused categorization results.
+    token count and focused categorization results. It uses two scorers:
+    1. categories_discrepancy: Measures how close the number of generated categories is to the target
+    2. keywords_coverage: Measures how well the categories cover the input keywords
     
     Args:
-        sample_size: Number of unique keywords to sample for categorization (default: 5000)
+        sample_size: Number of unique keywords to sample for categorization (default: 10000)
         random_seed: Random seed for reproducible sampling (default: 42)
-        target_categories: Target number of categories to generate (default: 50)
+        num_target_categories: Target number of categories to generate (default: 200)
         keywords_type: Type of keywords to use (default: "keywords")
-        use_harmonized: Whether to use harmonized terms instead of raw keywords (default: False)
     """
     # Calculate bounds (±10%)
-    lower_bound = int(target_categories * 0.9)
-    upper_bound = int(target_categories * 1.1)
+    lower_bound = int(num_target_categories * 0.9)
+    upper_bound = int(num_target_categories * 1.1)
+    
+    # Create dataset with metadata
+    dataset = load_dataset(sample_size=sample_size, random_seed=random_seed, 
+                          keywords_type=keywords_type)
+    
+    # Add target categories to sample metadata
+    for sample in dataset.samples:
+        sample.metadata = {"num_target_categories": num_target_categories}
     
     return Task(
-        dataset=load_dataset(sample_size=sample_size, random_seed=random_seed, 
-                           keywords_type=keywords_type, use_harmonized=use_harmonized),
+        dataset=dataset,
         solver=[
             system_message(str(PROMPTS_DIR / "categorise.txt"), 
-                          target_categories=target_categories,
+                          num_target_categories=num_target_categories,
                           lower_bound=lower_bound,
                           upper_bound=upper_bound),
             generate(),
         ],
         scorer=[
-            categories_counter()
+            categories_discrepancy(),
+            keywords_coverage()
         ],
         config=GenerateConfig(
             response_schema=ResponseSchema(
                 name="Categories",
-                json_schema=json_schema(list[Category]),
+                json_schema=json_schema(CategoryList),
                 strict=True
-            )
+            ),
         ),
         hooks=["CategoriseOutputHook"]
     )

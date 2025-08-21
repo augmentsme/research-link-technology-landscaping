@@ -6,7 +6,7 @@ from inspect_ai.solver import system_message, generate, user_message
 from inspect_ai.util import json_schema
 
 
-from config import GRANTS_FILE, PROMPTS_DIR, LOGS_DIR, KEYWORDS_PATH
+from config import GRANTS_FILE, PROMPTS_DIR, RESULTS_DIR, EXTRACTED_KEYWORDS_DIR, EXTRACTED_KEYWORDS_PATH
 
 import json
 from typing import List
@@ -106,27 +106,25 @@ class KeywordsExtractionHook(Hooks):
         output_text = data.sample.output.completion
         result_json = json.loads(output_text)
 
-        results_dir = LOGS_DIR / "results" / "extract"
-        results_dir.mkdir(parents=True, exist_ok=True)
+        EXTRACTED_KEYWORDS_DIR.mkdir(parents=True, exist_ok=True)
 
         grant_id = data.sample.id
         grant_id_sanitized = grant_id.replace("/", "_")
 
-        output_file = results_dir / f"{grant_id_sanitized}.json"
+        output_file = RESULTS_DIR / f"{grant_id_sanitized}.json"
         
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(result_json, f, indent=2, ensure_ascii=False)
 
     async def on_task_end(self, data: TaskEnd) -> None:
-        results_dir = LOGS_DIR / "results" / "extract"
-        # keywords_json = LOGS_DIR / "results" / "keywords.json"
+        # results_dir = EXTRACTED_KEYWORDS_DIR
         keywords = []
-        for file in results_dir.glob("*.json"):
+        for file in EXTRACTED_KEYWORDS_DIR.glob("*.json"):
             with open(file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 data['id'] = file.stem.replace("_", "/")
                 keywords.append(data)
-        with open(KEYWORDS_PATH, 'w', encoding='utf-8') as f:
+        with open(EXTRACTED_KEYWORDS_PATH, 'w', encoding='utf-8') as f:
             json.dump(keywords, f, indent=2, ensure_ascii=False)
 
 

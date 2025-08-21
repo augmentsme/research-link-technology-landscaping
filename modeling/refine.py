@@ -1,7 +1,7 @@
 from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import LOGS_DIR, KEYWORDS_PATH, PROMPTS_DIR, CATEGORY_PATH, REFINED_CATEGORY_PATH
+from config import PROMPTS_DIR, CATEGORY_PATH, REFINED_CATEGORY_PATH
 from inspect_ai.solver import system_message, generate, user_message, TaskState
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
@@ -19,7 +19,7 @@ def refined_categories_counter():
     Scorer that counts the total number of refined categories generated in the refine task.
     
     This provides metrics for refinement effectiveness,
-    counting the total number of high-level abstract categories created.
+    counting the total number of detailed, specific categories created.
     
     Returns:
         Score with total refined category count as the metric
@@ -35,33 +35,36 @@ def refined_categories_counter():
             )
         
         try:
-            # Parse the refinement result - expecting an array of refined categories
+            # Parse the refinement result - expecting an object with 'categories' key
             result = json.loads(state.output.completion)
             
-            # Count refined categories - result should be an array
-            if isinstance(result, list):
-                total_refined_categories = len(result)
-                
-                # Count total subcategories across all refined categories
-                total_subcategories = 0
-                for category in result:
-                    if "subcategories" in category and isinstance(category["subcategories"], list):
-                        total_subcategories += len(category["subcategories"])
-                
-                if total_refined_categories > 0:
-                    explanation = f"Generated {total_refined_categories} refined categories encompassing {total_subcategories} subcategories"
-                else:
-                    explanation = "No refined categories generated"
-                
-                return Score(
-                    value=total_refined_categories,
-                    explanation=explanation
-                )
-            else:
+            # Check if result has the expected structure
+            if not isinstance(result, dict) or "categories" not in result or not isinstance(result["categories"], list):
                 return Score(
                     value=0,
-                    explanation="Expected array of refined categories but got different format"
+                    explanation="Expected an object with a top-level 'categories' key containing a list"
                 )
+            
+            categories_list = result["categories"]
+            total_refined_categories = len(categories_list)
+            
+            # Count total parent categories referenced
+            total_parent_categories = 0
+            unique_parents = set()
+            for category in categories_list:
+                if "parent_category" in category and category["parent_category"]:
+                    unique_parents.add(category["parent_category"])
+            total_parent_categories = len(unique_parents)
+            
+            if total_refined_categories > 0:
+                explanation = f"Generated {total_refined_categories} refined categories derived from {total_parent_categories} parent categories"
+            else:
+                explanation = "No refined categories generated"
+            
+            return Score(
+                value=total_refined_categories,
+                explanation=explanation
+            )
                 
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             return Score(
@@ -72,11 +75,16 @@ def refined_categories_counter():
     return score
 
 class RefinedCategory(BaseModel):
-    """A high-level, abstract research category."""
+    """A detailed, specific research category derived from a broader parent category."""
     model_config = {"extra": "forbid"}
-    name: str = Field(description="Name of the refined, high-level category")
-    description: str = Field(description="A comprehensive description of this abstract category, explaining its broad scope, overarching themes, and how it encompasses multiple specific research areas")
-    subcategories: list[str] = Field(description="List of more specific category names that fall under this high-level category")
+    name: str = Field(description="Name of the refined, specific category")
+    description: str = Field(description="A detailed description of this specific category, explaining its narrow focus, specialized applications, and how it represents a distinct sub-area within the broader parent category")
+    parent_category: str = Field(description="Name of the parent category from which this refined category is derived")
+
+class RefinedCategoryList(BaseModel):
+    """A list of refined research categories."""
+    model_config = {"extra": "forbid"}
+    categories: list[RefinedCategory] = Field(description="List of refined research categories")
 
 @hooks(name="RefineOutputHook", description="Hook to save refined categorisation results as JSON files")
 class RefineOutputHook(Hooks):
@@ -99,40 +107,63 @@ def load_dataset():
     with open(CATEGORY_PATH, 'r', encoding='utf-8') as f:
         categories = json.load(f)  # Now expecting an array directly
     
-    # Create input text with all categories
-    input_text = "Here are the detailed research categories to be refined into higher-level abstractions:\n\n"
+    # Get the number of base categories for ratio calculations
+    base_categories_count = len(categories['categories'])
     
-    for i, category in enumerate(categories, 1):
+    # Create input text with all categories
+    input_text = "Here are the research categories to be refined into more detailed, specific subcategories:\n\n"
+    # print(categories)
+    for i, category in enumerate(categories['categories'], 1):
         input_text += f"{i}. **{category['name']}**: {category['description']}\n\n"
     
     return MemoryDataset([Sample(
         id="refine",
         input=input_text,
+        metadata={"base_categories_count": base_categories_count}
     )])
 
 @task
-def refine(target_refined_categories: int = 20):
+def refine(refinement_ratio: float = 0.5):
     """
-    Task to refine detailed categories into higher-level, more abstract categories.
+    Task to refine broad categories into more detailed, specific subcategories.
     
-    This task takes the output from the 'categorise' task and produces a more strategic,
-    high-level view of research domains by consolidating related categories into
-    broader, more abstract themes suitable for strategic planning and overview purposes.
+    This task takes the output from the 'categorise' task and produces a more granular,
+    detailed view of research domains by breaking down broad categories into
+    more specific, focused research areas suitable for detailed analysis and specialization.
     
     Args:
-        target_refined_categories: Target number of high-level refined categories to generate (default: 20)
+        refinement_ratio: Ratio of refined categories to base categories. 
+                         Examples:
+                         - 0.5: Each base category produces 0.5 refined categories on average (fewer refined than base)
+                         - 1.0: Each base category produces 1 refined category on average (equal numbers)
+                         - 2.0: Each base category produces 2 refined categories on average (more refined than base)
+                         
+                         With 275 base categories:
+                         - ratio 0.5 → ~138 refined categories
+                         - ratio 1.0 → ~275 refined categories  
+                         - ratio 2.0 → ~550 refined categories
     """
-    # Calculate bounds (±10%)
-    lower_bound = int(target_refined_categories * 0.9)
-    upper_bound = int(target_refined_categories * 1.1)
+    # Load dataset to get base categories count
+    dataset = load_dataset()
+    sample = next(iter(dataset))
+    base_categories_count = sample.metadata["base_categories_count"]
+    
+    # Calculate target refined categories based on ratio
+    target_refined_categories = int(base_categories_count * refinement_ratio)
+    
+    # Calculate bounds (±15% for refinement to allow for natural variation in subcategory count)
+    lower_bound = int(target_refined_categories * 0.85)
+    upper_bound = int(target_refined_categories * 1.15)
     
     return Task(
-        dataset=load_dataset(),
+        dataset=dataset,
         solver=[
             system_message(str(PROMPTS_DIR / "refine.txt"), 
                           target_refined_categories=target_refined_categories,
                           lower_bound=lower_bound,
-                          upper_bound=upper_bound),
+                          upper_bound=upper_bound,
+                          refinement_ratio=refinement_ratio,
+                          base_categories_count=base_categories_count),
             generate(),
         ],
         scorer=[
@@ -141,7 +172,7 @@ def refine(target_refined_categories: int = 20):
         config=GenerateConfig(
             response_schema=ResponseSchema(
                 name="RefinedCategories",
-                json_schema=json_schema(list[RefinedCategory]),
+                json_schema=json_schema(RefinedCategoryList),
                 strict=True
             )
         ),

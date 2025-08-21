@@ -1,25 +1,22 @@
 extract: 
 	uv run inspect eval extract.py@extract
 
+harmonise:
+	uv run inspect eval harmonise.py@harmonise
+
 categorise: 
 	uv run inspect eval categorise.py@categorise
+
+coarsen:
+	uv run inspect eval coarsen.py@coarsen
 
 refine:
 	uv run inspect eval refine.py@refine
 
+merge:
+	uv run merge_taxonomy.py
+
 classify: 
-	uv run inspect eval classify.py@classify -T category_path=/Users/luhancheng/Desktop/research-link-technology-landscaping/modeling/logs/results/refined_categories.json --limit 50
+	uv run inspect eval classify.py@classify
 
-
-clean-categorise: clean-refine
-	rm -f logs/*categorise*.eval 
-	rm -f logs/results/categorise.json
-
-clean-refine: clean-classify
-	rm -f logs/*refine*.eval
-	rm -f logs/results/refined_categories.json
-
-clean-classify:
-	rm -f logs/*classify*.eval
-
-.PHONY: extract categorise refine classify clean-categorise clean-refine clean-classify
+.PHONY: extract categorise coarsen refine classify

@@ -76,11 +76,8 @@ def clean_for_codes_data(excel_file_path):
     Returns:
         dict: Hierarchical structure of FOR codes
     """
-    print(f"Loading FOR codes data from {excel_file_path}...")
-    
     # Load the Excel data
     df = pd.read_excel(excel_file_path, sheet_name="Table 4", skiprows=8)
-    print(f"Loaded {len(df)} rows from Excel file")
     
     # Clean and restructure the data
     cleaned_data = []
@@ -135,7 +132,6 @@ def clean_for_codes_data(excel_file_path):
     if missing_name_mask.any():
         fixed_name = "Cognitive and computational psychology"
         cleaned_df.loc[missing_name_mask, 'name'] = fixed_name
-        print(f"✅ Fixed missing name for group 5204: {fixed_name}")
     
     # Create hierarchical structure
     hierarchy = {}
@@ -165,27 +161,18 @@ def clean_for_codes_data(excel_file_path):
                 'exclusions': row['exclusions_structured']
             }
     
-    print(f"✅ FOR codes successfully cleaned and structured!")
-    print(f"📊 Structure: {len(hierarchy)} divisions with {sum(len(div['groups']) for div in hierarchy.values())} groups total")
+    print(f"FOR codes cleaned: {len(hierarchy)} divisions, {sum(len(div['groups']) for div in hierarchy.values())} groups")
     
     return hierarchy
 
 
 def validate_for_data(hierarchy):
     """Validate the cleaned FOR codes data structure"""
-    print("🔍 FOR Codes Data Validation:")
-    
     divisions = len(hierarchy)
     total_groups = sum(len(div['groups']) for div in hierarchy.values())
-    
-    # Check for missing names in divisions
+
     divisions_with_names = sum(1 for div in hierarchy.values() if div.get('name'))
-    if divisions_with_names != divisions:
-        print(f"⚠️  Found {divisions - divisions_with_names} divisions with missing names")
-    else:
-        print("✅ All divisions have names")
-    
-    # Check for missing names in groups
+    # Count groups with names
     groups_with_names = 0
     total_group_count = 0
     for div in hierarchy.values():
@@ -193,22 +180,18 @@ def validate_for_data(hierarchy):
             total_group_count += 1
             if group.get('name'):
                 groups_with_names += 1
-    
+
+    issues = []
+    if divisions_with_names != divisions:
+        issues.append(f"missing division names:{divisions - divisions_with_names}")
     if groups_with_names != total_group_count:
-        print(f"⚠️  Found {total_group_count - groups_with_names} groups with missing names")
+        issues.append(f"missing group names:{total_group_count - groups_with_names}")
+
+    if issues:
+        print(f"FOR codes validation issues: {', '.join(issues)}")
     else:
-        print("✅ All groups have names")
-    
-    # Check code ranges
-    division_codes = [div['code'] for div in hierarchy.values() if div.get('code')]
-    group_codes = []
-    for div in hierarchy.values():
-        group_codes.extend([group['code'] for group in div['groups'].values() if group.get('code')])
-    
-    print(f"📊 Division codes range: {min(division_codes)} - {max(division_codes)}")
-    print(f"📊 Group codes range: {min(group_codes)} - {max(group_codes)}")
-    print(f"📊 Total structure: {divisions} divisions, {total_groups} groups")
-    
+        print(f"FOR codes validation OK: divisions={divisions}, groups={total_groups}")
+
     return True
 
 
@@ -216,41 +199,28 @@ def export_for_codes_to_json(hierarchy, output_path):
     """Export the cleaned FOR codes to JSON"""
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(hierarchy, f, indent=2, ensure_ascii=False)
-    
-    print(f"✅ Exported FOR codes to: {output_path}")
+    print(f"Exported FOR codes to: {output_path}")
     return output_path
 
 
 def main(output_path=None):
     """Main function to clean and export FOR codes"""
-    print("=" * 70)
-    print("🔬 ANZSRC Field of Research (FOR) Codes Cleaner")
-    print("=" * 70)
-    
     # Set up file paths
     excel_file_path = DATA_DIR / "anzsrc2020_for.xlsx"
-    
+
     # Use default path if none provided
     if output_path is None:
         output_path = DATA_DIR / "for_codes_cleaned.json"
-    
-    print(f"📁 Input file: {excel_file_path}")
-    print(f"📁 Output file: {output_path}")
-    
+
     # Process the FOR codes
     hierarchy = clean_for_codes_data(excel_file_path)
-    
+
     # Validate the data
     validate_for_data(hierarchy)
-    
+
     # Export to JSON
     export_for_codes_to_json(hierarchy, output_path)
-    
-    print("\n" + "=" * 70)
-    print("🎉 FOR codes processing completed successfully!")
-    print(f"📄 Output file: {output_path}")
-    print("=" * 70)
-    
+
     return hierarchy
 
 

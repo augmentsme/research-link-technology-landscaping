@@ -2,8 +2,8 @@
 Research Landscape Visualizations
 
 This module contains visualization functions for the research link technology 
-landscaping analysis, including treemap visualizations of research domains, 
-categories, and keywords.
+landscaping analysis, including treemap visualizations of research categories 
+and keywords.
 """
 
 import pandas as pd
@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 from pathlib import Path
-from config import CATEGORY_PATH, REFINED_CATEGORY_PATH, RESULTS_DIR
+from config import CATEGORY_PATH, RESULTS_DIR
 
 
 def load_data():
@@ -19,24 +19,18 @@ def load_data():
     Load all required data files for visualization
     
     Returns:
-        tuple: (refined_categories, detailed_categories, classification_results)
+        tuple: (categories, classification_results)
     """
-    # Try to load refined categories data
-    refined_categories = []
-    if REFINED_CATEGORY_PATH.exists():
-        with open(REFINED_CATEGORY_PATH, 'r') as f:
-            refined_categories = json.load(f)
-    else:
-        print(f"⚠️  Refined categories file not found: {REFINED_CATEGORY_PATH}")
-        print("    Run the refine task first to generate refined categories")
-
-    # Load detailed categories data (with keywords)
-    detailed_categories = []
+    # Load categories data (with keywords)
+    categories_data = []
     if CATEGORY_PATH.exists():
         with open(CATEGORY_PATH, 'r') as f:
-            detailed_categories = json.load(f)
+            data = json.load(f)
+
+            categories_data = data['categories']
+
     else:
-        print(f"⚠️  Detailed categories file not found: {CATEGORY_PATH}")
+        print(f"⚠️  Categories file not found: {CATEGORY_PATH}")
         print("    Run the categorise task first to generate categories")
 
     # Try to load classification results if available
@@ -50,131 +44,121 @@ def load_data():
     else:
         print("No classification results found - run classify task first")
 
-    print(f"Found {len(refined_categories)} refined categories")
-    print(f"Found {len(detailed_categories)} detailed categories")
+    print(f"Found {len(categories_data)} categories")
     
-    return refined_categories, detailed_categories, classification_results
+    return categories_data, classification_results
 
 
-def create_data_mappings(refined_categories, detailed_categories, classification_results):
+def create_data_mappings(categories, classification_results):
     """
     Create data mappings for visualization
     
     Args:
-        refined_categories: List of refined category data
-        detailed_categories: List of detailed category data with keywords
+        categories: List of category data with keywords
         classification_results: List of grant classification results
         
     Returns:
-        tuple: (detailed_category_map, strategic_category_to_grants, detailed_category_to_grants, summary_stats)
+        tuple: (category_to_grants, summary_stats)
     """
-    # Create mapping from detailed category name to keywords
-    detailed_category_map = {cat['name']: cat.get('keywords', []) for cat in detailed_categories}
-
-    # Create mappings for grants based on what's available in the classification results
-    strategic_category_to_grants = {}  # Strategic level classifications
-    detailed_category_to_grants = {}   # Detailed level classifications
+    # Create mapping for grants based on classification results
+    category_to_grants = {}
 
     for result in classification_results:
-        # Strategic level mapping (always available)
+        # Map grants to categories
         for category_name in result.get('selected_categories', []):
-            if category_name not in strategic_category_to_grants:
-                strategic_category_to_grants[category_name] = []
-            strategic_category_to_grants[category_name].append({
-                'title': result['title'],
-                'grant_id': result['grant_id']
-            })
-        
-        # Detailed level mapping (only if subcategories were classified)
-        for subcat_name in result.get('selected_subcategories', []):
-            if subcat_name not in detailed_category_to_grants:
-                detailed_category_to_grants[subcat_name] = []
-            detailed_category_to_grants[subcat_name].append({
+            if category_name not in category_to_grants:
+                category_to_grants[category_name] = []
+            category_to_grants[category_name].append({
                 'title': result['title'],
                 'grant_id': result['grant_id']
             })
 
     # Calculate summary statistics
-    total_subcategories = sum(len(cat['subcategories']) for cat in refined_categories)
-    total_keywords = sum(len(cat.get('keywords', [])) for cat in detailed_categories)
+    total_keywords = sum(len(cat.get('keywords', [])) for cat in categories)
     total_grants = len(classification_results)
-    strategic_grants = sum(len(grants) for grants in strategic_category_to_grants.values())
-    detailed_grants = sum(len(grants) for grants in detailed_category_to_grants.values())
+    classified_grants = sum(len(grants) for grants in category_to_grants.values())
 
     summary_stats = {
-        'total_subcategories': total_subcategories,
+        'total_categories': len(categories),
         'total_keywords': total_keywords,
         'total_grants': total_grants,
-        'strategic_grants': strategic_grants,
-        'detailed_grants': detailed_grants,
-        'avg_keywords_per_category': total_keywords/len(detailed_categories) if detailed_categories else 0,
-        'has_detailed_classifications': detailed_grants > 0
+        'classified_grants': classified_grants,
+        'avg_keywords_per_category': total_keywords/len(categories) if categories else 0
     }
 
     print(f"Total keywords: {total_keywords}")
     print(f"Total grants: {total_grants}")
-    print(f"Strategic level classifications: {strategic_grants}")
-    print(f"Detailed level classifications: {detailed_grants}")
-    print(f"Average keywords per detailed category: {summary_stats['avg_keywords_per_category']:.1f}")
-    print(f"Visualization mode: {'Detailed level' if summary_stats['has_detailed_classifications'] else 'Strategic level'}")
+    print(f"Classified grants: {classified_grants}")
+    print(f"Average keywords per category: {summary_stats['avg_keywords_per_category']:.1f}")
     
-    return detailed_category_map, strategic_category_to_grants, detailed_category_to_grants, summary_stats
+    return category_to_grants, summary_stats
 
 
-def create_treemap_data(refined_categories, detailed_category_map):
+def create_treemap_data(categories):
     """
-    Create hierarchical data structure for treemap visualization
+    Create hierarchical data structure for treemap visualization with FOR classes as parents
     
     Args:
-        refined_categories: List of refined category data
-        detailed_category_map: Mapping of category names to keywords
+        categories: List of category data with keywords
         
     Returns:
-        pandas.DataFrame: Treemap data with hierarchical structure
+        pandas.DataFrame: Treemap data with hierarchical structure (FOR Classes → Categories → Keywords)
     """
     treemap_data = []
-
-    # Level 1: Strategic domains (refined categories)
-    for refined_cat in refined_categories:
-        # Calculate total keywords for this strategic domain
-        domain_keyword_count = 0
+    
+    # Group categories by FOR division
+    for_groups = {}
+    for category in categories:
+        for_code = category.get('for_code', 'Unknown')
+        for_division_name = category.get('for_division_name', f'FOR {for_code}')
         
-        for subcat_name in refined_cat['subcategories']:
-            domain_keyword_count += len(detailed_category_map.get(subcat_name, []))
+        if for_code not in for_groups:
+            for_groups[for_code] = {
+                'name': for_division_name,
+                'categories': []
+            }
+        for_groups[for_code]['categories'].append(category)
+    
+    # Create treemap data with 3-level hierarchy
+    for for_code, for_data in for_groups.items():
+        for_name = for_data['name']
         
-        # Size by total keywords
-        domain_size = max(1, domain_keyword_count)
+        # Calculate total keywords for this FOR division
+        for_keyword_count = sum(len(cat.get('keywords', [])) for cat in for_data['categories'])
+        for_size = max(1, for_keyword_count)
         
+        # Level 1: FOR Classes (top level)
         treemap_data.append({
-            'id': refined_cat['name'],
+            'id': f"FOR_{for_code}",
             'parent': '',
-            'name': refined_cat['name'],
-            'value': domain_size,
-            'level': 'Strategic Domain',
-            'item_type': 'domain'
+            'name': f"FOR {for_code}: {for_name}",
+            'value': for_size,
+            'level': 'FOR Class',
+            'item_type': 'for_class'
         })
         
-        # Level 2: Detailed categories (subcategories)
-        for subcat_name in refined_cat['subcategories']:
-            keywords = detailed_category_map.get(subcat_name, [])
+        # Level 2: Categories under FOR classes
+        for category in for_data['categories']:
+            category_name = category['name']
+            keywords = category.get('keywords', [])
             
-            # Size by keywords only
+            # Size by number of keywords (minimum 1)
             category_size = max(1, len(keywords))
             
             treemap_data.append({
-                'id': f"{refined_cat['name']} >> {subcat_name}",
-                'parent': refined_cat['name'],
-                'name': subcat_name,
+                'id': f"FOR_{for_code} >> {category_name}",
+                'parent': f"FOR_{for_code}",
+                'name': category_name,
                 'value': category_size,
-                'level': 'Detailed Category',
+                'level': 'Category',
                 'item_type': 'category'
             })
             
-            # Level 3: Keywords under detailed categories
+            # Level 3: Keywords under categories
             for keyword in keywords:
                 treemap_data.append({
-                    'id': f"{refined_cat['name']} >> {subcat_name} >> KW: {keyword}",
-                    'parent': f"{refined_cat['name']} >> {subcat_name}",
+                    'id': f"FOR_{for_code} >> {category_name} >> KW: {keyword}",
+                    'parent': f"FOR_{for_code} >> {category_name}",
                     'name': keyword,
                     'value': 1,
                     'level': 'Keyword',
@@ -184,49 +168,43 @@ def create_treemap_data(refined_categories, detailed_category_map):
     return pd.DataFrame(treemap_data)
 
 
-def create_research_landscape_treemap(refined_categories=None, detailed_categories=None, classification_results=None):
+def create_research_landscape_treemap(categories=None, classification_results=None):
     """
     Create a comprehensive treemap visualization of the research landscape
     
     Args:
-        refined_categories: Optional pre-loaded refined categories data
-        detailed_categories: Optional pre-loaded detailed categories data
+        categories: Optional pre-loaded categories data
         classification_results: Optional pre-loaded classification results
         
     Returns:
         plotly.graph_objects.Figure: Interactive treemap visualization or None if no data
     """
     # Load data if not provided
-    if any(x is None for x in [refined_categories, detailed_categories, classification_results]):
-        refined_categories, detailed_categories, classification_results = load_data()
+    if any(x is None for x in [categories, classification_results]):
+        categories, classification_results = load_data()
     
     # Check if we have enough data for visualization
-    if not refined_categories or not detailed_categories:
+    if not categories:
         print("\n❌ Insufficient data for visualization:")
-        if not refined_categories:
-            print("   - Missing refined categories (run 'make refine' first)")
-        if not detailed_categories:
-            print("   - Missing detailed categories (run 'make categorise' first)")
+        print("   - Missing categories (run 'make categorise' first)")
         print("\nSkipping visualization...")
         return None
     
     # Create data mappings
-    detailed_category_map, strategic_category_to_grants, detailed_category_to_grants, summary_stats = create_data_mappings(
-        refined_categories, detailed_categories, classification_results
-    )
+    category_to_grants, summary_stats = create_data_mappings(categories, classification_results)
     
     # Create treemap data
-    treemap_df = create_treemap_data(refined_categories, detailed_category_map)
+    treemap_df = create_treemap_data(categories)
     
-    # Define color mapping
+    # Define color mapping for 3-level hierarchy
     color_map = {
-        'Strategic Domain': '#1f77b4',    # Blue
-        'Detailed Category': '#ff7f0e',   # Orange  
-        'Keyword': '#2ca02c',             # Green
+        'FOR Class': '#1f77b4',      # Blue
+        'Category': '#ff7f0e',       # Orange  
+        'Keyword': '#2ca02c',        # Green
     }
 
     # Create title
-    title = 'Research Landscape: Domains → Categories → Keywords'
+    title = 'Research Landscape: FOR Classes → Categories → Keywords'
 
     # Create the treemap
     fig = px.treemap(
@@ -256,31 +234,31 @@ def create_research_landscape_treemap(refined_categories=None, detailed_categori
     )
 
     # Print summary
+    for_class_count = len(treemap_df[treemap_df['level'] == 'FOR Class'])
+    category_count = len(treemap_df[treemap_df['level'] == 'Category'])
     keyword_count = len(treemap_df[treemap_df['level'] == 'Keyword'])
 
     print(f"\nTreemap contains {len(treemap_df)} total elements:")
-    print(f"  - {len(refined_categories)} Strategic Domains (Blue)")  
-    print(f"  - {summary_stats['total_subcategories']} Detailed Categories (Orange)")
+    print(f"  - {for_class_count} FOR Classes (Blue)")
+    print(f"  - {category_count} Categories (Orange)")
     print(f"  - {keyword_count} Keywords (Green)")
+    
+    # Show FOR class distribution
+    if for_class_count > 0:
+        for_distribution = treemap_df[treemap_df['level'] == 'FOR Class'][['name', 'value']].sort_values('value', ascending=False)
+        print(f"\nFOR Class distribution by keyword count:")
+        for _, row in for_distribution.head(5).iterrows():
+            print(f"  - {row['name']}: {row['value']} keywords")
 
     print(f"\nClassification summary:")
-    if summary_stats['strategic_grants'] > 0:
-        print(f"Strategic level grants: {summary_stats['strategic_grants']}")
-    if summary_stats['detailed_grants'] > 0:
-        print(f"Detailed level grants: {summary_stats['detailed_grants']}")
-
-    if summary_stats['strategic_grants'] > 0 or summary_stats['detailed_grants'] > 0:
-        strategic_dist = {k: len(v) for k, v in strategic_category_to_grants.items() if v}
-        detailed_dist = {k: len(v) for k, v in detailed_category_to_grants.items() if v}
+    if summary_stats['classified_grants'] > 0:
+        print(f"Classified grants: {summary_stats['classified_grants']}")
         
-        if strategic_dist:
-            print("  Strategic level distribution:")
-            for domain, count in sorted(strategic_dist.items(), key=lambda x: x[1], reverse=True)[:3]:
-                print(f"    - {domain}: {count} grants")
-        
-        if detailed_dist:
-            print("  Detailed level distribution:")
-            for category, count in sorted(detailed_dist.items(), key=lambda x: x[1], reverse=True)[:3]:
+        # Show distribution of grants across categories
+        category_dist = {k: len(v) for k, v in category_to_grants.items() if v}
+        if category_dist:
+            print("  Grant distribution by category:")
+            for category, count in sorted(category_dist.items(), key=lambda x: x[1], reverse=True)[:5]:
                 print(f"    - {category}: {count} grants")
 
     return fig

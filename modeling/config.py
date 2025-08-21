@@ -1,24 +1,40 @@
 from pathlib import Path
-import os
-from dotenv import load_dotenv
-load_dotenv()
+from dotenv import dotenv_values
 
-ROOT_DIR = Path(os.getenv('ROOT_DIR', 
-						  '/Users/chengluhan/research-link-technology-landscaping/modeling'))
-DATA_DIR = Path(os.getenv('DATA_DIR', str(ROOT_DIR / 'data')))
-RESULTS_DIR = Path(os.getenv('RESULTS_DIR', str(ROOT_DIR / 'results')))
-LOGS_DIR = Path(os.getenv('LOGS_DIR', str(ROOT_DIR / 'logs')))
+CONFIG = dotenv_values()
+ROOT_DIR = Path(CONFIG["ROOT_DIR"])
+DATA_DIR = Path(CONFIG["DATA_DIR"])
+RESULTS_DIR = Path(CONFIG["RESULTS_DIR"])
 
-# Paths for prompts and data derived from the above
-PROMPTS_DIR = ROOT_DIR / 'PromptTemplates'
-GRANTS_FILE = DATA_DIR / 'grants_cleaned.json'
 
-# output files
-KEYWORDS_PATH = RESULTS_DIR / 'keywords.json'
-TERMS_PATH = RESULTS_DIR / 'terms.json'  # Harmonized terms (clusters and categorise-compatible format)
-CATEGORY_PATH = RESULTS_DIR / 'categories.json'
-REFINED_CATEGORY_PATH = RESULTS_DIR / 'refined_categories.json'
-FOR_CODES_CLEANED_PATH = DATA_DIR / 'for_codes_cleaned.json'
+EXTRACTED_KEYWORDS_DIR = RESULTS_DIR / "extract"
+EXTRACTED_KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
 
-# review output path
-REVIEW_FILE = RESULTS_DIR / 'harmonization_review.json'
+
+
+PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
+GRANTS_FILE = DATA_DIR / "grants_cleaned.json"
+
+
+
+
+# KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
+SIMILARITY_THRESHOLD = 0.9
+CLUSTERS_PROPOSAL_PATH = RESULTS_DIR / "clusters_proposal.json"
+REVIEW_FILE = RESULTS_DIR / "review.json"
+CLUSTERS_FINAL_PATH = RESULTS_DIR / "clusters_final.json"
+KEYWORDS_FINAL_PATH = RESULTS_DIR / "keywords_final.json"
+
+
+
+NUM_TARGET_CATEGORIES = 5
+SAMPLE_SIZE = 100
+KEYWORDS_TYPE = "keywords"
+
+CATEGORY_PATH = RESULTS_DIR / "categories.json"
+COARSENED_CATEGORY_PATH = RESULTS_DIR / "coarsened_categories.json"
+REFINED_CATEGORY_PATH = RESULTS_DIR / "refined_categories.json"
+COMPREHENSIVE_TAXONOMY_PATH = RESULTS_DIR / "comprehensive_taxonomy.json"
+FOR_CODES_CLEANED_PATH = DATA_DIR / "for_codes_cleaned.json"
+
+CLASSIFICATION_PATH = RESULTS_DIR / "classification.json"

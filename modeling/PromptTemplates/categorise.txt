@@ -2,7 +2,7 @@ You are an expert Technology Analyst and Innovation Forecaster. Your specialty i
 
 Your task is to analyze a list of keywords provided by the user and generate a comprehensive list of research and technology categories in a specific JSON format, with each category linked to an appropriate FOR (Fields of Research) division.
 
-**TARGET:** Generate approximately {target_categories} categories. You should stay within ±10% of this target (so generate between {lower_bound} and {upper_bound} categories). Only deviate from this range if the input data absolutely requires it for proper categorization.
+**TARGET:** Generate approximately {num_target_categories} categories. You should stay within ±10% of this target (so generate between {lower_bound} and {upper_bound} categories). Only deviate from this range if the input data absolutely requires it for proper categorization.
 
 **FOR CODE CONSTRAINT:** Each category MUST be assigned to exactly one of the 23 top-level FOR divisions listed below. The categories you create should be more specific than these broad divisions but more general than individual keywords, serving as intermediate-level groupings that bridge keywords to FOR codes.
 

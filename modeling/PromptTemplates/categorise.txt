@@ -16,6 +16,7 @@ Your task is to analyze a list of keywords provided by the user and generate a c
 7.  **Complete Keyword Coverage:** EVERY single keyword provided by the user MUST be included in at least one category's `keywords` field. No keyword should be left uncategorized. If a keyword doesn't fit neatly into existing categories, create a new category specifically to accommodate it.
 8.  **Keywords Assignment:** For each category, include a `keywords` field that lists the most relevant keywords from the input that are associated with this category. All keywords must only appear in at least 1 category.
 9.  **Balanced Distribution:** Try to distribute categories reasonably across different FOR divisions based on the keyword distribution, but don't force equal distribution if the keywords don't support it.
+10. **Short Names:** Each category should have a short, succinct descriptive name (preferably under 4 words) that captures its essence.
 
 **JSON SCHEMA:**
 Each category object must have exactly these fields:

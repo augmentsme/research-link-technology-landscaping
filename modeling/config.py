@@ -16,9 +16,6 @@ PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
 GRANTS_FILE = DATA_DIR / "grants_cleaned.json"
 
 
-
-
-# KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
 SIMILARITY_THRESHOLD = 0.9
 CLUSTERS_PROPOSAL_PATH = RESULTS_DIR / "clusters_proposal.json"
 REVIEW_FILE = RESULTS_DIR / "review.json"
@@ -27,11 +24,17 @@ KEYWORDS_FINAL_PATH = RESULTS_DIR / "keywords_final.json"
 
 
 
-NUM_TARGET_CATEGORIES = 5
-SAMPLE_SIZE = 100
+NUM_KEYWORDS_PER_CATEGORY = 100
+SAMPLE_SIZE = 1000
 KEYWORDS_TYPE = "keywords"
+NUM_SAMPLES = 10
+
+
+
 
 CATEGORY_PATH = RESULTS_DIR / "categories.json"
+CATEGORY_DIR = RESULTS_DIR / "categories"
+
 COARSENED_CATEGORY_PATH = RESULTS_DIR / "coarsened_categories.json"
 REFINED_CATEGORY_PATH = RESULTS_DIR / "refined_categories.json"
 COMPREHENSIVE_TAXONOMY_PATH = RESULTS_DIR / "comprehensive_taxonomy.json"

@@ -1,11 +1,13 @@
 from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import KEYWORDS_FINAL_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH, NUM_TARGET_CATEGORIES, SAMPLE_SIZE, KEYWORDS_TYPE
+from config import KEYWORDS_FINAL_PATH, PROMPTS_DIR, CATEGORY_PATH, FOR_CODES_CLEANED_PATH, NUM_KEYWORDS_PER_CATEGORY, SAMPLE_SIZE, KEYWORDS_TYPE, CATEGORY_DIR, NUM_SAMPLES
+import time
 from inspect_ai.solver import system_message, generate, user_message, TaskState, use_tools, chain_of_thought
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
-from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
+from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore, INCORRECT, NOANSWER
+
 import json 
 from metric import count
 from pydantic import BaseModel, Field
@@ -30,7 +32,7 @@ def categories_discrepancy():
         
         if not state.output or not state.output.completion:
             return Score(
-                value="incorrect", 
+                value=NOANSWER, 
                 explanation="No categorisation output to score"
             )
         
@@ -39,15 +41,13 @@ def categories_discrepancy():
             result = json.loads(state.output.completion)
             if not isinstance(result, dict) or "categories" not in result or not isinstance(result["categories"], list):
                 return Score(
-                    value=-float('inf'),
+                    value=NOANSWER,
                     explanation="Expected an object with a top-level 'categories' key containing a list"
                 )
 
             categories_list = result["categories"]
             
-            # Get target number from task metadata (this will be passed from the task)
-            # For now, use NUM_TARGET_CATEGORIES as default
-            target_categories = getattr(state.metadata, 'num_target_categories', NUM_TARGET_CATEGORIES)
+            target_categories = state.metadata['num_target_categories']
             
             # Count categories and keywords
             actual_categories = len(categories_list)
@@ -90,7 +90,7 @@ def categories_discrepancy():
                 
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             return Score(
-                value="incorrect", 
+                value=NOANSWER, 
                 explanation=f"Error parsing categorisation result: {str(e)}"
             )
     
@@ -114,7 +114,7 @@ def keywords_coverage():
         
         if not state.output or not state.output.completion:
             return Score(
-                value="incorrect", 
+                value=NOANSWER, 
                 explanation="No categorisation output to score"
             )
         
@@ -123,7 +123,7 @@ def keywords_coverage():
             result = json.loads(state.output.completion)
             if not isinstance(result, dict) or "categories" not in result or not isinstance(result["categories"], list):
                 return Score(
-                    value=-float('inf'),
+                    value=NOANSWER,
                     explanation="Expected an object with a top-level 'categories' key containing a list"
                 )
 
@@ -164,7 +164,7 @@ def keywords_coverage():
                 f"Input keywords: {total_input_keywords}",
                 f"Covered keywords: {total_covered_keywords}",
                 f"Correctly covered: {len(correctly_covered)} ({coverage_percentage:.1f}%)",
-                f"Missed keywords: {len(missed_keywords)}",
+                f"Missed keywords: {len(missed_keywords)} ({missed_keywords})",
                 f"Extra keywords: {len(extra_keywords)}"
             ]
             
@@ -174,7 +174,7 @@ def keywords_coverage():
                 
         except (json.JSONDecodeError, KeyError, TypeError, IndexError) as e:
             return Score(
-                value="incorrect", 
+                value=NOANSWER, 
                 explanation=f"Error analyzing keyword coverage: {str(e)}"
             )
     
@@ -201,9 +201,20 @@ class CategoriseOutputHook(Hooks):
         """Save keywords extraction results."""
 
         output_text = data.sample.output.completion
-        result_json = json.loads(output_text)
-        
-        with open(CATEGORY_PATH, 'w', encoding='utf-8') as f:
+        try:
+            result_json = json.loads(output_text)
+        except Exception:
+            # If parsing fails, skip saving
+            return
+
+        # Ensure the category output directory exists
+        CATEGORY_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Derive filename from sample id (fall back to timestamp if missing)
+        sample_id = getattr(data.sample, 'id', None) or f"sample_{int(time.time())}"
+        out_file = CATEGORY_DIR / f"{sample_id}.json"
+
+        with open(out_file, 'w', encoding='utf-8') as f:
             json.dump(result_json, f, indent=2, ensure_ascii=False)
 
 def load_for_codes():
@@ -226,7 +237,7 @@ def load_for_codes():
     
     return top_level_divisions
 
-def load_dataset(sample_size: int, random_seed: int, keywords_type: str):
+def load_dataset(sample_size: int, random_seed: int, keywords_type: str, num_samples: int = 1):
     """
     Load and sample keywords from the extracted keywords dataset.
     Include FOR codes context for categorization.
@@ -235,7 +246,7 @@ def load_dataset(sample_size: int, random_seed: int, keywords_type: str):
         sample_size: Number of unique keywords to sample for categorization
         random_seed: Random seed for reproducible sampling
         keywords_type: Type of keywords to use
-        use_harmonized: Whether to use harmonized terms instead of raw keywords
+        num_samples: Number of samples to generate
     """
     
     # Choose input file based on whether to use harmonized terms
@@ -263,37 +274,42 @@ def load_dataset(sample_size: int, random_seed: int, keywords_type: str):
     # Convert to sorted list for consistent ordering
     sorted_keywords = sorted(list(all_keywords))
     
-    # Sample keywords if we have more than requested
-    if len(sorted_keywords) > sample_size:
-        random.seed(random_seed)
-        sampled_keywords = random.sample(sorted_keywords, sample_size)
-        # Shuffle the sampled keywords to randomize their order
-        random.shuffle(sampled_keywords)
-    else:
-        sampled_keywords = sorted_keywords
-        # Shuffle all keywords if using the full set
-        random.seed(random_seed)
-        random.shuffle(sampled_keywords)
-    
-    # Load FOR codes for context
+    # Prepare multiple samples
+    samples: list[Sample] = []
+
+    # Load FOR codes for context once
     for_divisions = load_for_codes()
-    
-    # Create input that includes both keywords and FOR code context
-    keywords_text = ", ".join(sampled_keywords)
-    for_context = "\n\nFOR Division Context:\n" + "\n".join([
-        f"{code}: {data['name']}" for code, data in sorted(for_divisions.items(), key=lambda x: int(x[0]))
-    ])
-    
-    full_input = keywords_text + for_context
-    
-    return MemoryDataset([Sample(
-        id="categorise",
-        input=full_input,
-    )])
+
+    for i in range(num_samples):
+        # For each sample, generate a reproducible sample of keywords
+        sample_seed = random_seed + i
+        
+        if len(sorted_keywords) > sample_size:
+            random.seed(sample_seed)
+            sampled_keywords = random.sample(sorted_keywords, sample_size)
+            # Shuffle the sampled keywords to randomize their order
+            random.shuffle(sampled_keywords)
+        else:
+            sampled_keywords = list(sorted_keywords)
+            # Shuffle all keywords if using the full set
+            random.seed(sample_seed)
+            random.shuffle(sampled_keywords)
+
+        # Create input that includes both keywords and FOR code context
+        keywords_text = ", ".join(sampled_keywords)
+        for_context = "\n\nFOR Division Context:\n" + "\n".join([
+            f"{code}: {data['name']}" for code, data in sorted(for_divisions.items(), key=lambda x: int(x[0]))
+        ])
+
+        full_input = keywords_text + for_context
+
+        samples.append(Sample(id=f"categorise_sample{i}", input=full_input))
+
+    return MemoryDataset(samples)
 
 
 @task
-def categorise(num_target_categories: int = NUM_TARGET_CATEGORIES, sample_size: int = SAMPLE_SIZE, keywords_type: str = KEYWORDS_TYPE, random_seed: int = 42):
+def categorise(num_keywords_per_category: int = NUM_KEYWORDS_PER_CATEGORY, sample_size: int = SAMPLE_SIZE, keywords_type: str = KEYWORDS_TYPE, random_seed: int = 42, num_samples: int = NUM_SAMPLES):
     """
     Categorise sampled keywords into research categories with comprehensive scoring.
     
@@ -303,18 +319,22 @@ def categorise(num_target_categories: int = NUM_TARGET_CATEGORIES, sample_size: 
     2. keywords_coverage: Measures how well the categories cover the input keywords
     
     Args:
-        sample_size: Number of unique keywords to sample for categorization (default: 10000)
+        num_keywords_per_category: Target number of keywords per category (default: 10)
+        sample_size: Number of unique keywords to sample for categorization (default: 1000)
         random_seed: Random seed for reproducible sampling (default: 42)
-        num_target_categories: Target number of categories to generate (default: 200)
         keywords_type: Type of keywords to use (default: "keywords")
+        num_samples: Number of samples to generate (default: 10)
     """
+    # Calculate target number of categories based on sample size and keywords per category
+    num_target_categories = max(1, sample_size // num_keywords_per_category)
+    
     # Calculate bounds (±10%)
     lower_bound = int(num_target_categories * 0.9)
     upper_bound = int(num_target_categories * 1.1)
     
     # Create dataset with metadata
     dataset = load_dataset(sample_size=sample_size, random_seed=random_seed, 
-                          keywords_type=keywords_type)
+                          keywords_type=keywords_type, num_samples=num_samples)
     
     # Add target categories to sample metadata
     for sample in dataset.samples:

@@ -4,7 +4,7 @@ from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
 from inspect_ai.solver._multiple_choice import parse_answers
-from config import CATEGORY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
+from config import CATEGORY_PATH, REFINED_CATEGORY_PATH, COMPREHENSIVE_TAXONOMY_PATH, GRANTS_FILE, RESULTS_DIR, CLASSIFICATION_PATH
 from inspect_ai.solver import system_message, generate, user_message, multiple_choice
 from inspect_ai.scorer import model_graded_fact, answer, choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
@@ -26,6 +26,11 @@ category_template = lambda category: f"""
 **Description**: {category["description"]}
 """
 
+refined_category_template = lambda category: f"""
+**Name**: {category["name"]}
+**Description**: {category["description"]}
+**Subcategories**: {', '.join(category.get('subcategories', []))}
+"""
 
 def load_choices(category_file_path: Path):
     
@@ -49,9 +54,34 @@ def load_choices(category_file_path: Path):
     
     return choices
 
-# The code previously supported a "comprehensive" taxonomy with multiple levels
-# (coarsened/base/refined). This module now exclusively reads choices from
-# `CATEGORY_PATH` using `load_choices` above.
+def load_comprehensive_taxonomy_choices(level: str = 'base'):
+    """
+    Load choices from comprehensive taxonomy file for a specific level.
+    
+    Args:
+        level: Taxonomy level to use ('coarsened', 'base', 'refined')
+    
+    Returns:
+        List of formatted choice strings for the specified level
+    """
+    if not COMPREHENSIVE_TAXONOMY_PATH.exists():
+        raise FileNotFoundError(f"Comprehensive taxonomy file not found at {COMPREHENSIVE_TAXONOMY_PATH}")
+    
+    with open(COMPREHENSIVE_TAXONOMY_PATH, 'r', encoding='utf-8') as f:
+        taxonomy_data = json.load(f)
+    
+    # Extract categories for the specified level
+    level_categories = [
+        cat for cat in taxonomy_data.get('categories', []) 
+        if cat.get('level') == level
+    ]
+    
+    choices = []
+    for category in level_categories:
+        # Use category_template for all levels since we only need name and description
+        choices.append(category_template(category))
+    
+    return choices
 
 def record_to_sample(record: dict, choices: list[str]) -> Sample:
     return Sample(
@@ -106,24 +136,28 @@ class ClassificationOutputHook(Hooks):
 
     
 @task
-def classify() -> Task:
+def classify(taxonomy_level: str = 'base') -> Task:
     """
-    Classify grants using categories specified in `CATEGORY_PATH`.
-
+    Classify grants using comprehensive taxonomy with specified granularity level.
+    
+    Args:
+        taxonomy_level: Level of granularity ('coarsened', 'base', 'refined')
+    
     Returns:
-        Task for classifying grants into categories loaded from `CATEGORY_PATH`.
+        Task for classifying grants into categories at the specified level.
     """
-    # Load choices from CATEGORY_PATH
-    choices = load_choices(CATEGORY_PATH)
-
+    # Load choices from comprehensive taxonomy
+    choices = load_comprehensive_taxonomy_choices(taxonomy_level)
+    
     # Create record_to_sample function with the loaded choices
     def record_to_sample_with_choices(record: dict) -> Sample:
         return Sample(
             input=grant_template(record),
             choices=choices,
             metadata={
-                "grant_id": record.get("id", ""),
-                "title": record.get("title", "")
+                "grant_id": record.get("id", ""), 
+                "title": record.get("title", ""),
+                "taxonomy_level": taxonomy_level
             }
         )
 

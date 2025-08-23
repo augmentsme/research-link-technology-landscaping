@@ -1,5 +1,7 @@
 from pathlib import Path
 from dotenv import dotenv_values
+import json
+import math
 
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
@@ -8,7 +10,7 @@ RESULTS_DIR = Path(CONFIG["RESULTS_DIR"])
 
 
 EXTRACTED_KEYWORDS_DIR = RESULTS_DIR / "extract"
-EXTRACTED_KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
+EXTRACTED_KEYWORDS_PATH = RESULTS_DIR / "extracted_keywords.json"
 
 
 
@@ -20,16 +22,13 @@ SIMILARITY_THRESHOLD = 0.9
 CLUSTERS_PROPOSAL_PATH = RESULTS_DIR / "clusters_proposal.json"
 REVIEW_FILE = RESULTS_DIR / "review.json"
 CLUSTERS_FINAL_PATH = RESULTS_DIR / "clusters_final.json"
-KEYWORDS_FINAL_PATH = RESULTS_DIR / "keywords_final.json"
+KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
 
 
 
-NUM_KEYWORDS_PER_CATEGORY = 100
-SAMPLE_SIZE = 1000
-KEYWORDS_TYPE = "keywords"
-NUM_SAMPLES = 10
-
-
+NUM_KEYWORDS_PER_CATEGORY = 10
+BATCH_SIZE = 100
+KEYWORDS_TYPE = "general"
 
 
 CATEGORY_PATH = RESULTS_DIR / "categories.json"

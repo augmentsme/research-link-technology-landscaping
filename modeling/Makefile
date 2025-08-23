@@ -1,5 +1,5 @@
 extract: 
-	uv run inspect eval extract.py@extract
+	uv run inspect eval extract.py@extract --limit 100
 
 harmonise:
 	uv run inspect eval harmonise.py@harmonise
@@ -14,9 +14,9 @@ refine:
 	uv run inspect eval refine.py@refine
 
 merge:
-	uv run merge_taxonomy.py
+	uv run inspect eval merge.py@merge
 
 classify: 
-	uv run inspect eval classify.py@classify
+	uv run inspect eval classify.py@classify --limit 10
 
 .PHONY: extract categorise coarsen refine classify

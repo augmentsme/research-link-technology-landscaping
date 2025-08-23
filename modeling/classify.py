@@ -85,7 +85,7 @@ class ClassificationOutputHook(Hooks):
         sample_result = {
             "grant_id": data.sample.metadata.get("grant_id", "") if data.sample.metadata else "",
             "title": data.sample.metadata.get("title", "") if data.sample.metadata else "",
-            "taxonomy_level": data.sample.metadata["taxonomy_level"],
+            # "taxonomy_level": data.sample.metadata["taxonomy_level"],
             "input": data.sample.input,
             "selected_categories": selected_categories
         }
@@ -93,7 +93,6 @@ class ClassificationOutputHook(Hooks):
         self.classification_results.append(sample_result)
         
     async def on_task_end(self, data: TaskEnd) -> None:
-        """Save aggregated classification results to JSON file."""
         
         # Save to classification.json
         with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:

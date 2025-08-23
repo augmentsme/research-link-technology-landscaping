@@ -16,9 +16,9 @@ from pydantic import BaseModel, Field
 from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
 
 
-from metric import count
+from metric import total
 
-@scorer(metrics=[count()])
+@scorer(metrics=[total()])
 def keywords_counter():
     """
     Scorer that counts the total number of keywords extracted in the extract task.
@@ -44,31 +44,29 @@ def keywords_counter():
             # Parse the keyword extraction result
             result = json.loads(state.output.completion)
             
-            # Count keywords from all categories
+            # Count keywords from the flat structure
             total_keywords = 0
-            category_counts = {}
+            type_counts = {}
             
-            # Standard keyword categories from KeywordsExtractionOutput
-            keyword_categories = [
-                "keywords",
-                "methodology_keywords", 
-                "application_keywords",
-                "technology_keywords"
-            ]
-            
-            for category in keyword_categories:
-                if category in result and isinstance(result[category], list):
-                    count = len(result[category])
-                    category_counts[category] = count
-                    total_keywords += count
+            if "keywords" in result and isinstance(result["keywords"], list):
+                keywords_list = result["keywords"]
+                total_keywords = len(keywords_list)
+                
+                # Count by type if available
+                for keyword in keywords_list:
+                    if isinstance(keyword, dict) and "type" in keyword:
+                        kw_type = keyword["type"]
+                        type_counts[kw_type] = type_counts.get(kw_type, 0) + 1
             
             if total_keywords > 0:
-                category_breakdown = ", ".join([
-                    f"{cat.replace('_', ' ')}: {count}" 
-                    for cat, count in category_counts.items() 
-                    if count > 0
-                ])
-                explanation = f"Extracted {total_keywords} total keywords ({category_breakdown})"
+                if type_counts:
+                    type_breakdown = ", ".join([
+                        f"{kw_type}: {count}" 
+                        for kw_type, count in sorted(type_counts.items())
+                    ])
+                    explanation = f"Extracted {total_keywords} total keywords ({type_breakdown})"
+                else:
+                    explanation = f"Extracted {total_keywords} total keywords"
             else:
                 explanation = "No keywords extracted"
             
@@ -85,14 +83,18 @@ def keywords_counter():
     
     return score
 
+class Keyword(BaseModel):
+    """Individual keyword with context and identifier."""
+    model_config = {"extra": "forbid"}
+    term: str = Field(description="The actual keyword or phrase")
+    type: str = Field(description="Type of keyword: 'general', 'methodology', 'application', or 'technology'")
+    description: str = Field(description="Short description explaining the context and relevance of this keyword within the research")
+
 class KeywordsExtractionOutput(BaseModel):
     """Pydantic model for structured keywords extraction output."""
     model_config = {"extra": "forbid"}
     
-    keywords: List[str] = Field(description="Most relevant keywords capturing the research content")
-    methodology_keywords: List[str] = Field(description="Keywords related to research methodologies or approaches")
-    application_keywords: List[str] = Field(description="Keywords related to target applications or outcomes")
-    technology_keywords: List[str] = Field(description="Keywords related to technologies or tools mentioned")
+    keywords: List[Keyword] = Field(description="List of all extracted keywords with their types, descriptions, and identifiers")
 
 
 @hooks(name="KeywordsExtractionHook", description="Hook to save keywords extraction results as JSON files")
@@ -101,37 +103,49 @@ class KeywordsExtractionHook(Hooks):
 
 
     async def on_sample_end(self, data: SampleEnd) -> None:
-        """Save keywords extraction results."""
+        """Save keywords extraction results with auto-generated IDs."""
 
         output_text = data.sample.output.completion
         result_json = json.loads(output_text)
 
+        grant_id = data.sample.id
+        
+        # Auto-generate IDs for keywords with grant ID prefix
+        if "keywords" in result_json and isinstance(result_json["keywords"], list):
+            for idx, keyword in enumerate(result_json["keywords"]):
+                if isinstance(keyword, dict):
+                    keyword["id"] = f"{grant_id}_{idx}"
+
         EXTRACTED_KEYWORDS_DIR.mkdir(parents=True, exist_ok=True)
 
-        grant_id = data.sample.id
         grant_id_sanitized = grant_id.replace("/", "_")
 
-        output_file = RESULTS_DIR / f"{grant_id_sanitized}.json"
+        output_file = EXTRACTED_KEYWORDS_DIR / f"{grant_id_sanitized}.json"
         
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(result_json, f, indent=2, ensure_ascii=False)
 
     async def on_task_end(self, data: TaskEnd) -> None:
-        # results_dir = EXTRACTED_KEYWORDS_DIR
-        keywords = []
+        """Flatten all keywords from all grants into a single top-level array."""
+        all_keywords = []
+        
         for file in EXTRACTED_KEYWORDS_DIR.glob("*.json"):
             with open(file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                data['id'] = file.stem.replace("_", "/")
-                keywords.append(data)
+                grant_data = json.load(f)
+                
+                # Extract keywords from this grant and add to the flattened list
+                if "keywords" in grant_data and isinstance(grant_data["keywords"], list):
+                    all_keywords.extend(grant_data["keywords"])
+        
+        # Write flattened keywords array to the final output
         with open(EXTRACTED_KEYWORDS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(keywords, f, indent=2, ensure_ascii=False)
+            json.dump(all_keywords, f, indent=2, ensure_ascii=False)
 
 
 def record_to_sample(record: dict) -> Sample:
     return Sample(
         id=record["id"],
-        input=f""""
+        input=f"""**Grant ID**: {record["id"]}
 **Title**: {record["title"]}
 **Summary**: 
 {record["grant_summary"]}

@@ -32,7 +32,8 @@ from inspect_ai.solver import TaskState
 
 from pydantic import BaseModel, Field
 
-from config import KEYWORDS_PATH, RESULTS_DIR, PROMPTS_DIR, REVIEW_FILE, CLUSTERS_PROPOSAL_PATH, CLUSTERS_FINAL_PATH, KEYWORDS_FINAL_PATH, SIMILARITY_THRESHOLD
+from config import RESULTS_DIR, PROMPTS_DIR, REVIEW_FILE, CLUSTERS_PROPOSAL_PATH, CLUSTERS_FINAL_PATH, KEYWORDS_PATH, SIMILARITY_THRESHOLD, EXTRACTED_KEYWORDS_PATH
+from extract import Keyword
 
 @dataclass
 class KeywordCluster:
@@ -127,25 +128,11 @@ class HarmonizationReviewHook(Hooks):
 
 
 
-class LexicalHarmonizer:
-    """
-    Harmonizes extracted keywords using lexical analysis techniques.
-    
-    This class provides methods to:
-    - Normalize keywords through stemming and lemmatization
-    - Identify semantic similarities using various text similarity metrics
-    - Cluster related keywords
-    - Generate canonical terms for keyword groups
-    """
+class Harmoniser:
+
 
     def __init__(self, similarity_threshold: float = 0.7, min_cluster_size: int = 2):
-        """
-        Initialize the lexical harmonizer.
-        
-        Args:
-            similarity_threshold: Minimum similarity score for clustering keywords
-            min_cluster_size: Minimum number of keywords required to form a cluster
-        """
+
         self.similarity_threshold = similarity_threshold
         self.min_cluster_size = min_cluster_size
         
@@ -160,6 +147,7 @@ class LexicalHarmonizer:
     def load_keywords(self, keywords_file: Union[str, Path]) -> None:
         """
         Load keywords from the extract task output file.
+        Expects new flattened structure: array of keyword objects at top level.
         
         Args:
             keywords_file: Path to keywords JSON file.
@@ -191,14 +179,18 @@ class LexicalHarmonizer:
             self.word2vec_model = None
             return
         
-        # Collect all keywords for training
+        # Collect all keywords for training from flat structure
         all_keywords = []
-        categories = ["keywords", "methodology_keywords", "application_keywords", "technology_keywords"]
         
-        for entry in self.raw_keywords:
-            for category in categories:
-                if category in entry:
-                    all_keywords.extend(entry[category])
+        for keyword in self.raw_keywords:
+            # Extract term from keyword object
+            term = keyword.get('term', '')
+            description = keyword.get('description', '')
+            # Combine term and description for richer training data
+            combined_text = term
+            if description:
+                combined_text += " " + description
+            all_keywords.append(combined_text)
         
         # Tokenize keywords for Word2Vec training
         tokenized_keywords = []
@@ -272,31 +264,30 @@ class LexicalHarmonizer:
     
 
     
-    def extract_all_keywords(self) -> Dict[str, Dict[str, int]]:
+    def extract_all_keywords(self) -> Dict[str, Dict]:
         """
-        Extract all keywords from loaded data with frequency counts.
+        Extract all keywords from loaded flat data with enhanced information.
         
         Returns:
-            Dictionary mapping categories to keyword frequency counts
+            Dictionary mapping keyword terms to their information including frequency, keyword objects, etc.
         """
-        categories = ["keywords", "methodology_keywords", "application_keywords", "technology_keywords"]
-        keyword_counts = {category: defaultdict(int) for category in categories}
+        keyword_info = defaultdict(lambda: {'frequency': 0, 'keyword_objects': []})
         
-        for entry in self.raw_keywords:
-            for category in categories:
-                if category in entry:
-                    for keyword in entry[category]:
-                        normalized = self.normalize_keyword(keyword)
-                        keyword_counts[category][normalized] += 1
+        for keyword in self.raw_keywords:
+            term = keyword.get('term', '')
+            
+            normalized_term = self.normalize_keyword(term)
+            keyword_info[normalized_term]['frequency'] += 1
+            keyword_info[normalized_term]['keyword_objects'].append(keyword)
         
-        return keyword_counts
+        return keyword_info
     
-    def cluster_keywords(self, category_keywords: Dict[str, int], max_keywords: int = 1000) -> List[KeywordCluster]:
+    def cluster_keywords(self, keyword_info: Dict[str, Dict], max_keywords: int = 1000) -> List[KeywordCluster]:
         """
-        Cluster keywords within a category based on similarity.
+        Cluster keywords based on similarity using both terms and descriptions.
         
         Args:
-            category_keywords: Dictionary of keywords and their frequencies
+            keyword_info: Dictionary of keywords with enhanced information (frequency, descriptions, ids, types)
             max_keywords: Maximum number of keywords to process (for performance)
             
         Returns:
@@ -304,12 +295,12 @@ class LexicalHarmonizer:
         """
         # Sort keywords by frequency and take top max_keywords for clustering
         sorted_keywords = sorted(
-            category_keywords.items(), 
-            key=lambda x: x[1], 
+            keyword_info.items(), 
+            key=lambda x: x[1]['frequency'], 
             reverse=True
         )[:max_keywords]
         
-        keywords = [kw for kw, freq in sorted_keywords]
+        keywords = [kw for kw, info in sorted_keywords]
         
         if len(keywords) < 2:
             return []
@@ -322,7 +313,17 @@ class LexicalHarmonizer:
         valid_keywords = []
         
         for keyword in keywords:
-            tokens = self.get_keyword_tokens(keyword)
+            kw_info = keyword_info[keyword]
+            
+            # Combine term and descriptions for richer semantic representation
+            combined_text = keyword
+            descriptions = kw_info.get('descriptions', [])
+            if descriptions:
+                # Use the most common description (first one) or combine multiple descriptions
+                combined_text += " " + descriptions[0]
+            
+            # Tokenize combined text
+            tokens = self.get_keyword_tokens(combined_text)
             keyword_vectors = []
             
             for token in tokens:
@@ -335,6 +336,8 @@ class LexicalHarmonizer:
                 vectors.append(avg_vector)
                 valid_keywords.append(keyword)
         
+        if len(vectors) < 2:
+            return []
 
         # Convert to numpy array for sklearn
         vectors_array = np.array(vectors)
@@ -352,105 +355,105 @@ class LexicalHarmonizer:
             if label != -1:  # -1 indicates noise/outliers
                 clusters[label].append(valid_keywords[idx])
         
-        # Create KeywordCluster objects
+        # Create KeywordCluster objects with enhanced information
         cluster_objects = []
         for cluster_id, cluster_keywords in clusters.items():
             # Select canonical term (most frequent in cluster)
             canonical_term = max(cluster_keywords, 
-                                key=lambda k: category_keywords[k])
+                                key=lambda k: keyword_info[k]['frequency'])
             
             # Calculate cluster statistics
-            total_frequency = sum(category_keywords[k] for k in cluster_keywords)
+            total_frequency = sum(keyword_info[k]['frequency'] for k in cluster_keywords)
+            
+            # Collect all keyword objects for the cluster
+            all_keyword_objects = []
+            for kw in cluster_keywords:
+                all_keyword_objects.extend(keyword_info[kw].get('keyword_objects', []))
             
             cluster_obj = KeywordCluster(
                 canonical_term=canonical_term,
                 variants=cluster_keywords,
                 frequency=total_frequency
             )
+            # Add enhanced information as attributes
+            cluster_obj.keyword_objects = all_keyword_objects
+            
             cluster_objects.append(cluster_obj)
         
         return cluster_objects
     
     
-    def harmonize_keywords(self) -> Dict[str, List[KeywordCluster]]:
+    def harmonize_keywords(self) -> List[KeywordCluster]:
         """
-        Harmonize all keywords across categories.
-        
-        Args:
-            max_keywords_per_category: Optional limit on keywords per category (for testing)
+        Harmonize all keywords without artificial categorization.
         
         Returns:
-            Dictionary mapping categories to their keyword clusters
+            List of keyword clusters
         """
         if not self.raw_keywords:
             raise ValueError("No keywords loaded. Call load_keywords() first.")
         
-        keyword_counts = self.extract_all_keywords()
-        harmonized_results = {}
+        keyword_info = self.extract_all_keywords()
         
-        for category, keywords in keyword_counts.items():
+        if len(keyword_info) < self.min_cluster_size:
+            return []
             
-            if len(keywords) < self.min_cluster_size:
-                continue
-            
-            limited_keywords = dict(list(keywords.items()))
-            keywords = limited_keywords
-            
-            clusters = self.cluster_keywords(keywords)
-            harmonized_results[category] = clusters
-            
-        return harmonized_results
+        clusters = self.cluster_keywords(keyword_info)
+        
+        return clusters
     
-    def save_harmonized_results(self, results: Dict[str, List[KeywordCluster]], 
+    def save_harmonized_results(self, results: List[KeywordCluster], 
                                output_file: Union[str, Path]) -> None:
         """
-        Save harmonized results to JSON file.
+        Save harmonized results to JSON file with keyword objects maintained.
         
         Args:
-            results: Harmonized keyword clusters
-            output_file: Output file path. If None, uses default location.
+            results: List of harmonized keyword clusters
+            output_file: Output file path.
         """
-        # if output_file is None:
-        #     output_file = RESULTS_DIR / "harmonized_keywords.json"
-        
         # Convert KeywordCluster objects to serializable format
-        serializable_results = {}
+        serializable_results = []
         
-        for category, clusters in results.items():
-            serializable_results[category] = []
-            
-            for cluster in clusters:
-                cluster_data = {
-                    "canonical_term": cluster.canonical_term,
-                    "variants": cluster.variants,
-                    "frequency": cluster.frequency
-                }
-                serializable_results[category].append(cluster_data)
+        for i, cluster in enumerate(results):
+            cluster_data = {
+                "cluster_id": i,
+                "canonical_term": cluster.canonical_term,
+                "variants": getattr(cluster, 'keyword_objects', []),
+                "frequency": cluster.frequency,
+            }
+            serializable_results.append(cluster_data)
         
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(serializable_results, f, indent=2, ensure_ascii=False)
     
-    def create_mapping_dict(self, results: Dict[str, List[KeywordCluster]]) -> Dict[str, str]:
+    def create_mapping_dict(self, results: List[KeywordCluster]) -> Dict[str, str]:
         """
         Create a mapping dictionary from variant keywords to canonical terms.
         
         Args:
-            results: Harmonized keyword clusters
+            results: List of harmonized keyword clusters
             
         Returns:
             Dictionary mapping variant keywords to canonical terms
         """
         mapping = {}
         
-        for category, clusters in results.items():
-            for cluster in clusters:
-                canonical_term = cluster.canonical_term
-                for variant in cluster.variants:
-                    mapping[variant] = canonical_term
+        for cluster in results:
+            canonical_term = cluster.canonical_term
+            keyword_objects = getattr(cluster, 'keyword_objects', [])
+            
+            for keyword_obj in keyword_objects:
+                if isinstance(keyword_obj, dict):
+                    variant_term = keyword_obj.get('term', '')
+                    if variant_term:
+                        mapping[variant_term] = canonical_term
+                else:
+                    # Fallback for old string format
+                    mapping[str(keyword_obj)] = canonical_term
         
         return mapping
     
-    def create_harmonized_terms_file(self, results: Dict[str, List[KeywordCluster]], 
+    def create_harmonized_terms_file(self, results: List[KeywordCluster], 
                                      output_file: Union[str, Path]) -> None:
         """
         Create a harmonized terms file compatible with categorise.py task.
@@ -458,7 +461,7 @@ class LexicalHarmonizer:
         the same structure as the original keywords.json file.
         
         Args:
-            results: Harmonized keyword clusters
+            results: List of harmonized keyword clusters
             output_file: Output file path for harmonized terms
         """
         # Create mapping from variants to canonical terms
@@ -471,30 +474,53 @@ class LexicalHarmonizer:
 
 
 def load_harmonization_clusters() -> List[Dict]:
-
-    clusters_file = CLUSTERS_PROPOSAL_PATH
+    """
+    Load harmonization clusters from the proposal file.
     
-    # if not clusters_file.exists():
-        # harmonize_extracted_keywords(clusters_path=CLUSTERS_PROPOSAL_PATH)    
+    Returns:
+        List of clusters with enhanced information for review.
+    """
+    clusters_file = CLUSTERS_PROPOSAL_PATH
     
     with open(clusters_file, 'r', encoding='utf-8') as f:
         cluster_data = json.load(f)
     
-    # Convert to flat list of clusters with metadata
+    # Convert to list of clusters with metadata for review
     clusters_for_review = []
-    cluster_id = 0
     
-    for category, clusters in cluster_data.items():
-        for cluster in clusters:
-            review_cluster = {
-                "cluster_id": cluster_id,
-                "category": category,
-                "canonical_term": cluster["canonical_term"],
-                "variants": cluster["variants"],
-                "frequency": cluster["frequency"]
-            }
-            clusters_for_review.append(review_cluster)
-            cluster_id += 1
+    for cluster in cluster_data:
+        # Extract information from variant keyword objects
+        variants = cluster.get("variants", [])
+        variant_terms = []
+        descriptions_info = {}
+        all_descriptions = []
+        types = []
+        
+        for variant_obj in variants:
+            if isinstance(variant_obj, dict):
+                term = variant_obj.get("term", "")
+                description = variant_obj.get("description", "No description available")
+                variant_type = variant_obj.get("type", "general")
+                
+                variant_terms.append(term)
+                descriptions_info[term] = description
+                all_descriptions.append(description)
+                types.append(variant_type)
+            else:
+                # Fallback for old string format
+                variant_terms.append(str(variant_obj))
+                descriptions_info[str(variant_obj)] = "No description available"
+        
+        review_cluster = {
+            "cluster_id": cluster.get("cluster_id", cluster.get("id", 0)),
+            "canonical_term": cluster["canonical_term"],
+            "variants": variant_terms,
+            "frequency": cluster["frequency"],
+            "descriptions": descriptions_info,
+            "all_descriptions": all_descriptions[:5],  # Limit to first 5 descriptions
+            "types": types
+        }
+        clusters_for_review.append(review_cluster)
     
     return clusters_for_review
 
@@ -509,7 +535,7 @@ def harmonise() -> Task:
     that could undermine emerging trends identification.
     """
 
-    harmonize_extracted_keywords(clusters_path=CLUSTERS_PROPOSAL_PATH, keywords_file=KEYWORDS_PATH, similarity_threshold=SIMILARITY_THRESHOLD)
+    harmonize_extracted_keywords(clusters_path=CLUSTERS_PROPOSAL_PATH, keywords_file=EXTRACTED_KEYWORDS_PATH, similarity_threshold=SIMILARITY_THRESHOLD)
     # Load clusters for review
     clusters = load_harmonization_clusters()
     
@@ -517,15 +543,35 @@ def harmonise() -> Task:
     samples = []
     for cluster in clusters:
         cluster_text = f"HARMONIZATION CLUSTER TO REVIEW:\n\n"
-        cluster_text += f"Cluster {cluster['cluster_id']} ({cluster['category']}):\n"
+        cluster_text += f"Cluster {cluster['cluster_id']}:\n"
         cluster_text += f"  Canonical Term: {cluster['canonical_term']}\n"
         cluster_text += f"  Variants: {', '.join(cluster['variants'])}\n"
         cluster_text += f"  Frequency: {cluster['frequency']}\n"
         
+        # Add type information if available
+        types = cluster.get('types', [])
+        if types:
+            cluster_text += f"  Types: {', '.join(set(types))}\n"
+        
+        cluster_text += "\n"
+        
+        # Add descriptions for context
+        cluster_text += "KEYWORD DESCRIPTIONS:\n"
+        descriptions_info = cluster.get('descriptions', {})
+        for variant, description in descriptions_info.items():
+            cluster_text += f"  • {variant}: {description}\n"
+        
+        # Add sample of all descriptions if available
+        all_descriptions = cluster.get('all_descriptions', [])
+        if all_descriptions:
+            cluster_text += f"\nSAMPLE DESCRIPTIONS FROM CLUSTER:\n"
+            for i, desc in enumerate(all_descriptions[:3], 1):
+                cluster_text += f"  {i}. {desc}\n"
+        
         samples.append(Sample(
             id=f"cluster_{cluster['cluster_id']}",
             input=cluster_text,
-            metadata={"cluster_id": cluster['cluster_id'], "category": cluster['category']}
+            metadata={"cluster_id": cluster['cluster_id']}
         ))
     
     dataset = MemoryDataset(samples)
@@ -555,9 +601,9 @@ def harmonize_extracted_keywords(
     similarity_threshold: float,
     keywords_file: Union[str, Path],
     min_cluster_size: int = 2,
-) -> Tuple[Dict[str, List[KeywordCluster]], Dict]:
+) -> List[KeywordCluster]:
 
-    harmonizer = LexicalHarmonizer(
+    harmonizer = Harmoniser(
         similarity_threshold=similarity_threshold,
         min_cluster_size=min_cluster_size
     )
@@ -593,39 +639,46 @@ def apply_harmonization_review() -> None:
         original_clusters = json.load(f)
     
     # Create refined clusters based on review decisions
-    refined_clusters = {}
+    refined_clusters = []
     
-    for category, clusters in original_clusters.items():
-        refined_clusters[category] = []
+    for cluster in original_clusters:
+        # Find corresponding review decision
+        cluster_review = None
         
-        for cluster in clusters:
-            # Find corresponding review decision
-            cluster_review = None
-            for review in reviews:
-                if (review.get("canonical_term") == cluster["canonical_term"] and 
-                    set(review.get("variants", [])) == set(cluster["variants"])):
-                    cluster_review = review
-                    break
-            
-            if cluster_review is None:
-                # No review found, accept original cluster
-                refined_clusters[category].append(cluster)
-                continue
-            
-            decision = cluster_review.get("decision", "accept")
-            
-            if decision == "accept":
-                # Accept cluster as is
-                refined_clusters[category].append(cluster)
-            
-            elif decision == "reject":
-                # Reject cluster - treat each variant as its own term
-                # Don't include the cluster (variants will remain as individual terms)
-                continue
-            
+        # Extract variant terms from the cluster for comparison
+        cluster_variant_terms = []
+        variants = cluster.get("variants", [])
+        for variant in variants:
+            if isinstance(variant, dict):
+                cluster_variant_terms.append(variant.get("term", ""))
             else:
-                # Unknown decision, default to accept
-                refined_clusters[category].append(cluster)
+                cluster_variant_terms.append(str(variant))
+        
+        for review in reviews:
+            if (review.get("canonical_term") == cluster["canonical_term"] and 
+                set(review.get("variants", [])) == set(cluster_variant_terms)):
+                cluster_review = review
+                break
+        
+        if cluster_review is None:
+            # No review found, accept original cluster
+            refined_clusters.append(cluster)
+            continue
+        
+        decision = cluster_review.get("decision", "accept")
+        
+        if decision == "accept":
+            # Accept cluster as is
+            refined_clusters.append(cluster)
+        
+        elif decision == "reject":
+            # Reject cluster - treat each variant as its own term
+            # Don't include the cluster (variants will remain as individual terms)
+            continue
+        
+        else:
+            # Unknown decision, default to accept
+            refined_clusters.append(cluster)
     
     # Save refined clusters
     refined_clusters_file = CLUSTERS_FINAL_PATH
@@ -633,9 +686,9 @@ def apply_harmonization_review() -> None:
         json.dump(refined_clusters, f, indent=2, ensure_ascii=False)
     
     # Create refined terms file for categorisation
-    refined_terms_file = KEYWORDS_FINAL_PATH
+    refined_terms_file = KEYWORDS_PATH
     # Load original keywords to rebuild mapping
-    with open(KEYWORDS_PATH, 'r', encoding='utf-8') as f:
+    with open(EXTRACTED_KEYWORDS_PATH, 'r', encoding='utf-8') as f:
         initial_keywords = json.load(f)
     
     # Create mapping from refined clusters and use unified function
@@ -646,12 +699,10 @@ def apply_harmonization_review() -> None:
 def create_harmonized_keywords_file(initial_keywords: List[Dict], mapping: Dict[str, str], output_file: Union[str, Path]) -> None:
     """
     Create a harmonized/refined keywords file by replacing variants with canonical terms.
-    
-    This unified function handles both harmonization (from KeywordCluster results) and 
-    refinement (from review decisions) by taking a mapping dictionary.
+    Handles the new flattened keyword structure.
     
     Args:
-        initial_keywords: Original keywords data (list of records)
+        initial_keywords: Original flattened keywords data (list of keyword objects)
         mapping: Dictionary mapping variant terms to canonical terms
         output_file: Output file path
     """
@@ -661,86 +712,54 @@ def create_harmonized_keywords_file(initial_keywords: List[Dict], mapping: Dict[
         case_insensitive_mapping[variant.lower()] = canonical
     
     # Process original keywords and replace with canonical terms
-    harmonized_records = []
+    harmonized_keywords = []
+    seen_terms = set()
     
-    for record in initial_keywords:
-        harmonized_record = {"id": record["id"]}
-        
-        categories = ["keywords", "methodology_keywords", "application_keywords", "technology_keywords"]
-        
-        for category in categories:
-            if category in record and isinstance(record[category], list):
-                harmonized_terms = []
-                seen = set()
-                
-                for keyword in record[category]:
-                    # Use case-insensitive lookup for canonical term
-                    canonical = case_insensitive_mapping.get(keyword.lower(), keyword)
-                    
-                    if canonical not in seen:
-                        harmonized_terms.append(canonical)
-                        seen.add(canonical)
-                
-                harmonized_record[category] = harmonized_terms
-            else:
-                harmonized_record[category] = []
-        
-        harmonized_records.append(harmonized_record)
+    for keyword in initial_keywords:
+        if isinstance(keyword, dict) and 'term' in keyword:
+            original_term = keyword['term']
+            # Use case-insensitive lookup for canonical term
+            canonical_term = case_insensitive_mapping.get(original_term.lower(), original_term)
+            
+            # Avoid duplicates - only keep first occurrence of each canonical term
+            if canonical_term.lower() not in seen_terms:
+                harmonized_keyword = {
+                    'id': keyword.get('id', ''),
+                    'term': canonical_term,
+                    'type': keyword.get('type', 'general'),
+                    'description': keyword.get('description', '')
+                }
+                harmonized_keywords.append(harmonized_keyword)
+                seen_terms.add(canonical_term.lower())
 
     # Save harmonized keywords file
     with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(harmonized_records, f, indent=2, ensure_ascii=False)
+        json.dump(harmonized_keywords, f, indent=2, ensure_ascii=False)
 
 
-def create_mapping_from_clusters(refined_clusters: Dict) -> Dict[str, str]:
+def create_mapping_from_clusters(refined_clusters: List) -> Dict[str, str]:
     """
     Create a mapping dictionary from refined clusters data.
     
     Args:
-        refined_clusters: Dictionary of refined cluster data
+        refined_clusters: List of refined cluster data
         
     Returns:
         Dictionary mapping variant terms to canonical terms
     """
     mapping = {}
-    for category, clusters in refined_clusters.items():
-        for cluster in clusters:
-            canonical_term = cluster["canonical_term"]
-            for variant in cluster["variants"]:
-                mapping[variant] = canonical_term
+    for cluster in refined_clusters:
+        canonical_term = cluster["canonical_term"]
+        variants = cluster["variants"]
+        
+        for variant in variants:
+            if isinstance(variant, dict):
+                variant_term = variant.get("term", "")
+                if variant_term:
+                    mapping[variant_term] = canonical_term
+            else:
+                # Fallback for old string format
+                mapping[str(variant)] = canonical_term
     return mapping
 
-
-def main():
-
-    import shutil
-
-    harmonize_extracted_keywords(
-        clusters_path=CLUSTERS_PROPOSAL_PATH,
-        keywords_file=KEYWORDS_PATH,
-        similarity_threshold=SIMILARITY_THRESHOLD,
-        min_cluster_size=2
-    )
-
-    shutil.copy2(CLUSTERS_PROPOSAL_PATH, CLUSTERS_FINAL_PATH)
-
-    
-
-    # Load original keywords
-    with open(KEYWORDS_PATH, 'r', encoding='utf-8') as f:
-        initial_keywords = json.load(f)
-    
-    # Load final clusters to create mapping
-    with open(CLUSTERS_FINAL_PATH, 'r', encoding='utf-8') as f:
-        final_clusters = json.load(f)
-    
-    # Create mapping and harmonized keywords file
-    mapping = create_mapping_from_clusters(final_clusters)
-    create_harmonized_keywords_file(initial_keywords, mapping, KEYWORDS_FINAL_PATH)
-
-
-
-
-if __name__ == "__main__":
-    main()
 

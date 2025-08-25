@@ -5,6 +5,9 @@ __pycache__/
 **/*.json
 **/*.eval
 **/logs/
+./modeling/data
+./modeling/results
+./modeling/figures
 
 
 # C extensions

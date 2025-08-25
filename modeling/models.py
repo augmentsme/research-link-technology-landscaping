@@ -1,7 +1,9 @@
 
 from enum import Enum
-from pydantic import BaseModel, Field
 from typing import List
+
+from pydantic import BaseModel, Field
+
 
 class KeywordType(str, Enum):
     """Enumeration of valid keyword types."""

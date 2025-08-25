@@ -1,12 +1,13 @@
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from collections import Counter
-import pandas as pd
 
-from config import KEYWORDS_PATH, GRANTS_FILE
-from utils import load_keywords, load_grants
 import numpy as np
+import pandas as pd
 from scipy.stats import binned_statistic
+
+from config import GRANTS_FILE, KEYWORDS_PATH
+from utils import load_grants, load_keywords
 
 
 def extract_grant_id_from_keyword(keyword_id: str) -> str:

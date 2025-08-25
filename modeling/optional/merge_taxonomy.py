@@ -11,16 +11,14 @@ The merged taxonomy provides multiple levels of granularity:
 """
 
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
-from config import (
-    CATEGORY_PATH, 
-    REFINED_CATEGORY_PATH, 
-    COARSENED_CATEGORY_PATH,
-    COMPREHENSIVE_TAXONOMY_PATH,
-    RESULTS_DIR
-)
+from typing import Any, Dict, List, Optional
+
+from config import CONFIG
+                    CONFIG.comprehensive_taxonomy_path, REFINED_CONFIG.category_path,
+                    RESULTS_DIR)
+
 
 @dataclass
 class TaxonomyLevel:
@@ -104,46 +102,46 @@ class TaxonomyMerger:
         """Load data from all taxonomy files."""
         try:
             # Load base categories
-            if CATEGORY_PATH.exists():
-                with open(CATEGORY_PATH, 'r', encoding='utf-8') as f:
+            if CONFIG.category_path.exists():
+                with open(CONFIG.category_path, 'r', encoding='utf-8') as f:
                     base_data = json.load(f)
                     if isinstance(base_data, dict) and 'categories' in base_data:
                         self.base_categories = base_data['categories']
                     elif isinstance(base_data, list):
                         self.base_categories = base_data
                     else:
-                        print(f"Warning: Unexpected format in {CATEGORY_PATH}")
+                        print(f"Warning: Unexpected format in {CONFIG.category_path}")
                         self.base_categories = []
             else:
-                print(f"Warning: Base categories file not found at {CATEGORY_PATH}")
+                print(f"Warning: Base categories file not found at {CONFIG.category_path}")
             
             # Load refined categories
-            if REFINED_CATEGORY_PATH.exists():
-                with open(REFINED_CATEGORY_PATH, 'r', encoding='utf-8') as f:
+            if REFINED_CONFIG.category_path.exists():
+                with open(REFINED_CONFIG.category_path, 'r', encoding='utf-8') as f:
                     refined_data = json.load(f)
                     if isinstance(refined_data, dict) and 'categories' in refined_data:
                         self.refined_categories = refined_data['categories']
                     elif isinstance(refined_data, list):
                         self.refined_categories = refined_data
                     else:
-                        print(f"Warning: Unexpected format in {REFINED_CATEGORY_PATH}")
+                        print(f"Warning: Unexpected format in {REFINED_CONFIG.category_path}")
                         self.refined_categories = []
             else:
-                print(f"Warning: Refined categories file not found at {REFINED_CATEGORY_PATH}")
+                print(f"Warning: Refined categories file not found at {REFINED_CONFIG.category_path}")
             
             # Load coarsened categories
-            if COARSENED_CATEGORY_PATH.exists():
-                with open(COARSENED_CATEGORY_PATH, 'r', encoding='utf-8') as f:
+            if COARSENED_CONFIG.category_path.exists():
+                with open(COARSENED_CONFIG.category_path, 'r', encoding='utf-8') as f:
                     coarsened_data = json.load(f)
                     if isinstance(coarsened_data, dict) and 'categories' in coarsened_data:
                         self.coarsened_categories = coarsened_data['categories']
                     elif isinstance(coarsened_data, list):
                         self.coarsened_categories = coarsened_data
                     else:
-                        print(f"Warning: Unexpected format in {COARSENED_CATEGORY_PATH}")
+                        print(f"Warning: Unexpected format in {COARSENED_CONFIG.category_path}")
                         self.coarsened_categories = []
             else:
-                print(f"Warning: Coarsened categories file not found at {COARSENED_CATEGORY_PATH}")
+                print(f"Warning: Coarsened categories file not found at {COARSENED_CONFIG.category_path}")
                 
         except Exception as e:
             print(f"Error loading taxonomy data: {e}")
@@ -307,7 +305,7 @@ def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     
     # Export comprehensive taxonomy
-    with open(COMPREHENSIVE_TAXONOMY_PATH, 'w', encoding='utf-8') as f:
+    with open(CONFIG.comprehensive_taxonomy_path, 'w', encoding='utf-8') as f:
         # Convert dataclasses to dictionaries for JSON serialization
         taxonomy_dict = {
             'metadata': comprehensive_taxonomy.metadata,
@@ -316,7 +314,7 @@ def main():
         }
         json.dump(taxonomy_dict, f, ensure_ascii=False)
     
-    print(f"Comprehensive taxonomy saved to: {COMPREHENSIVE_TAXONOMY_PATH}")
+    print(f"Comprehensive taxonomy saved to: {CONFIG.comprehensive_taxonomy_path}")
     
     # Print summary
     print("\n" + "="*50)

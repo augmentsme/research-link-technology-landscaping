@@ -1,17 +1,19 @@
 
-from inspect_ai._util.answer import answer_character, answer_index
+import json
+from pathlib import Path
+
 from inspect_ai import Task, task
+from inspect_ai._util.answer import answer_character, answer_index
+from inspect_ai.dataset import FieldSpec, MemoryDataset, Sample, json_dataset
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
-from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from inspect_ai.solver._multiple_choice import parse_answers
-from config import CATEGORY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
-from inspect_ai.solver import system_message, generate, user_message, multiple_choice
-from inspect_ai.scorer import model_graded_fact, answer, choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
+from inspect_ai.scorer import answer, choice, model_graded_fact
+from inspect_ai.solver import (generate, multiple_choice, system_message,
+                               user_message)
+from inspect_ai.solver._multiple_choice import parse_answers
 from inspect_ai.util import json_schema
 
-import json 
-from pathlib import Path 
+from config import CONFIG
 
 grant_template = lambda grant: f"""
 Which category does this grant belong to?
@@ -89,7 +91,7 @@ class ClassificationOutputHook(Hooks):
     async def on_task_end(self, data: TaskEnd) -> None:
         
         # Save to classification.json
-        with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
+        with open(CONFIG.classification_path, 'w', encoding='utf-8') as f:
             json.dump(self.classification_results, f, ensure_ascii=False)
         
 
@@ -101,13 +103,13 @@ class ClassificationOutputHook(Hooks):
 @task
 def classify() -> Task:
     """
-    Classify grants using categories specified in `CATEGORY_PATH`.
+    Classify grants using categories specified in `CONFIG.category_path`.
 
     Returns:
-        Task for classifying grants into categories loaded from `CATEGORY_PATH`.
+        Task for classifying grants into categories loaded from `CONFIG.category_path`.
     """
-    # Load choices from CATEGORY_PATH
-    choices = load_choices(CATEGORY_PATH)
+    # Load choices from CONFIG.category_path
+    choices = load_choices(CONFIG.category_path)
 
     # Create record_to_sample function with the loaded choices
     def record_to_sample_with_choices(record: dict) -> Sample:
@@ -121,7 +123,7 @@ def classify() -> Task:
         )
 
     return Task(
-        dataset=json_dataset(str(GRANTS_FILE), record_to_sample_with_choices),
+        dataset=json_dataset(str(CONFIG.grants_file), record_to_sample_with_choices),
         solver=[
             multiple_choice(multiple_correct=True, cot=False),
         ],

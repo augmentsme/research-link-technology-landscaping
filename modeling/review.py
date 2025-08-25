@@ -7,30 +7,24 @@ LLM review decisions.
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Union
-from dataclasses import dataclass
 
 # Inspect AI imports for the review task
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
+from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.model import GenerateConfig, ResponseSchema
-from inspect_ai.solver import system_message, generate
+from inspect_ai.scorer import (CORRECT, INCORRECT, NOANSWER, Score, Target,
+                               accuracy, scorer)
+from inspect_ai.solver import TaskState, generate, system_message
 from inspect_ai.util import json_schema
-from inspect_ai.hooks import Hooks, SampleEnd, hooks, TaskEnd
-from inspect_ai.scorer import scorer, Score, Target, INCORRECT, CORRECT, accuracy, NOANSWER
-from inspect_ai.solver import TaskState
-
 from pydantic import BaseModel, Field
 
-from config import (
-    PROMPTS_DIR, 
-    REVIEW_FILE, 
-    CLUSTERS_PROPOSAL_PATH, 
-    CLUSTERS_FINAL_PATH, 
-    KEYWORDS_PATH, 
-    EXTRACTED_KEYWORDS_PATH
-)
+from config import CONFIG
+                    EXTRACTED_CONFIG.keywords_path, CONFIG.keywords_path, CONFIG.prompts_dir,
+                    CONFIG.review_file)
 
 
 @dataclass
@@ -116,7 +110,7 @@ class HarmonizationReviewHook(Hooks):
         try:
             # Save aggregated reviews in the expected format
             aggregated_result = {"reviews": self.reviews}
-            with open(REVIEW_FILE, 'w', encoding='utf-8') as f:
+            with open(CONFIG.review_file, 'w', encoding='utf-8') as f:
                 json.dump(aggregated_result, f, ensure_ascii=False)
             
             # Apply refinements
@@ -132,7 +126,7 @@ def load_harmonization_clusters() -> List[Dict]:
     Returns:
         List of clusters with enhanced information for review.
     """
-    clusters_file = CLUSTERS_PROPOSAL_PATH
+    clusters_file = CONFIG.clusters_proposal_path
     
     with open(clusters_file, 'r', encoding='utf-8') as f:
         cluster_data = json.load(f)
@@ -186,14 +180,14 @@ def review() -> Task:
     cases where specific terms are inappropriately grouped with general terms
     that could undermine emerging trends identification.
     
-    NOTE: This task expects cluster proposals to already exist at CLUSTERS_PROPOSAL_PATH.
+    NOTE: This task expects cluster proposals to already exist at CONFIG.clusters_proposal_path.
     Run embedding_harmonizer.py first to generate the proposals.
     """
     
     # Check if cluster proposals exist
-    if not CLUSTERS_PROPOSAL_PATH.exists():
+    if not CONFIG.clusters_proposal_path.exists():
         raise FileNotFoundError(
-            f"Cluster proposals file not found at {CLUSTERS_PROPOSAL_PATH}. "
+            f"Cluster proposals file not found at {CONFIG.clusters_proposal_path}. "
             "Please run embedding_harmonizer.py first to generate cluster proposals."
         )
     
@@ -243,7 +237,7 @@ def review() -> Task:
     return Task(
         dataset=dataset,
         solver=[
-            system_message(str(PROMPTS_DIR / "harmonise.txt")),
+            system_message(str(CONFIG.prompts_dir / "harmonise.txt")),
             generate()
         ],
         scorer=[
@@ -269,16 +263,16 @@ def apply_harmonization_review() -> None:
     """
     
     # Load review decisions
-    if not REVIEW_FILE.exists():
-        raise FileNotFoundError(f"Review file not found at {REVIEW_FILE}. Run harmonise task first.")
+    if not CONFIG.review_file.exists():
+        raise FileNotFoundError(f"Review file not found at {CONFIG.review_file}. Run harmonise task first.")
 
-    with open(REVIEW_FILE, 'r', encoding='utf-8') as f:
+    with open(CONFIG.review_file, 'r', encoding='utf-8') as f:
         review_data = json.load(f)
     
     reviews = review_data.get("reviews", [])
     
     # Load original cluster data
-    clusters_file = CLUSTERS_PROPOSAL_PATH
+    clusters_file = CONFIG.clusters_proposal_path
     with open(clusters_file, 'r', encoding='utf-8') as f:
         original_clusters = json.load(f)
     
@@ -325,16 +319,16 @@ def apply_harmonization_review() -> None:
             refined_clusters.append(cluster)
     
     # Save refined clusters
-    refined_clusters_file = CLUSTERS_FINAL_PATH
+    refined_clusters_file = CONFIG.clusters_final_path
     with open(refined_clusters_file, 'w', encoding='utf-8') as f:
         json.dump(refined_clusters, f, ensure_ascii=False)
     
     print(f"✅ Refined clusters saved to {refined_clusters_file}")
     
     # Create refined terms file for categorisation
-    refined_terms_file = KEYWORDS_PATH
+    refined_terms_file = CONFIG.keywords_path
     # Load original keywords to rebuild mapping
-    with open(EXTRACTED_KEYWORDS_PATH, 'r', encoding='utf-8') as f:
+    with open(EXTRACTED_CONFIG.keywords_path, 'r', encoding='utf-8') as f:
         initial_keywords = json.load(f)
     
     # Create mapping from refined clusters and use unified function
@@ -434,12 +428,12 @@ def main():
     print()
     
     # Check if proposals exist
-    if CLUSTERS_PROPOSAL_PATH.exists():
-        print(f"✅ Cluster proposals found at {CLUSTERS_PROPOSAL_PATH}")
+    if CONFIG.clusters_proposal_path.exists():
+        print(f"✅ Cluster proposals found at {CONFIG.clusters_proposal_path}")
         clusters = load_harmonization_clusters()
         print(f"   {len(clusters)} clusters ready for review")
     else:
-        print(f"❌ No cluster proposals found at {CLUSTERS_PROPOSAL_PATH}")
+        print(f"❌ No cluster proposals found at {CONFIG.clusters_proposal_path}")
         print("   Run embedding_harmonizer.py first to generate proposals")
 
 

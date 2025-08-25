@@ -1,14 +1,15 @@
-from inspect_ai import Task, task
-from inspect_ai.hooks import Hooks, TaskEnd, hooks, SampleEnd
-from inspect_ai.dataset import MemoryDataset, Sample
-from inspect_ai.solver import system_message, generate
-from inspect_ai.model import GenerateConfig, ResponseSchema
-from inspect_ai.util import json_schema
-from pydantic import BaseModel, Field
 import json
 from pathlib import Path
-from config import CATEGORY_PROPOSAL_PATH, CATEGORY_PATH, PROMPTS_DIR
 
+from inspect_ai import Task, task
+from inspect_ai.dataset import MemoryDataset, Sample
+from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
+from inspect_ai.model import GenerateConfig, ResponseSchema
+from inspect_ai.solver import generate, system_message
+from inspect_ai.util import json_schema
+from pydantic import BaseModel, Field
+
+from config import CATEGORY_PATH, CATEGORY_PROPOSAL_PATH, PROMPTS_DIR
 from models import Category, CategoryList
 
 

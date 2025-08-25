@@ -1,17 +1,21 @@
 
-from inspect_ai._util.answer import answer_character, answer_index
+import json
+from pathlib import Path
+
 from inspect_ai import Task, task
+from inspect_ai._util.answer import answer_character, answer_index
+from inspect_ai.dataset import FieldSpec, MemoryDataset, Sample, json_dataset
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
-from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from inspect_ai.solver._multiple_choice import parse_answers
-from config import CATEGORY_PATH, REFINED_CATEGORY_PATH, COMPREHENSIVE_TAXONOMY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
-from inspect_ai.solver import system_message, generate, user_message, multiple_choice
-from inspect_ai.scorer import model_graded_fact, answer, choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
+from inspect_ai.scorer import answer, choice, model_graded_fact
+from inspect_ai.solver import (generate, multiple_choice, system_message,
+                               user_message)
+from inspect_ai.solver._multiple_choice import parse_answers
 from inspect_ai.util import json_schema
 
-import json 
-from pathlib import Path 
+from config import CONFIG
+                    CONFIG.comprehensive_taxonomy_path, GRANTS_FILE,
+                    REFINED_CONFIG.category_path)
 
 grant_template = lambda grant: f"""
 Which category does this grant belong to?
@@ -64,10 +68,10 @@ def load_comprehensive_taxonomy_choices(level: str = 'base'):
     Returns:
         List of formatted choice strings for the specified level
     """
-    if not COMPREHENSIVE_TAXONOMY_PATH.exists():
-        raise FileNotFoundError(f"Comprehensive taxonomy file not found at {COMPREHENSIVE_TAXONOMY_PATH}")
+    if not CONFIG.comprehensive_taxonomy_path.exists():
+        raise FileNotFoundError(f"Comprehensive taxonomy file not found at {CONFIG.comprehensive_taxonomy_path}")
     
-    with open(COMPREHENSIVE_TAXONOMY_PATH, 'r', encoding='utf-8') as f:
+    with open(CONFIG.comprehensive_taxonomy_path, 'r', encoding='utf-8') as f:
         taxonomy_data = json.load(f)
     
     # Extract categories for the specified level
@@ -126,7 +130,7 @@ class ClassificationOutputHook(Hooks):
         """Save aggregated classification results to JSON file."""
         
         # Save to classification.json
-        with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
+        with open(CONFIG.classification_path, 'w', encoding='utf-8') as f:
             json.dump(self.classification_results, f, ensure_ascii=False)
         
 

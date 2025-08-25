@@ -1,4 +1,6 @@
-from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
+from inspect_ai.scorer import (Metric, SampleScore, Score, Target, metric,
+                               scorer)
+
 
 @metric
 def total() -> Metric:

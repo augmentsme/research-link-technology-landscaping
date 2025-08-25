@@ -1,16 +1,18 @@
-from inspect_ai import Task, task
-from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
-from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from config import PROMPTS_DIR, CATEGORY_PATH, COARSENED_CATEGORY_PATH
-from inspect_ai.solver import system_message, generate, user_message, TaskState
-from inspect_ai.model import GenerateConfig, ResponseSchema
-from inspect_ai.util import json_schema
-from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
-import json 
+import json
 from pathlib import Path
-from metric import count
+
+from inspect_ai import Task, task
+from inspect_ai.dataset import FieldSpec, MemoryDataset, Sample, json_dataset
+from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
+from inspect_ai.model import GenerateConfig, ResponseSchema
+from inspect_ai.scorer import (Metric, SampleScore, Score, Target, metric,
+                               scorer)
+from inspect_ai.solver import TaskState, generate, system_message, user_message
+from inspect_ai.util import json_schema
 from pydantic import BaseModel, Field
 
+from config import CONFIG
+from metric import count
 
 
 @scorer(metrics=[count()])
@@ -88,15 +90,15 @@ class CorsenOutputHook(Hooks):
         result_json = json.loads(output_text)
         
         # Save to coarsened_categories.json
-        COARSENED_CATEGORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        COARSENED_CONFIG.category_path.parent.mkdir(parents=True, exist_ok=True)
         
-        with open(COARSENED_CATEGORY_PATH, 'w', encoding='utf-8') as f:
+        with open(COARSENED_CONFIG.category_path, 'w', encoding='utf-8') as f:
             json.dump(result_json, f, ensure_ascii=False)
 
 def load_dataset():
     """Load the output from the categorise task."""
     
-    with open(CATEGORY_PATH, 'r', encoding='utf-8') as f:
+    with open(CONFIG.category_path, 'r', encoding='utf-8') as f:
         categories = json.load(f)  # Now expecting an array directly
     
     # Get the number of base categories for ratio calculations
@@ -150,7 +152,7 @@ def coarsen(coarsening_ratio: float = 0.1):
     return Task(
         dataset=dataset,
         solver=[
-            system_message(str(PROMPTS_DIR / "coarsen.txt"), 
+            system_message(str(CONFIG.prompts_dir / "coarsen.txt"), 
                           target_coarsened_categories=target_coarsened_categories,
                           lower_bound=lower_bound,
                           upper_bound=upper_bound,

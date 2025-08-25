@@ -1,0 +1,62 @@
+# Configuration file for research-link-technology-landscaping modeling
+# Organized into logical groups for better maintainability
+
+# Core directories - these are loaded from environment variables via .env file
+# BASE_DIRS will be populated by config.py from dotenv values
+
+# Data paths and files
+data:
+  grants_file: "grants_cleaned.json"  # Relative to DATA_DIR
+  for_codes_cleaned_file: "for_codes_cleaned.json"  # Relative to DATA_DIR
+
+# Grants configuration
+grants:
+  use_embeddings: true  # Turn off embeddings for grants by default
+
+# Prompts directory
+prompts:
+  dir: "PromptTemplates"  # Relative to ROOT_DIR
+
+
+chromadb_path: "chromadb"
+# Keywords-related configuration
+keywords:
+  # Extraction paths
+  extracted_dir: "extract"  # Relative to RESULTS_DIR
+  extracted_file: "extracted_keywords.json"  # Relative to RESULTS_DIR
+  keywords_file: "keywords.json"  # Relative to RESULTS_DIR
+  
+  # Processing parameters
+  batch_size: 100
+  keywords_type: null
+  
+  # Clustering parameters
+  similarity_threshold: 0.75
+  min_cluster_size: 5
+
+
+# Clustering configuration
+clustering:
+  proposal_file: "clusters_proposal.json"  # Relative to RESULTS_DIR
+  final_file: "clusters_final.json"  # Relative to RESULTS_DIR
+  review_file: "review.json"  # Relative to RESULTS_DIR
+
+# Categorization configuration
+categories:
+  proposal_file: "category_proposal.json"  # Relative to RESULTS_DIR
+  categories_file: "categories.json"  # Relative to RESULTS_DIR
+  coarsened_file: "coarsened_categories.json"  # Relative to RESULTS_DIR
+  refined_file: "refined_categories.json"  # Relative to RESULTS_DIR
+  comprehensive_taxonomy_file: "comprehensive_taxonomy.json"  # Relative to RESULTS_DIR
+  
+# Classification configuration
+classification:
+  classification_file: "classification.json"  # Relative to RESULTS_DIR
+
+# vLLM server configuration (can be overridden by CLI options)
+vllm:
+  base_url: "http://localhost:8000/v1"
+  # Generation model for text completion tasks
+  generation_model: "Qwen/Qwen3-72B-Instruct"  
+  # Embedding model for vector embeddings
+  embedding_model: "Qwen/Qwen3-Embedding-0.6B"

@@ -8,21 +8,15 @@ and keywords.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from utils import (
-    load_categories,
-    load_classification_results,
-
-)
-from analysis import (
-    analyze_keyword_trends
-)
+from analysis import analyze_keyword_trends
 from models import FORCode
+from utils import load_categories, load_classification_results
 
 
 def create_treemap_data(categories: List[Dict[str, Any]]) -> pd.DataFrame:

@@ -1,22 +1,19 @@
 extract: 
-	uv run inspect eval extract.py@extract --limit 100
+	uv run inspect eval extract.py@extract
 
-harmonise:
-	uv run inspect eval harmonise.py@harmonise
+clustering:
+	uv run clustering.py
+
+review:
+	uv run inspect eval review.py@review
 
 categorise: 
-	uv run inspect eval categorise.py@categorise
-
-coarsen:
-	uv run inspect eval coarsen.py@coarsen
-
-refine:
-	uv run inspect eval refine.py@refine
+	uv run inspect eval categorise.py@categorise --limit 1
 
 merge:
-	uv run inspect eval merge.py@merge
+	uv run inspect eval merge.py@merge --retry-on-error 3
 
 classify: 
-	uv run inspect eval classify.py@classify --limit 10
+	uv run inspect eval classify.py@classify --retry-on-error 3
 
-.PHONY: extract categorise coarsen refine classify
+.PHONY: extract harmonise categorise merge classify

@@ -91,7 +91,7 @@ class CorsenOutputHook(Hooks):
         COARSENED_CATEGORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         
         with open(COARSENED_CATEGORY_PATH, 'w', encoding='utf-8') as f:
-            json.dump(result_json, f, indent=2, ensure_ascii=False)
+            json.dump(result_json, f, ensure_ascii=False)
 
 def load_dataset():
     """Load the output from the categorise task."""

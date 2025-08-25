@@ -4,7 +4,7 @@ from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
 from inspect_ai.solver._multiple_choice import parse_answers
-from config import CATEGORY_PATH, REFINED_CATEGORY_PATH, COMPREHENSIVE_TAXONOMY_PATH, GRANTS_FILE, RESULTS_DIR, CLASSIFICATION_PATH
+from config import CATEGORY_PATH, REFINED_CATEGORY_PATH, COMPREHENSIVE_TAXONOMY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
 from inspect_ai.solver import system_message, generate, user_message, multiple_choice
 from inspect_ai.scorer import model_graded_fact, answer, choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
@@ -127,7 +127,7 @@ class ClassificationOutputHook(Hooks):
         
         # Save to classification.json
         with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
-            json.dump(self.classification_results, f, indent=2, ensure_ascii=False)
+            json.dump(self.classification_results, f, ensure_ascii=False)
         
 
         # subcategory_count = sum(len(result.get('selected_subcategories', [])) for result in self.classification_results)

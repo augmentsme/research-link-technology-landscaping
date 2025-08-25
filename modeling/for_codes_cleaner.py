@@ -198,7 +198,7 @@ def validate_for_data(hierarchy):
 def export_for_codes_to_json(hierarchy, output_path):
     """Export the cleaned FOR codes to JSON"""
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(hierarchy, f, indent=2, ensure_ascii=False)
+        json.dump(hierarchy, f, ensure_ascii=False)
     print(f"Exported FOR codes to: {output_path}")
     return output_path
 

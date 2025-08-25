@@ -6,10 +6,11 @@ from inspect_ai.solver import system_message, generate, user_message
 from inspect_ai.util import json_schema
 
 
-from config import GRANTS_FILE, PROMPTS_DIR, RESULTS_DIR, EXTRACTED_KEYWORDS_DIR, EXTRACTED_KEYWORDS_PATH
+from config import GRANTS_FILE, PROMPTS_DIR, EXTRACTED_KEYWORDS_DIR, EXTRACTED_KEYWORDS_PATH
 
 import json
 from typing import List
+from enum import Enum
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.solver import TaskState
 from pydantic import BaseModel, Field
@@ -17,19 +18,82 @@ from inspect_ai.scorer import scorer, Score, Target, metric, Metric, SampleScore
 
 
 from metric import total
+import re
+
+from nltk.stem import PorterStemmer
+
+    
+
+
+
+def normalize_keyword_term(term: str) -> str:
+    """
+    Normalize keyword terms for deduplication using NLTK stemming and lexical variations.
+    
+    Args:
+        term: The original keyword term
+        
+    Returns:
+        Normalized term for comparison
+    """
+    # Convert to lowercase
+    normalized = term.lower().strip()
+
+    normalized = re.sub(r'\s+', ' ', normalized)
+    normalized = normalized.replace('-', ' ').replace('_', ' ')
+    
+    words = normalized.split()
+    stemmer = PorterStemmer()
+    stemmed_words = [stemmer.stem(word) for word in words]
+    stemmed_normalized = ' '.join(stemmed_words)
+    return stemmed_normalized
+
+
+
+def collect(keywords_dir, output_path):
+    keyword_map = {}  # normalized_term -> keyword_data
+    
+    # Get all files and sort them to ensure consistent processing order
+    files = sorted(keywords_dir.glob("*.json"))
+    
+    for file in files:
+        with open(file, 'r', encoding='utf-8') as f:
+            grant_data = json.load(f)
+            # Reverse the sanitization to get the true grant ID
+            grant_id = file.stem.replace("_", "/")  # Unsanitize filename to get true grant ID
+            
+            for keyword in grant_data.get("keywords", []):
+                if isinstance(keyword, dict) and "term" in keyword:
+                    normalized_term = normalize_keyword_term(keyword["term"])
+                    
+                    if normalized_term in keyword_map:
+                        # Keyword already exists, merge entries
+                        existing = keyword_map[normalized_term]
+                        # Take type and description from the latest variant (current keyword)
+                        existing["type"] = keyword.get("type", existing.get("type"))
+                        existing["description"] = keyword.get("description", existing.get("description"))
+                        existing["term"] = keyword["term"]  # Update to latest term variant
+                        # Add grant ID if not already present
+                        if grant_id not in existing["grants"]:
+                            existing["grants"].append(grant_id)
+                    else:
+                        # New keyword, create entry
+                        keyword_map[normalized_term] = {
+                            "term": keyword["term"],  # Keep original term from first occurrence
+                            "type": keyword.get("type"),
+                            "description": keyword.get("description"),
+                            "grants": [grant_id]
+                        }
+
+    # Convert back to list format
+    all_keywords = list(keyword_map.values())
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(all_keywords, f, ensure_ascii=False)
 
 @scorer(metrics=[total()])
 def keywords_counter():
-    """
-    Scorer that counts the total number of keywords extracted in the extract task.
-    
-    This provides metrics for keyword extraction volume and effectiveness,
-    counting keywords across all categories (keywords, methodology_keywords,
-    application_keywords, technology_keywords).
-    
-    Returns:
-        Score with total keyword count as the metric
-    """
+
     
     async def score(state: TaskState, target: Target) -> Score:
         """Score based on total extracted keyword count."""
@@ -83,19 +147,7 @@ def keywords_counter():
     
     return score
 
-class Keyword(BaseModel):
-    """Individual keyword with context and identifier."""
-    model_config = {"extra": "forbid"}
-    term: str = Field(description="The actual keyword or phrase")
-    type: str = Field(description="Type of keyword: 'general', 'methodology', 'application', or 'technology'")
-    description: str = Field(description="Short description explaining the context and relevance of this keyword within the research")
-
-class KeywordsExtractionOutput(BaseModel):
-    """Pydantic model for structured keywords extraction output."""
-    model_config = {"extra": "forbid"}
-    
-    keywords: List[Keyword] = Field(description="List of all extracted keywords with their types, descriptions, and identifiers")
-
+from models import KeywordType, Keyword, KeywordsExtractionOutput
 
 @hooks(name="KeywordsExtractionHook", description="Hook to save keywords extraction results as JSON files")
 class KeywordsExtractionHook(Hooks):
@@ -103,18 +155,20 @@ class KeywordsExtractionHook(Hooks):
 
 
     async def on_sample_end(self, data: SampleEnd) -> None:
-        """Save keywords extraction results with auto-generated IDs."""
+        """Save keywords extraction results with grant references."""
 
         output_text = data.sample.output.completion
         result_json = json.loads(output_text)
 
         grant_id = data.sample.id
         
-        # Auto-generate IDs for keywords with grant ID prefix
+        # Populate grants field for keywords
         if "keywords" in result_json and isinstance(result_json["keywords"], list):
-            for idx, keyword in enumerate(result_json["keywords"]):
+            for keyword in result_json["keywords"]:
                 if isinstance(keyword, dict):
-                    keyword["id"] = f"{grant_id}_{idx}"
+                    # Initialize grants field with current grant ID
+                    if "grants" not in keyword:
+                        keyword["grants"] = [grant_id]
 
         EXTRACTED_KEYWORDS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -123,23 +177,14 @@ class KeywordsExtractionHook(Hooks):
         output_file = EXTRACTED_KEYWORDS_DIR / f"{grant_id_sanitized}.json"
         
         with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result_json, f, indent=2, ensure_ascii=False)
+            json.dump(result_json, f, ensure_ascii=False)
 
     async def on_task_end(self, data: TaskEnd) -> None:
         """Flatten all keywords from all grants into a single top-level array."""
-        all_keywords = []
-        
-        for file in EXTRACTED_KEYWORDS_DIR.glob("*.json"):
-            with open(file, 'r', encoding='utf-8') as f:
-                grant_data = json.load(f)
-                
-                # Extract keywords from this grant and add to the flattened list
-                if "keywords" in grant_data and isinstance(grant_data["keywords"], list):
-                    all_keywords.extend(grant_data["keywords"])
-        
-        # Write flattened keywords array to the final output
-        with open(EXTRACTED_KEYWORDS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(all_keywords, f, indent=2, ensure_ascii=False)
+        collect(EXTRACTED_KEYWORDS_DIR, EXTRACTED_KEYWORDS_PATH)
+
+def finished_grants():
+    return [grant.stem.replace("_", "/") for grant in EXTRACTED_KEYWORDS_DIR.glob("*.json")]
 
 
 def record_to_sample(record: dict) -> Sample:
@@ -163,11 +208,12 @@ def record_to_sample(record: dict) -> Sample:
 
 @task
 def extract() -> Task:
+    finished = finished_grants()
     return Task(
         dataset=json_dataset(
             str(GRANTS_FILE),
             record_to_sample
-        ),
+        ).filter(lambda s: s.id not in finished),
         solver=[
             system_message(str(PROMPTS_DIR / "extract.txt")),
             generate()

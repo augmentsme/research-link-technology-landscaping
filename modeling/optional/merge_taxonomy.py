@@ -314,7 +314,7 @@ def main():
             'taxonomy_levels': [asdict(level) for level in comprehensive_taxonomy.taxonomy_levels],
             'categories': [asdict(category) for category in comprehensive_taxonomy.categories]
         }
-        json.dump(taxonomy_dict, f, indent=2, ensure_ascii=False)
+        json.dump(taxonomy_dict, f, ensure_ascii=False)
     
     print(f"Comprehensive taxonomy saved to: {COMPREHENSIVE_TAXONOMY_PATH}")
     

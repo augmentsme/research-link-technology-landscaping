@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 import pandas as pd
-from config import DATA_DIR, FOR_CODES_CLEANED_PATH, NEO4J_PASSWORD
+from config import DATA_DIR, FOR_CODES_CLEANED_PATH
 
 # Add the parent directory to the path to import pyrla
 parent_dir = Path(__file__).parent.parent
@@ -136,7 +136,6 @@ def clean_enriched_data(enriched_file_path):
 
         df_cleaned = pd.concat([arc, nhmrc], axis=0)
         df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder']]
-
         return df_cleaned
 
     except Exception as e:
@@ -176,8 +175,11 @@ if __name__ == "__main__":
             grants_data = None
     
     # If no existing data, fetch from Neo4j
+    from dotenv import dotenv_values
+    CONFIG = dotenv_values()
+
     if grants_data is None:
-        grants_data = get_grant_nodes_as_json(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, cypher_query)
+        grants_data = get_grant_nodes_as_json(CONFIG["NEO4J_URL"], CONFIG["NEO4J_USER"], CONFIG["NEO4J_PASSWORD"], cypher_query)
 
         if grants_data is not None:
             save_to_json(grants_data, output_file)

@@ -49,9 +49,6 @@ def load_choices(category_file_path: Path):
     
     return choices
 
-# The code previously supported a "comprehensive" taxonomy with multiple levels
-# (coarsened/base/refined). This module now exclusively reads choices from
-# `CATEGORY_PATH` using `load_choices` above.
 
 def record_to_sample(record: dict, choices: list[str]) -> Sample:
     return Sample(
@@ -69,15 +66,12 @@ class ClassificationOutputHook(Hooks):
         
     async def on_sample_end(self, data: SampleEnd) -> None:
         """Collect classification results for each sample."""
-        # Parse the model's answers to get selected choice letters
         selected_answers = parse_answers(data.sample, multiple_correct=True)
-        # Convert answer letters to actual category names
         selected_categories = []
         for answer_letter in selected_answers:
             choice_index = answer_index(answer_letter)
             if choice_index < len(data.sample.choices):
                 choice_text = data.sample.choices[choice_index]
-                # Parse the category name from the formatted text (e.g., "**Name**: Category Name")
                 if "**Name**: " in choice_text:
                     category_name = choice_text.split("**Name**: ")[1].split("\n")[0]
                     selected_categories.append(category_name)
@@ -96,7 +90,7 @@ class ClassificationOutputHook(Hooks):
         
         # Save to classification.json
         with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
-            json.dump(self.classification_results, f, indent=2, ensure_ascii=False)
+            json.dump(self.classification_results, f, ensure_ascii=False)
         
 
         # subcategory_count = sum(len(result.get('selected_subcategories', [])) for result in self.classification_results)

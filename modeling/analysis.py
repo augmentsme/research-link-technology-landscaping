@@ -75,27 +75,37 @@ def analyze_keyword_trends(
     linked_data = []
 
     for keyword in keywords_data:
-        grant_id = extract_grant_id_from_keyword(keyword['id'])
+        # Handle the new keyword structure where keywords have a 'grants' list
+        # instead of a single 'id' field that needs parsing
+        if 'grants' in keyword:
+            grant_ids = keyword['grants']
+        elif 'id' in keyword:
+            # Fallback for old structure
+            grant_ids = [extract_grant_id_from_keyword(keyword['id'])]
+        else:
+            continue  # Skip keywords without grant information
 
-        if grant_id in grants_lookup:
-            grant = grants_lookup[grant_id]
+        # Process each grant ID associated with this keyword
+        for grant_id in grant_ids:
+            if grant_id in grants_lookup:
+                grant = grants_lookup[grant_id]
 
-            # Skip if keyword type filter is specified and doesn't match
-            if keyword_types and keyword['type'] not in keyword_types:
-                continue
+                # Skip if keyword type filter is specified and doesn't match
+                if keyword_types and keyword['type'] not in keyword_types:
+                    continue
 
-            linked_data.append({
-                'keyword_id': keyword['id'],
-                'term': keyword['term'],
-                'type': keyword['type'],
-                'description': keyword['description'],
-                'grant_id': grant_id,
-                'grant_title': grant['title'],
-                'end_year': grant['end_year'],
-                'start_year': grant['start_year'],
-                'funding_amount': grant['funding_amount'],
-                'funder': grant['funder']
-            })
+                linked_data.append({
+                    'keyword_id': f"{grant_id}_{keyword['term']}",  # Create a unique ID
+                    'term': keyword['term'],
+                    'type': keyword['type'],
+                    'description': keyword['description'],
+                    'grant_id': grant_id,
+                    'grant_title': grant['title'],
+                    'end_year': grant['end_year'],
+                    'start_year': grant['start_year'],
+                    'funding_amount': grant['funding_amount'],
+                    'funder': grant['funder']
+                })
 
     if not linked_data:
         raise ValueError("No keywords could be linked to grants")

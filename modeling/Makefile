@@ -8,12 +8,12 @@ review:
 	uv run inspect eval review.py@review
 
 categorise: 
-	uv run inspect eval categorise.py@categorise --limit 1
+	uv run inspect eval categorise.py@categorise
 
 merge:
-	uv run inspect eval merge.py@merge --retry-on-error 3
+	uv run inspect eval merge.py@merge
 
 classify: 
-	uv run inspect eval classify.py@classify --retry-on-error 3
+	uv run inspect eval classify.py@classify --limit 100
 
 .PHONY: extract harmonise categorise merge classify

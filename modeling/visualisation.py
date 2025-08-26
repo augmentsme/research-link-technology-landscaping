@@ -9,6 +9,7 @@ and keywords.
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union, Any
+from collections import Counter
 
 import pandas as pd
 import plotly.express as px
@@ -17,20 +18,30 @@ import plotly.graph_objects as go
 from utils import (
     load_categories,
     load_classification_results,
-
+    load_keywords,
+    load_grants
 )
 from analysis import (
-    analyze_keyword_trends
+    analyze_keyword_trends,
+    extract_grant_id_from_keyword
 )
 from models import FORCode
 
 
-def create_treemap_data(categories: List[Dict[str, Any]]) -> pd.DataFrame:
+def create_treemap_data(
+    categories: List[Dict[str, Any]], 
+    max_for_classes: Optional[int] = None,
+    max_categories_per_for: Optional[int] = None,
+    max_keywords_per_category: Optional[int] = None
+) -> pd.DataFrame:
     """
     Create hierarchical data structure for treemap visualization with FOR classes as parents
     
     Args:
         categories: List of category data with keywords
+        max_for_classes: Maximum number of FOR classes to include (None for all)
+        max_categories_per_for: Maximum number of categories per FOR class (None for all)
+        max_keywords_per_category: Maximum number of keywords per category (None for all)
         
     Returns:
         pandas.DataFrame: Treemap data with hierarchical structure (FOR Classes → Categories → Keywords)
@@ -42,15 +53,15 @@ def create_treemap_data(categories: List[Dict[str, Any]]) -> pd.DataFrame:
     for category in categories:
         for_code = category.get('for_code', 'Unknown')
         
-        # Handle both old format (dict) and new format (string)
-        if isinstance(for_code, dict):
-            # Old format: {"code": "46", "name": "..."}
-            for_code_value = for_code.get('code', 'Unknown')
-            for_division_name = for_code.get('name', f'FOR {for_code_value}')
-        elif isinstance(for_code, str):
+        # Handle the new format (string) and fallback for any old format (dict)
+        if isinstance(for_code, str):
             # New format: just the string value "46"
             for_code_value = for_code
             for_division_name = FORCode.get_name(for_code_value)
+        elif isinstance(for_code, dict):
+            # Old format: {"code": "46", "name": "..."}
+            for_code_value = for_code.get('code', 'Unknown')
+            for_division_name = for_code.get('name', f'FOR {for_code_value}')
         else:
             # Fallback for invalid format
             for_code_value = 'Unknown'
@@ -63,12 +74,41 @@ def create_treemap_data(categories: List[Dict[str, Any]]) -> pd.DataFrame:
             }
         for_groups[for_code_value]['categories'].append(category)
     
+    # Apply FOR class limit by sorting by total keyword count (descending)
+    if max_for_classes is not None:
+        for_items = []
+        for for_code, for_data in for_groups.items():
+            total_keywords = sum(len(cat.get('keywords', [])) for cat in for_data['categories'])
+            for_items.append((for_code, for_data, total_keywords))
+        
+        # Sort by keyword count (descending) and limit
+        for_items.sort(key=lambda x: x[2], reverse=True)
+        for_groups = {item[0]: item[1] for item in for_items[:max_for_classes]}
+    
     # Create treemap data with 3-level hierarchy
     for for_code, for_data in for_groups.items():
         for_name = for_data['name']
         
-        # Calculate total keywords for this FOR division
-        for_keyword_count = sum(len(cat.get('keywords', [])) for cat in for_data['categories'])
+        # Get categories for this FOR (apply category limit if specified)
+        categories_for_this_for = for_data['categories']
+        if max_categories_per_for is not None:
+            category_items = []
+            for category in categories_for_this_for:
+                keyword_count = len(category.get('keywords', []))
+                category_items.append((category, keyword_count))
+            
+            # Sort by keyword count (descending) and limit
+            category_items.sort(key=lambda x: x[1], reverse=True)
+            categories_for_this_for = [item[0] for item in category_items[:max_categories_per_for]]
+        
+        # Calculate total keywords for this FOR division (after limits applied)
+        for_keyword_count = 0
+        for category in categories_for_this_for:
+            keywords = category.get('keywords', [])
+            if max_keywords_per_category is not None:
+                keywords = keywords[:max_keywords_per_category]
+            for_keyword_count += len(keywords)
+        
         for_size = max(1, for_keyword_count)
         
         # Level 1: FOR Classes (top level)
@@ -81,10 +121,14 @@ def create_treemap_data(categories: List[Dict[str, Any]]) -> pd.DataFrame:
             'item_type': 'for_class'
         })
         
-        # Level 2: Categories under FOR classes
-        for category in for_data['categories']:
+        # Level 2: Categories under FOR classes  
+        for category in categories_for_this_for:
             category_name = category['name']
             keywords = category.get('keywords', [])
+            
+            # Apply keyword limit (take first N keywords)
+            if max_keywords_per_category is not None:
+                keywords = keywords[:max_keywords_per_category]
             
             # Size by number of keywords (minimum 1)
             category_size = max(1, len(keywords))
@@ -120,7 +164,10 @@ def create_research_landscape_treemap(
     font_size: int = 9,
     color_map: Optional[Dict[str, str]] = None,
     category_path: Optional[Path] = None,
-    classification_path: Optional[Path] = None
+    classification_path: Optional[Path] = None,
+    max_for_classes: Optional[int] = None,
+    max_categories_per_for: Optional[int] = None,
+    max_keywords_per_category: Optional[int] = None
 ) -> Optional[go.Figure]:
     """
     Create a comprehensive treemap visualization of the research landscape
@@ -134,6 +181,9 @@ def create_research_landscape_treemap(
         color_map: Custom color mapping for hierarchy levels
         category_path: Path to categories file (if categories not provided)
         classification_path: Path to classification file (if results not provided)
+        max_for_classes: Maximum number of FOR classes to include (None for all)
+        max_categories_per_for: Maximum number of categories per FOR class (None for all)
+        max_keywords_per_category: Maximum number of keywords per category (None for all)
         
     Returns:
         plotly.graph_objects.Figure: Interactive treemap visualization or None if no data
@@ -142,13 +192,18 @@ def create_research_landscape_treemap(
     if categories is None or classification_results is None:
         categories = load_categories(category_path)
         classification_results = load_classification_results(classification_path)
-
+    # print(categories, classification_results)
     if not categories:
         return None
 
     # Create treemap data
-    treemap_df = create_treemap_data(categories)
-    
+    treemap_df = create_treemap_data(
+        categories, 
+        max_for_classes=max_for_classes,
+        max_categories_per_for=max_categories_per_for,
+        max_keywords_per_category=max_keywords_per_category
+    )
+    # print(treemap_df)
     if treemap_df.empty:
         return None
     
@@ -193,6 +248,8 @@ def create_research_landscape_treemap(
 
     return fig
 
+# fig, df = create_research_landscape_treemap()
+# fig
 
 
 def create_keyword_trends_visualization(

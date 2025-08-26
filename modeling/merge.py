@@ -37,11 +37,12 @@ def load_category_files_dataset() -> MemoryDataset:
     with open(CATEGORY_PROPOSAL_PATH, 'r', encoding='utf-8') as f:
         content = json.load(f)
 
-
     categories = content["categories"]
 
     for category in categories:
         for_code_value = category["for_code"]
+        if for_code_value not in for_groups:
+            for_groups[for_code_value] = []
         for_groups[for_code_value].append(category)
     
     samples = []

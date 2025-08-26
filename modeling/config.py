@@ -5,13 +5,13 @@ import math
 
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
-# DATA_DIR = ROOT_DIR / "data"
-# RESULTS_DIR = ROOT_DIR / "results"
-# FIGURES_DIR = ROOT_DIR / "figures"
+DATA_DIR = ROOT_DIR / "data"
+RESULTS_DIR = ROOT_DIR / "results"
+FIGURES_DIR = ROOT_DIR / "figures"
 
-DATA_DIR = Path(CONFIG["DATA_DIR"]).resolve()
-RESULTS_DIR = Path(CONFIG["RESULTS_DIR"]).resolve()
-FIGURES_DIR = Path(CONFIG["FIGURES_DIR"]).resolve()
+# DATA_DIR = Path(CONFIG["DATA_DIR"]).resolve()
+# RESULTS_DIR = Path(CONFIG["RESULTS_DIR"]).resolve()
+# FIGURES_DIR = Path(CONFIG["FIGURES_DIR"]).resolve()
 
 
 

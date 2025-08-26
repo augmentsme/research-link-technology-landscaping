@@ -130,12 +130,14 @@ def clean_enriched_data(enriched_file_path):
 
         arc = df[df.index.str.startswith("arc")]
         arc.loc[:, 'funding_amount'] = arc['arc_funding_at_announcement']
+        arc.loc[:, "for_primary"] = arc["arc_for_primary"]
+        arc.loc[:, "for"] = arc["arc_for"]
 
         nhmrc = df[df.index.str.startswith("nhmrc")]
         nhmrc.loc[:, 'funding_amount'] = nhmrc['nhmrc_funding_amount']
 
         df_cleaned = pd.concat([arc, nhmrc], axis=0)
-        df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder']]
+        df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for"]]
         return df_cleaned
 
     except Exception as e:

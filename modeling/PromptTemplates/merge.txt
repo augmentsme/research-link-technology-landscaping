@@ -41,5 +41,4 @@ Return a JSON object with the structure:
 - When merging categories, combine all unique keywords
 - Use the most comprehensive and clear description
 - If names differ slightly, choose the most descriptive version
-- Ensure FOR codes are consistent within merged categories
 - Remove exact keyword duplicates but preserve semantic variations

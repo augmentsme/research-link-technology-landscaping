@@ -14,6 +14,7 @@ from collections import Counter
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 from utils import (
     load_categories,
@@ -25,7 +26,7 @@ from analysis import (
     analyze_keyword_trends,
     extract_grant_id_from_keyword
 )
-from models import FORCode
+from models import FORCode, FORCodesHierarchy
 
 
 def create_treemap_data(
@@ -418,8 +419,90 @@ def create_keyword_trends_visualization(
     return fig
 
 
+def parse_for_codes(for_codes: Any) -> List[str]:
+    """
+    Parse FOR codes from various formats
+    
+    Args:
+        for_codes: FOR codes in string, list or other format
+        
+    Returns:
+        List of cleaned FOR code strings
+    """
+    if pd.isna(for_codes):
+        return []
+    if isinstance(for_codes, str):
+        # Split by comma and clean
+        codes = [code.strip() for code in for_codes.split(',') if code.strip()]
+        return codes
+    elif isinstance(for_codes, list):
+        return [str(code).strip() for code in for_codes if str(code).strip()]
+    else:
+        return [str(for_codes).strip()] if str(for_codes).strip() else []
 
 
+def get_for_code_name(code: Union[str, int, float], hierarchy: FORCodesHierarchy) -> str:
+    """
+    Get descriptive name for FOR code using the hierarchy
+    
+    Args:
+        code: FOR code to look up
+        hierarchy: FOR codes hierarchy instance
+        
+    Returns:
+        Formatted string with code and name, or just code if not found
+    """
+    try:
+        code_str = str(code).strip()
+        
+        # Try to find in divisions
+        for div in hierarchy.divisions.values():
+            if str(div.code) == code_str:
+                return f"{div.code}: {div.name}"
+            
+            # Try groups
+            for group in div.groups.values():
+                if str(group.code) == code_str:
+                    return f"{group.code}: {group.name}"
+                
+                # Try fields
+                for field in group.fields.values():
+                    if str(field.code) == code_str:
+                        return f"{field.code}: {field.name}"
+        
+        return code_str
+    except Exception:
+        return str(code)
 
 
-
+def get_division_for_code(code: Union[str, int, float], hierarchy: FORCodesHierarchy) -> str:
+    """
+    Map FOR code to its division name
+    
+    Args:
+        code: FOR code to map
+        hierarchy: FOR codes hierarchy instance
+        
+    Returns:
+        Division name or "Unknown"
+    """
+    try:
+        code_str = str(code).strip()
+        
+        # Direct division match
+        for div in hierarchy.divisions.values():
+            if str(div.code) == code_str:
+                return div.name
+            
+            # Check if it's in this division's groups or fields
+            for group in div.groups.values():
+                if str(group.code) == code_str:
+                    return div.name
+                
+                for field in group.fields.values():
+                    if str(field.code) == code_str:
+                        return div.name
+        
+        return "Unknown"
+    except Exception:
+        return "Unknown"

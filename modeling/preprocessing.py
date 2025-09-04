@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 import pandas as pd
 from config import DATA_DIR, FOR_CODES_CLEANED_PATH
-
+import config
+import utils
 # Add the parent directory to the path to import pyrla
 parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir / "pyrla"))
@@ -18,19 +19,10 @@ from pyrla.client import RLAClient
 from for_codes_cleaner import main as clean_for_codes
 
 
-# load_dotenv()
-# --- Connection Details (replace with your credentials) ---
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-
-# --- Cypher Query ---
-# This query finds all nodes with the label "grant" and returns them.
-cypher_query = "MATCH (g:grant) RETURN g"
 
 # --- Output Files ---
 output_file = DATA_DIR / "grants_raw.json"
-enriched_output_file = DATA_DIR / "grants_enriched.json"
-cleaned_output_file = DATA_DIR / "grants_cleaned.json"
+# cleaned_output_file = DATA_DIR / "grants_cleaned.json"
 
 def get_grant_nodes_as_json(uri, user, password, query):
     """
@@ -137,7 +129,7 @@ def clean_enriched_data(enriched_file_path):
         nhmrc.loc[:, 'funding_amount'] = nhmrc['nhmrc_funding_amount']
 
         df_cleaned = pd.concat([arc, nhmrc], axis=0)
-        df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for"]]
+        df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for", "source"]]
         return df_cleaned
 
     except Exception as e:
@@ -181,7 +173,7 @@ if __name__ == "__main__":
     CONFIG = dotenv_values()
 
     if grants_data is None:
-        grants_data = get_grant_nodes_as_json(CONFIG["NEO4J_URL"], CONFIG["NEO4J_USER"], CONFIG["NEO4J_PASSWORD"], cypher_query)
+        grants_data = get_grant_nodes_as_json(config.Grants.neo4j_uri, config.Grants.neo4j_username, config.Grants.neo4j_password, config.Grants.CIPHER_QUERY)
 
         if grants_data is not None:
             save_to_json(grants_data, output_file)
@@ -190,22 +182,19 @@ if __name__ == "__main__":
             exit(1)
     
     # Enrich the data with grant summaries from RLA API (skip if enriched file exists)
-    if enriched_output_file.exists():
-        try:
-            with open(enriched_output_file, 'r') as f:
-                enriched_data = json.load(f)
-        except Exception:
-            enriched_data = run_async_enrichment(grants_data)
-            save_to_json(enriched_data, enriched_output_file)
+    if config.Grants.enriched_path.exists():
+        with open(config.Grants.enriched_path, 'r') as f:
+            enriched_data = json.load(f)
+
     else:
         enriched_data = run_async_enrichment(grants_data)
-        save_to_json(enriched_data, enriched_output_file)
+        save_to_json(enriched_data, config.Grants.enriched_path)
     
     # Clean the enriched data
-    df_cleaned = clean_enriched_data(enriched_output_file)
+    df_cleaned = clean_enriched_data(config.Grants.enriched_path)
     if df_cleaned is not None:
         cleaned_data = df_cleaned.reset_index().to_dict('records')
-        save_to_json(cleaned_data, cleaned_output_file)
+        utils.save_jsonl_file(cleaned_data, config.Grants.grants_path)
         print(f"Grants processed: original={len(grants_data) if grants_data else 0}, enriched={len(enriched_data) if enriched_data else 0}, cleaned={len(df_cleaned)}")
     else:
         print("Grants processing completed with errors (cleaning failed)")

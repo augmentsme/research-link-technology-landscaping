@@ -16,6 +16,7 @@ import pandas as pd
 import re
 from pathlib import Path
 from config import DATA_DIR
+import utils
 
 
 def clean_text(text):
@@ -323,8 +324,7 @@ def validate_anzsrc_data(hierarchy, classification_type):
 
 def export_anzsrc_codes_to_json(hierarchy, output_path, classification_type):
     """Export the cleaned ANZSRC codes to JSON"""
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(hierarchy, f, ensure_ascii=False, indent=2)
+    utils.save_json_file(hierarchy, output_path)
     print(f"Exported {classification_type.upper()} codes to: {output_path}")
     return output_path
 
@@ -390,8 +390,7 @@ def main():
     
     # Export merged data
     merged_output_path = DATA_DIR / "anzsrc_codes_merged.json"
-    with open(merged_output_path, 'w', encoding='utf-8') as f:
-        json.dump(merged_hierarchy, f, ensure_ascii=False, indent=2)
+    utils.save_json_file(merged_hierarchy, merged_output_path)
     print(f"Exported merged ANZSRC codes to: {merged_output_path}")
     
     return merged_hierarchy

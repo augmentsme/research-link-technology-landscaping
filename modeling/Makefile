@@ -11,9 +11,12 @@ categorise:
 	uv run inspect eval categorise.py@categorise
 
 merge:
-	uv run inspect eval merge.py@merge
+	uv run inspect eval merge.py@merge --limit 1
 
 classify: 
 	uv run inspect eval classify.py@classify --limit 100
 
-.PHONY: extract harmonise categorise merge classify
+clean: 
+	rm -f logs/*.eval
+	
+.PHONY: extract harmonise categorise merge classify clean

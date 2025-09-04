@@ -3,9 +3,8 @@ Research Landscape Visualizations
 
 This module contains visualization functions for the research link technology 
 landscaping analysis, including treemap visualizations of research categories 
-and keywords.
+and keywords, and keyword trends over time.
 """
-
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union, Any
@@ -16,17 +15,443 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 
-from utils import (
-    load_categories,
-    load_classification_results,
-    load_keywords,
-    load_grants
-)
-from analysis import (
-    analyze_keyword_trends,
-    extract_grant_id_from_keyword
-)
+import config
 from models import FORCode, FORCodesHierarchy
+
+
+def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, min_count: int = 10, 
+                              funder_filter: Optional[List[str]] = None, 
+                              source_filter: Optional[List[str]] = None,
+                              keyword_type_filter: Optional[List[str]] = None,
+                              for_code_filter: Optional[List[str]] = None) -> pd.DataFrame:
+    """
+    Create keyword trends data from keywords and grants dataframes
+    
+    Args:
+        keywords_df: DataFrame with keywords data
+        grants_df: DataFrame with grants data (should have 'start_year' column)
+        min_count: Minimum count threshold for keywords to include
+        funder_filter: Optional list of funders to filter by
+        source_filter: Optional list of sources to filter by
+        keyword_type_filter: Optional list of keyword types to filter by
+        for_code_filter: Optional list of FOR codes to filter by
+        
+    Returns:
+        pandas.DataFrame: DataFrame with keyword trends over time
+    """
+    # Filter keywords by minimum count
+    # Only set index if it's not already set to avoid KeyError
+    if 'id' in grants_df.columns:
+        grants_df = grants_df.set_index('id')
+    
+    # Apply funder and source filters to grants
+    filtered_grants_df = grants_df.copy()
+    if funder_filter:
+        filtered_grants_df = filtered_grants_df[filtered_grants_df['funder'].isin(funder_filter)]
+    if source_filter:
+        filtered_grants_df = filtered_grants_df[filtered_grants_df['source'].isin(source_filter)]
+    
+    # Apply FOR code filter to grants
+    if for_code_filter:
+        # Function to check if any of the filter codes are in the grant's FOR codes
+        def has_for_code(for_codes_str, for_primary_val):
+            if pd.isna(for_codes_str) and pd.isna(for_primary_val):
+                return False
+            
+            # Check primary FOR code
+            if not pd.isna(for_primary_val):
+                # Convert float to string for comparison (e.g., 406.0 -> "406")
+                primary_str = str(int(for_primary_val))
+                if any(code in primary_str for code in for_code_filter):
+                    return True
+            
+            # Check secondary FOR codes (comma-separated string)
+            if not pd.isna(for_codes_str):
+                for_codes_list = str(for_codes_str).split(',')
+                for filter_code in for_code_filter:
+                    if any(filter_code in for_code.strip() for for_code in for_codes_list):
+                        return True
+            
+            return False
+        
+        mask = filtered_grants_df.apply(
+            lambda row: has_for_code(row.get('for'), row.get('for_primary')), axis=1
+        )
+        filtered_grants_df = filtered_grants_df[mask]
+    
+    # Apply keyword type filter to keywords
+    filtered_keywords_df = keywords_df.copy()
+    if keyword_type_filter:
+        filtered_keywords_df = filtered_keywords_df[filtered_keywords_df['type'].isin(keyword_type_filter)]
+    
+    # Filter keywords to only include those with grants in the filtered set
+    filtered_keywords_df['filtered_grants'] = filtered_keywords_df['grants'].apply(
+        lambda x: [grant_id for grant_id in x if grant_id in filtered_grants_df.index]
+    )
+    filtered_keywords_df['filtered_count'] = filtered_keywords_df['filtered_grants'].map(len)
+    
+    filtered_keywords = filtered_keywords_df[filtered_keywords_df['filtered_count'] > min_count].copy()
+    
+    # Create start_year mapping for each keyword using filtered grants
+    if 'start_year' not in filtered_keywords.columns:
+        filtered_keywords['start_year'] = filtered_keywords['filtered_grants'].map(
+            lambda x: [filtered_grants_df.loc[i, "start_year"] for i in x if i in filtered_grants_df.index and not np.isnan(filtered_grants_df.loc[i, "start_year"])]
+        )
+    
+    # Explode the keywords to create term-year pairs
+    kw_years_list = []
+    for idx, row in filtered_keywords.iterrows():
+        term = row['term'] if 'term' in row else row.name
+        for year in row['start_year']:
+            kw_years_list.append({'term': term, 'start_year': int(year)})
+    
+    return pd.DataFrame(kw_years_list)
+
+
+def create_keyword_trends_visualization(
+    keywords_df: Optional[pd.DataFrame] = config.Keywords.load(),
+    grants_df: Optional[pd.DataFrame] = config.Grants.load(),
+    min_count: int = 10,
+    top_n: int = 20,
+    title: str = "Cumulative keyword occurrences over time — Top keywords",
+    height: int = 600,
+    show_average: bool = True,
+    show_error_bars: bool = True,
+    average_from_population: bool = False,
+    show_baseline: bool = False,
+    custom_keywords: Optional[List[str]] = None,
+    funder_filter: Optional[List[str]] = None,
+    source_filter: Optional[List[str]] = None,
+    keyword_type_filter: Optional[List[str]] = None,
+    for_code_filter: Optional[List[str]] = None,
+    use_cumulative: bool = True
+) -> Optional[go.Figure]:
+    """
+    Create keyword trends visualization with cumulative or yearly occurrences over time
+    
+    Args:
+        keywords_df: DataFrame with keywords data
+        grants_df: DataFrame with grants data (should have 'start_year' column)
+        min_count: Minimum count threshold for keywords to include
+        top_n: Number of top keywords to show as individual lines (0 to show only average)
+        title: Title for the visualization
+        height: Height of the visualization in pixels
+        show_average: Whether to show average trend line
+        show_error_bars: Whether to show error bars around average
+        average_from_population: Whether to calculate average from all keywords or just top N
+        show_baseline: Whether to show baseline trend (keywords per grant per year)
+        custom_keywords: List of specific keywords to display
+        funder_filter: Filter by specific funders
+        source_filter: Filter by specific sources  
+        keyword_type_filter: Filter by keyword types
+        for_code_filter: Filter by FOR codes
+        use_cumulative: If True, show cumulative counts; if False, show yearly raw counts
+    
+    Returns:
+        Plotly figure object or None if no data available
+    """
+    
+    # Create keyword trends data
+    kw_years = create_keyword_trends_data(keywords_df, grants_df, min_count, funder_filter, source_filter, keyword_type_filter, for_code_filter)
+    
+    if kw_years.empty:
+        return None
+    
+    # Create full population data for average calculation (if needed)
+    if average_from_population and show_average:
+        # Use all terms that meet min_count for average calculation
+        df_population = (
+            kw_years
+            .groupby(['term', 'start_year'])
+            .size()
+            .reset_index(name='occurrences')
+            .sort_values(['term', 'start_year'])
+        )
+    
+    # Find terms for individual line display
+    if custom_keywords:
+        # Use user-specified custom keywords
+        # Filter to only include keywords that exist in the data and meet min_count
+        available_keywords = kw_years['term'].value_counts()
+        valid_custom_keywords = [kw for kw in custom_keywords if kw in available_keywords and available_keywords[kw] >= min_count]
+        
+        if valid_custom_keywords:
+            df_top = (
+                kw_years[kw_years['term'].isin(valid_custom_keywords)]
+                .groupby(['term', 'start_year'])
+                .size()
+                .reset_index(name='occurrences')
+                .sort_values(['term', 'start_year'])
+            )
+        else:
+            df_top = pd.DataFrame()
+    elif top_n > 0:
+        # Use top N keywords by occurrence count
+        top_terms = kw_years['term'].value_counts().head(top_n).index.tolist()
+        
+        # Build df_top (occurrences per term-year) from kw_years and top_terms
+        df_top = (
+            kw_years[kw_years['term'].isin(top_terms)]
+            .groupby(['term', 'start_year'])
+            .size()
+            .reset_index(name='occurrences')
+            .sort_values(['term', 'start_year'])
+        )
+    else:
+        # If top_n is 0 and no custom keywords, no individual lines will be shown
+        df_top = pd.DataFrame()
+    
+    # Choose data source for average calculation
+    if show_average:
+        if average_from_population:
+            # Use all terms that meet min_count for average calculation
+            df_population = (
+                kw_years
+                .groupby(['term', 'start_year'])
+                .size()
+                .reset_index(name='occurrences')
+                .sort_values(['term', 'start_year'])
+            )
+            df_avg = df_population
+        else:
+            # Use sample (top_n) for average calculation
+            if df_top.empty:
+                # If no sample data, fall back to population
+                df_avg = (
+                    kw_years
+                    .groupby(['term', 'start_year'])
+                    .size()
+                    .reset_index(name='occurrences')
+                    .sort_values(['term', 'start_year'])
+                )
+            else:
+                df_avg = df_top
+    
+    if show_average and df_avg.empty:
+        return None
+    
+    # Create matrices for visualization
+    # Matrix for individual lines (custom keywords or top_n keywords)
+    if (custom_keywords or top_n > 0) and not df_top.empty:
+        years = np.arange(df_top['start_year'].min(), df_top['start_year'].max() + 1)
+        occ_matrix_display = (
+            df_top
+            .groupby(['start_year', 'term'])['occurrences']
+            .sum()
+            .unstack(fill_value=0)
+            .reindex(index=years, fill_value=0)
+        )
+        if use_cumulative:
+            occ_matrix_display = occ_matrix_display.cumsum()
+    else:
+        occ_matrix_display = pd.DataFrame()
+    
+    # Calculate baseline: cumulative average keywords per grant per year
+    baseline_data = None
+    if show_baseline:
+        # Count total keywords generated per year across all grants
+        yearly_keyword_counts = (
+            kw_years.groupby('start_year')
+            .size()
+            .reset_index(name='total_keywords')
+        )
+        
+        # Count number of grants per year
+        yearly_grant_counts = (
+            grants_df.groupby('start_year')
+            .size()
+            .reset_index(name='total_grants')
+        )
+        
+        # Merge and calculate keywords per grant per year
+        yearly_baseline = yearly_keyword_counts.merge(
+            yearly_grant_counts, 
+            on='start_year', 
+            how='inner'
+        )
+        yearly_baseline['keywords_per_grant'] = (
+            yearly_baseline['total_keywords'] / yearly_baseline['total_grants']
+        )
+        
+        # Determine year range for baseline
+        if show_average and not df_avg.empty:
+            baseline_min_year = df_avg['start_year'].min()
+            baseline_max_year = df_avg['start_year'].max()
+        elif (custom_keywords or top_n > 0) and not df_top.empty:
+            baseline_min_year = df_top['start_year'].min()
+            baseline_max_year = df_top['start_year'].max()
+        else:
+            baseline_min_year = yearly_baseline['start_year'].min()
+            baseline_max_year = yearly_baseline['start_year'].max()
+            baseline_max_year = yearly_baseline['start_year'].max()
+        
+        baseline_years = np.arange(baseline_min_year, baseline_max_year + 1)
+        
+        # Reindex to match year range and conditionally calculate cumulative sum
+        baseline_series = (
+            yearly_baseline.set_index('start_year')['keywords_per_grant']
+            .reindex(baseline_years, fill_value=0)
+        )
+        if use_cumulative:
+            baseline_series = baseline_series.cumsum()
+        baseline_data = baseline_series
+    
+    # Matrix for average calculation
+    if show_average:
+        years_avg = np.arange(df_avg['start_year'].min(), df_avg['start_year'].max() + 1)
+        occ_matrix_avg = (
+            df_avg
+            .groupby(['start_year', 'term'])['occurrences']
+            .sum()
+            .unstack(fill_value=0)
+            .reindex(index=years_avg, fill_value=0)
+        )
+        if use_cumulative:
+            occ_matrix_avg = occ_matrix_avg.cumsum()
+    
+    # Create the figure using graph_objects for more control
+    fig_cum = go.Figure()
+    
+    # Add individual keyword traces only if we have display data (custom keywords or top_n > 0)
+    if (custom_keywords or top_n > 0) and not occ_matrix_display.empty:
+        for term in occ_matrix_display.columns:
+            fig_cum.add_trace(go.Scatter(
+                x=occ_matrix_display.index,
+                y=occ_matrix_display[term],
+                mode='lines+markers',
+                name=term,
+                opacity=0.6,
+                line=dict(width=1.5),
+                marker=dict(size=4)
+            ))
+    
+    # Add average trend with error bars if requested
+    if show_average:
+        # Calculate statistics across keywords for each year
+        avg_occurrences = occ_matrix_avg.mean(axis=1)
+        std_occurrences = occ_matrix_avg.std(axis=1)
+        sem_occurrences = std_occurrences / np.sqrt(occ_matrix_avg.shape[1])  # Standard error of mean
+        
+        # Add error bars (standard error) first if requested
+        if show_error_bars:
+            fig_cum.add_trace(go.Scatter(
+                x=occ_matrix_avg.index,
+                y=avg_occurrences + sem_occurrences,
+                mode='lines',
+                line=dict(width=0, color='rgba(0,0,0,0)'),
+                showlegend=False,
+                hoverinfo='skip',
+                name='Upper bound'
+            ))
+            fig_cum.add_trace(go.Scatter(
+                x=occ_matrix_avg.index,
+                y=avg_occurrences - sem_occurrences,
+                mode='lines',
+                line=dict(width=0, color='rgba(0,0,0,0)'),
+                fill='tonexty',
+                fillcolor='rgba(0,0,0,0.1)',
+                name='±SE',
+                hoverinfo='skip'
+            ))
+        
+        # Add average line on top
+        avg_name = 'Average (Population)' if average_from_population else 'Average (Sample)'
+        fig_cum.add_trace(go.Scatter(
+            x=occ_matrix_avg.index,
+            y=avg_occurrences,
+            mode='lines+markers',
+            name=avg_name,
+            line=dict(width=3, color='black'),
+            marker=dict(size=6, color='black'),
+            opacity=1.0
+        ))
+    
+    # Add baseline (cumulative average keywords per grant per year)
+    if show_baseline and baseline_data is not None:
+        fig_cum.add_trace(go.Scatter(
+            x=baseline_data.index,
+            y=baseline_data.values,
+            mode='lines+markers',
+            name='Baseline (Keywords/Grant/Year)',
+            line=dict(width=2, color='red', dash='dash'),
+            marker=dict(size=4, color='red'),
+            opacity=0.8
+        ))
+    
+    # Update layout
+    y_axis_title = 'Cumulative occurrences' if use_cumulative else 'Yearly occurrences'
+    
+    fig_cum.update_layout(
+        title=title,
+        xaxis_title='Year',
+        yaxis_title=y_axis_title,
+        legend_title='Keyword',
+        height=height,
+        hovermode='x unified'
+    )
+    
+    return fig_cum
+
+
+def save_keyword_trends_to_html(
+    keywords_df: Optional[pd.DataFrame] = None,
+    grants_df: Optional[pd.DataFrame] = None,
+    min_count: int = 10,
+    top_n: int = 20,
+    title: str = "Cumulative keyword occurrences over time — Top keywords",
+    output_path: Optional[Path] = None,
+    show_average: bool = True,
+    show_error_bars: bool = True,
+    average_from_population: bool = False,
+    show_baseline: bool = False,
+    custom_keywords: Optional[List[str]] = None
+) -> Optional[Path]:
+    """
+    Create and save keyword trends visualization to HTML file
+    
+    Args:
+        keywords_df: DataFrame with keywords data
+        grants_df: DataFrame with grants data
+        min_count: Minimum count threshold for keywords to include
+        top_n: Number of top keywords to show as individual lines
+        title: Title for the visualization
+        output_path: Path to save the HTML file (defaults to figures/keyword_trends.html)
+        show_average: Whether to show average trend line
+        show_error_bars: Whether to show error bars around average
+        average_from_population: Whether to compute average from entire population (True) or sample (False)
+        show_baseline: Whether to show baseline (average keywords per grant per year)
+        custom_keywords: Optional list of specific keywords to track (overrides top_n if provided)
+        
+    Returns:
+        Path to saved HTML file or None if no data
+    """
+    if output_path is None:
+        output_path = Path("figures/keyword_trends.html")
+    
+    fig = create_keyword_trends_visualization(
+        keywords_df=keywords_df,
+        grants_df=grants_df,
+        min_count=min_count,
+        top_n=top_n,
+        title=title,
+        show_average=show_average,
+        show_error_bars=show_error_bars,
+        average_from_population=average_from_population,
+        show_baseline=show_baseline,
+        custom_keywords=custom_keywords,
+        use_cumulative=True  # Default to cumulative for backward compatibility
+    )
+    
+    if fig is None:
+        return None
+    
+    # Create figures directory if it doesn't exist
+    output_path.parent.mkdir(exist_ok=True)
+    
+    # Save to HTML
+    fig.write_html(str(output_path))
+    
+    return output_path
 
 
 def create_treemap_data(
@@ -164,8 +589,6 @@ def create_research_landscape_treemap(
     height: int = 800,
     font_size: int = 9,
     color_map: Optional[Dict[str, str]] = None,
-    category_path: Optional[Path] = None,
-    classification_path: Optional[Path] = None,
     max_for_classes: Optional[int] = None,
     max_categories_per_for: Optional[int] = None,
     max_keywords_per_category: Optional[int] = None
@@ -191,8 +614,9 @@ def create_research_landscape_treemap(
     """
     # Load data if not provided
     if categories is None or classification_results is None:
-        categories = load_categories(category_path)
-        classification_results = load_classification_results(classification_path)
+        categories = config.Categories.load().to_dict('records')
+        # classification_results = load_classification_results(classification_path)
+        classification_results = []  # Placeholder since function is not defined
     # print(categories, classification_results)
     if not categories:
         return None
@@ -249,260 +673,3 @@ def create_research_landscape_treemap(
 
     return fig
 
-# fig, df = create_research_landscape_treemap()
-# fig
-
-
-def create_keyword_trends_visualization(
-    trends_analysis: Optional[Dict[str, Any]] = None,
-    time_range: Optional[Tuple[int, int]] = None,
-    bin_size: int = 5,
-    keyword_types: Optional[List[str]] = None,
-    top_n_terms: int = 20,
-    min_frequency: int = 2,
-    show_funding: bool = False,
-    height: int = 600,
-    title: Optional[str] = None,
-    keywords_path: Optional[Path] = None,
-    grants_path: Optional[Path] = None,
-    enable_type_toggle: bool = True
-) -> go.Figure:
-    """
-    Create visualization of keyword trends over time with optional keyword type toggling
-    
-    Args:
-        trends_analysis: Pre-computed trends analysis. If None, will compute it.
-        time_range: (start_year, end_year) tuple
-        bin_size: Size of time bins in years
-        keyword_types: List of keyword types to include
-        top_n_terms: Number of top terms to visualize
-        min_frequency: Minimum frequency for inclusion
-        show_funding: Whether to show funding information in hover data
-        height: Height of the visualization in pixels
-        title: Custom title for the visualization
-        keywords_path: Path to keywords file
-        grants_path: Path to grants file
-        enable_type_toggle: Whether to enable interactive keyword type filtering
-        
-    Returns:
-        plotly.graph_objects.Figure: Interactive visualization
-        
-    Raises:
-        ValueError: If no data is available
-    """
-
-    # Get trends analysis for all types if toggling is enabled, otherwise use specified types
-    analysis_keyword_types = None if enable_type_toggle else keyword_types
-    
-    if trends_analysis is None:
-        trends_analysis = analyze_keyword_trends(
-            time_range=time_range,
-            bin_size=bin_size,
-            keyword_types=analysis_keyword_types,
-            top_n_terms=top_n_terms,
-            min_frequency=min_frequency,
-            keywords_path=keywords_path,
-            grants_path=grants_path
-        )
-    
-    trends_df = trends_analysis['trends_data']
-    summary_stats = trends_analysis['summary_stats']
-    
-    # Get available keyword types for toggle functionality
-    available_types = list(summary_stats.get('keyword_types', {}).keys())
-    
-    # Filter data by keyword types if specified and not using toggle
-    if keyword_types and not enable_type_toggle:
-        trends_df = trends_df[trends_df['type'].isin(keyword_types)]
-    
-    # Prepare title and subtitle
-    if title is None:
-        title = f"Keyword Trends Over Time ({summary_stats['time_span']})"
-        if keyword_types and not enable_type_toggle:
-            title += f" - Types: {', '.join(keyword_types)}"
-        elif enable_type_toggle:
-            title += " - Interactive Type Filtering"
-    
-    subtitle = (f"Top {top_n_terms} terms, {bin_size}-year bins, "
-               f"{summary_stats['total_keywords']} total keywords from "
-               f"{summary_stats['unique_grants']} grants")
-    
-    # Prepare hover data
-    hover_data = ['frequency', 'type']
-    if show_funding:
-        hover_data.append('total_funding')
-    
-    # Create the base area chart
-    fig = px.area(
-        trends_df,
-        x='time_bin',
-        y='count',
-        color='term',
-        title=title,
-        labels={'count': 'Keyword Frequency', 'time_bin': 'Time Period'},
-        hover_data=hover_data
-    )
-
-    # Update layout
-    fig.update_layout(
-        title={
-            'text': f"{title}<br><sub>{subtitle}</sub>",
-            'x': 0.5,
-            'xanchor': 'center'
-        },
-        height=height,
-        hovermode='x unified'
-    )
-    
-    # Add interactive keyword type filtering if enabled
-    if enable_type_toggle and available_types:
-        # Create dropdown buttons for each keyword type
-        buttons = []
-        
-        # Add "All Types" button
-        buttons.append(
-            dict(
-                label="All Types",
-                method="restyle",
-                args=[{"visible": [True] * len(fig.data)}]
-            )
-        )
-        
-        # Add button for each keyword type
-        for kw_type in available_types:
-            # Create visibility array - show traces where type matches
-            visibility = []
-            for trace in fig.data:
-                # Check if any data point in this trace matches the keyword type
-                trace_data = trends_df[trends_df['term'] == trace.name]
-                has_type = kw_type in trace_data['type'].values
-                visibility.append(has_type)
-            
-            buttons.append(
-                dict(
-                    label=f"{kw_type.title()} ({summary_stats['keyword_types'].get(kw_type, 0)})",
-                    method="restyle",
-                    args=[{"visible": visibility}]
-                )
-            )
-        
-        # Add dropdown menu to layout
-        fig.update_layout(
-            updatemenus=[
-                dict(
-                    buttons=buttons,
-                    direction="down",
-                    showactive=True,
-                    x=0.1,
-                    y=1.02,
-                    xanchor="left",
-                    yanchor="top",
-                    bgcolor="rgba(255,255,255,0.8)",
-                    bordercolor="rgba(0,0,0,0.2)",
-                    borderwidth=1
-                )
-            ]
-        )
-        
-        # Add annotation for the dropdown
-        fig.add_annotation(
-            text="Filter by Keyword Type:",
-            x=0.02,
-            y=1.02,
-            xref="paper",
-            yref="paper",
-            showarrow=False,
-            font=dict(size=12),
-            bgcolor="rgba(255,255,255,0.8)"
-        )
-    
-    return fig
-
-
-def parse_for_codes(for_codes: Any) -> List[str]:
-    """
-    Parse FOR codes from various formats
-    
-    Args:
-        for_codes: FOR codes in string, list or other format
-        
-    Returns:
-        List of cleaned FOR code strings
-    """
-    if pd.isna(for_codes):
-        return []
-    if isinstance(for_codes, str):
-        # Split by comma and clean
-        codes = [code.strip() for code in for_codes.split(',') if code.strip()]
-        return codes
-    elif isinstance(for_codes, list):
-        return [str(code).strip() for code in for_codes if str(code).strip()]
-    else:
-        return [str(for_codes).strip()] if str(for_codes).strip() else []
-
-
-def get_for_code_name(code: Union[str, int, float], hierarchy: FORCodesHierarchy) -> str:
-    """
-    Get descriptive name for FOR code using the hierarchy
-    
-    Args:
-        code: FOR code to look up
-        hierarchy: FOR codes hierarchy instance
-        
-    Returns:
-        Formatted string with code and name, or just code if not found
-    """
-    try:
-        code_str = str(code).strip()
-        
-        # Try to find in divisions
-        for div in hierarchy.divisions.values():
-            if str(div.code) == code_str:
-                return f"{div.code}: {div.name}"
-            
-            # Try groups
-            for group in div.groups.values():
-                if str(group.code) == code_str:
-                    return f"{group.code}: {group.name}"
-                
-                # Try fields
-                for field in group.fields.values():
-                    if str(field.code) == code_str:
-                        return f"{field.code}: {field.name}"
-        
-        return code_str
-    except Exception:
-        return str(code)
-
-
-def get_division_for_code(code: Union[str, int, float], hierarchy: FORCodesHierarchy) -> str:
-    """
-    Map FOR code to its division name
-    
-    Args:
-        code: FOR code to map
-        hierarchy: FOR codes hierarchy instance
-        
-    Returns:
-        Division name or "Unknown"
-    """
-    try:
-        code_str = str(code).strip()
-        
-        # Direct division match
-        for div in hierarchy.divisions.values():
-            if str(div.code) == code_str:
-                return div.name
-            
-            # Check if it's in this division's groups or fields
-            for group in div.groups.values():
-                if str(group.code) == code_str:
-                    return div.name
-                
-                for field in group.fields.values():
-                    if str(field.code) == code_str:
-                        return div.name
-        
-        return "Unknown"
-    except Exception:
-        return "Unknown"

@@ -3,6 +3,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
+
+
 class KeywordType(str, Enum):
     """Enumeration of valid keyword types."""
     GENERAL = "General"
@@ -66,6 +68,7 @@ class FORCode(str, Enum):
             "52": "PSYCHOLOGY"
         }
         return name_mapping.get(code_value, f"Unknown FOR Code: {code_value}")
+
 
 
 class FORDefinition(BaseModel):
@@ -304,9 +307,9 @@ class Keyword(BaseModel):
     term: str = Field(description="The actual keyword or phrase")
     type: KeywordType = Field(description="Type of keyword: general, methodology, application, or technology")
     description: str = Field(description="Short description explaining the context and relevance of this keyword within the research")
-    grants: List[str] = Field(description="List of grant IDs where this keyword appears")
+    # grants: List[str] = Field(description="List of grant IDs where this keyword appears")
 
-class KeywordsExtractionOutput(BaseModel):
+class KeywordsList(BaseModel):
     """Pydantic model for structured keywords extraction output."""
     model_config = {"extra": "forbid"}
     keywords: List[Keyword] = Field(description="List of all extracted keywords with their types and descriptions")
@@ -323,4 +326,3 @@ class CategoryList(BaseModel):
     """A list of research categories."""
     model_config = {"extra": "forbid"}
     categories: List[Category] = Field(description="List of research categories")
-

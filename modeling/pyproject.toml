@@ -27,6 +27,7 @@ dependencies = [
     "transformers>=4.55.4",
     "scipy>=1.13.1",
     "sentence-transformers>=5.1.0",
+    "datamapplot>=0.6.4",
 ]
 
 [tool.uv.sources]

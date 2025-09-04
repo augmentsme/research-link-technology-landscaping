@@ -58,7 +58,7 @@ class db:
     # port = 8001
     # host = "localhost"
     path = RESULTS_DIR / "db"
-    api_base = "http://localhost:8000/v1"
+    api_base = "http://localhost:1234/v1"
     model = "Qwen/Qwen3-Embedding-0.6B"
 
 
@@ -94,9 +94,15 @@ class Categories:
     def load_missing_keywords():
         return utils.load_jsonl_file(Categories.missing_keywords_path, as_dataframe=True)
     # def count_proposal_token():
-    #     from transformers import AutoTokenizer
-    #     proposals = Categories.load_proposal()
-    #     return proposals.apply(Categories.template, axis=1).map(AutoTokenizer.from_pretrained("Qwen/Qwen3-4B-Thinking-2507").encode).map(len)
+    #     from tiktoken import SimpleBytePairEncoding
+    #     cats = Categories.load_proposal()
+    #     enc = SimpleBytePairEncoding.from_tiktoken("cl100k_base")
+    #     enc.encode(cats)
+        
+        
+        # from transformers import AutoTokenizer
+        # proposals = Categories.load_proposal()
+        # return proposals.apply(Categories.template, axis=1).map(AutoTokenizer.from_pretrained("Qwen/Qwen3-4B-Thinking-2507").encode).map(len)
 
 @dataclass
 class Grants:
@@ -122,5 +128,4 @@ class Grants:
 def finished_grants():
     keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
     return keywords.grants.explode().unique()
-    
     

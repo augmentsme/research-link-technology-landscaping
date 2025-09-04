@@ -11,7 +11,7 @@ categorise:
 	uv run inspect eval categorise.py@categorise
 
 merge:
-	uv run inspect eval merge.py@merge --limit 1
+	uv run inspect eval merge.py@merge
 
 classify: 
 	uv run inspect eval classify.py@classify --limit 100

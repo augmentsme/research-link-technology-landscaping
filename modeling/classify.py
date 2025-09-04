@@ -4,14 +4,16 @@ from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
 from inspect_ai.solver._multiple_choice import parse_answers
-from config import CATEGORY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
+# from config import CATEGORY_PATH, GRANTS_FILE, CLASSIFICATION_PATH
 from inspect_ai.solver import system_message, generate, user_message, multiple_choice
 from inspect_ai.scorer import model_graded_fact, answer, choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
 
 import json 
-from pathlib import Path 
+from pathlib import Path
+
+import config 
 
 grant_template = lambda grant: f"""
 Which category does this grant belong to?
@@ -89,7 +91,7 @@ class ClassificationOutputHook(Hooks):
     async def on_task_end(self, data: TaskEnd) -> None:
         
         # Save to classification.json
-        with open(CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
+        with open(config.CLASSIFICATION_PATH, 'w', encoding='utf-8') as f:
             json.dump(self.classification_results, f, ensure_ascii=False)
         
 
@@ -107,7 +109,7 @@ def classify() -> Task:
         Task for classifying grants into categories loaded from `CATEGORY_PATH`.
     """
     # Load choices from CATEGORY_PATH
-    choices = load_choices(CATEGORY_PATH)
+    choices = load_choices(config.Categories.categories_path)
 
     # Create record_to_sample function with the loaded choices
     def record_to_sample_with_choices(record: dict) -> Sample:
@@ -121,7 +123,7 @@ def classify() -> Task:
         )
 
     return Task(
-        dataset=json_dataset(str(GRANTS_FILE), record_to_sample_with_choices),
+        dataset=json_dataset(str(config.Grants.grants_path), record_to_sample_with_choices),
         solver=[
             multiple_choice(multiple_correct=True, cot=False),
         ],

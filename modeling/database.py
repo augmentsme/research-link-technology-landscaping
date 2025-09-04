@@ -2,7 +2,8 @@ import config
 from chromadb import PersistentClient
 import chromadb.utils.embedding_functions as embedding_functions
 from itertools import batched
-from sklearn.cluster import DBSCAN
+# from sklearn.cluster import DBSCAN, KMeans
+# from sklearn.decomposition import PCA
 
 class ResearchDBClient:
     def __init__(self):
@@ -19,36 +20,44 @@ class ResearchDBClient:
         self.categories_collection = self.client.get_or_create_collection(name="categories", embedding_function=self.ef)
         self.max_batch_size = self.client.get_max_batch_size()
 
-    def batchadd(self, collection, ids, documents):
+    def batch_add(self, collection, ids, documents):
         for id_batch, doc_batch in zip(batched(ids, self.max_batch_size), batched(documents, self.max_batch_size)):
             collection.add(
                 ids=list(id_batch),
                 documents=list(doc_batch),
+            )
+            
+    def batch_update_metadata(self, collection, ids, documents, metadatas):
+        for id_batch, doc_batch in zip(batched(ids, self.max_batch_size), batched(documents, self.max_batch_size)):
+            collection.update(
+                ids=list(id_batch),
+                documents=list(doc_batch),
+                metadatas=list(metadatas)
             )
 
     def add_grants(self):
         grants = config.Grants.load()
         ids = grants.id.tolist()
         documents = grants.apply(config.Grants.template, axis=1).tolist()
-        self.batchadd(self.grants_collection, ids, documents)
+        self.batch_add(self.grants_collection, ids, documents)
 
     def add_keywords(self):
         keywords = config.Keywords.load()
         ids = keywords.term.tolist()
         documents = keywords.apply(config.Keywords.template, axis=1).tolist()
-        self.batchadd(self.keywords_collection, ids, documents)
+        self.batch_add(self.keywords_collection, ids, documents)
 
     def add_categories(self):
         categories = config.Categories.load()
         ids = categories.name.tolist()
         documents = categories.apply(config.Categories.template, axis=1).tolist()
-        self.batchadd(self.categories_collection, ids, documents)
+        self.batch_add(self.categories_collection, ids, documents)
 
     def add_category_proposals(self):
         category_proposals = config.Categories.load_proposal()
         ids = [str(i) for i in range(len(category_proposals))]
         documents = category_proposals.apply(config.Categories.template, axis=1).tolist()
-        self.batchadd(self.categories_proposal_collection, ids, documents)
+        self.batch_add(self.categories_proposal_collection, ids, documents)
 
 
     def cluster_category_proposal(self):
@@ -57,9 +66,19 @@ class ResearchDBClient:
         dbscan.fit(embeddings)
         return dbscan
 
-
-
 # client = ResearchDBClient()
-# client.add_category_proposals()
-# client.add_grants()
-# client.add_keywords()
+
+
+# from datamapplot import create_plot
+
+
+# embeddings = client.categories_proposal_collection.get(include=['embeddings'])
+# clusterer = KMeans(n_clusters=10, random_state=0)
+# clusterer.fit(embeddings['embeddings'])
+# labels = clusterer.labels_
+# pca = PCA(n_components=2)
+# coordinates = pca.fit_transform(embeddings['embeddings'])
+
+# create_plot(coordinates)
+
+# embeddings['embeddings'].shape

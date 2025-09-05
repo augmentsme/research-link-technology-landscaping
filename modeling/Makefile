@@ -1,20 +1,11 @@
 extract: 
 	uv run inspect eval extract.py@extract
 
-clustering:
-	uv run clustering.py
+abstract: 
+	uv run inspect eval abstract.py@abstract
 
-review:
-	uv run inspect eval review.py@review
-
-categorise: 
-	uv run inspect eval categorise.py@categorise
-
-merge:
-	uv run inspect eval merge.py@merge
-
-classify: 
-	uv run inspect eval classify.py@classify --limit 100
+classify:
+	uv run inspect eval abstract.py@classify --limit 10
 
 clean: 
 	rm -f logs/*.eval

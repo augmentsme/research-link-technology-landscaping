@@ -12,7 +12,10 @@ def load_jsonl_file(path: Path, as_dataframe: bool = False) -> List[Dict[str, An
     if isinstance(path, str):
         path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"File not found at {path}")
+        # if as_dataframe:
+        #     return pd.DataFrame()
+        return []
+        # raise FileNotFoundError(f"File not found at {path}")
     if as_dataframe:
         return pd.read_json(path, lines=True)
     return pd.read_json(path, lines=True).to_dict(orient="records")
@@ -74,3 +77,9 @@ def sanitise_grant_id(grant_id: str) -> str:
 def desanitise_grant_id(grant_id: str) -> str:
     """Reverse the sanitisation of a grant ID."""
     return grant_id.replace("_", "/")
+
+def estimate_tokens(text: str) -> int:
+    char_count = len(text)
+    estimated_tokens = char_count // 4
+    overhead = max(1, estimated_tokens // 100)
+    return estimated_tokens + overhead

@@ -1,3 +1,0 @@
-- The categories.py still preoduce missing keywords and unknown keywords
-- merged categories need to be merged further
-- keywords coverage in merge is low

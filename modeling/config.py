@@ -1,12 +1,14 @@
 from pathlib import Path
+from matplotlib.pylab import record
 import tiktoken
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable, Optional
 from dotenv import dotenv_values
 import json
 import math
 import jsonlines
 from dataclasses import dataclass
 import utils
+import re
 
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
@@ -64,35 +66,80 @@ class db:
 
 @dataclass
 class Keywords:
-    extracted_keywords_path: Path = RESULTS_DIR / "extracted_keywords.jsonl"
-    keywords_path: Path = RESULTS_DIR / "keywords.jsonl"
-    template = lambda record: f"<keyword><term>{record['term']}</term><description>{record['description']}</description></keyword>"
-    def load():
+    keywords_dir = RESULTS_DIR / "keywords"
+    keywords_dir.mkdir(parents=True, exist_ok=True)
+    extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
+    keywords_path: Path = keywords_dir / "keywords.jsonl"
+
+        
+    def load() -> Any:
         return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
-    def load_extracted():
+    def load_extracted() -> Any:
         return utils.load_jsonl_file(Keywords.extracted_keywords_path)
 
+DATA_TEMPLATE: Callable[[Dict[str, Any]], str] = lambda record: f"<item><name>{record['name']}</name><description>{record['description']}</description></item>"
 
+
+def reverse_item(s: str) -> Dict[str, str]:
+    """Reverse DATA_TEMPLATE: parse <item><name>...</name><description>...</description></item> into dict."""
+    name = re.search(r"<name>(.*?)</name>", s).group(1)
+    description = re.search(r"<description>(.*?)</description>", s).group(1)
+    return {"name": name, "description": description}
+
+# New function: parse a string containing multiple <item>...</item> blocks
+def reverse_items(s: str) -> List[Dict[str, str]]:
+    """Parse multiple <item>...</item> blocks and return a list of dicts."""
+    items = re.findall(r"<item>(.*?)</item>", s, flags=re.DOTALL)
+    return [reverse_item(f"<item>{item}</item>") for item in items]
+
+class Template:
+    def __init__(self, output_format: str = "html", keys: List[str] = ["name", "description"], type: str = "item") -> None:
+        self.format: str = output_format
+        self.keys: List[str] = keys
+        self.type: str = type
+
+    def __call__(self, record: Dict[str, Any]) -> str:
+        if self.format == "html":
+            return f"<{self.type}>{''.join([f'<{key}>{record[key]}</{key}>' for key in self.keys])}</{self.type}>"
+        elif self.format == "md":
+            return f"{''.join([f'**{key}**: {record[key]}\n\n' for key in self.keys])}"
+        raise ValueError("Unsupported format")
+
+    def inverse(self, s: str) -> Dict[str, str]:
+        results = {}
+        for k in self.keys:
+            if self.format == "md":
+                pat = re.search(rf"\*\*{k}\*\*: (.*?)(?=\n\n|\Z)", s, re.DOTALL)
+            elif self.format == "html":
+                pat = re.search(rf"<{k}>(.*?)</{k}>", s, re.DOTALL)
+            else:
+                raise ValueError("Unsupported format")
+            if not pat:
+                raise ValueError(f"Key {k} not found in the string.")
+            val = pat.group(1).strip()
+            results[k] = val
+        return results
+    
 @dataclass
 class Categories:
     category_dir: Path = RESULTS_DIR / "category"
-    category_proposal_path: Path = category_dir / "category_proposal.jsonl"
-    batch_size: int = 100
+    category_dir.mkdir(parents=True, exist_ok=True)
+    batch_size: int = 2000
     keywords_type: str = None
     categories_path: Path = category_dir / "categories.jsonl"
-    unknown_keywords_path: Path = category_dir / "unknown_keywords.jsonl"
-    missing_keywords_path: Path = category_dir / "missing_keywords.jsonl"
-    template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{', '.join(record['keywords'])}</keywords></category>"
-    def __post_init__(self):
-        self.category_dir.mkdir(parents=True, exist_ok=True)
-    def load():
+    # latest_level: int = 0
+    # unknown_keywords_path: Path = category_dir / "unknown_keywords.jsonl"
+    # missing_keywords_path: Path = category_dir / "missing_keywords.jsonl"
+
+
+    def load() -> Any:
         return utils.load_jsonl_file(Categories.categories_path, as_dataframe=True)
-    def load_proposal():
+    def load_proposal() -> Any:
         return utils.load_jsonl_file(Categories.category_proposal_path, as_dataframe=True)
-    def load_unknown_keywords():
-        return utils.load_jsonl_file(Categories.unknown_keywords_path, as_dataframe=True)
-    def load_missing_keywords():
-        return utils.load_jsonl_file(Categories.missing_keywords_path, as_dataframe=True)
+    # def load_unknown_keywords():
+    #     return utils.load_jsonl_file(Categories.unknown_keywords_path, as_dataframe=True)
+    # def load_missing_keywords():
+    #     return utils.load_jsonl_file(Categories.missing_keywords_path, as_dataframe=True)
     # def count_proposal_token():
     #     from tiktoken import SimpleBytePairEncoding
     #     cats = Categories.load_proposal()
@@ -116,16 +163,17 @@ class Grants:
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
 
 
-    def load():
+    def load() -> Any:
         return utils.load_jsonl_file(Grants.grants_path, as_dataframe=True)
 
-    def load_enriched():
+    def load_enriched() -> Any:
         return utils.load_json_file(Grants.enriched_path, as_dataframe=True)
 
-    def load_raw():
+    def load_raw() -> Any:
         return utils.load_json_file(Grants.raw_path, as_dataframe=True)
 
-def finished_grants():
-    keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
-    return keywords.grants.explode().unique()
-    
+def finished_grants() -> List[Any]:
+    keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=False)
+    return [grant for kw in keywords for grant in kw["grants"]]
+    keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=False)
+    return [grant for kw in keywords for grant in kw["grants"]]

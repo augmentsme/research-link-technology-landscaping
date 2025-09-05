@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 import numpy as np
 
 import config
-from models import FORCode, FORCodesHierarchy
+from models import FORCode
 
 
 def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, min_count: int = 10, 

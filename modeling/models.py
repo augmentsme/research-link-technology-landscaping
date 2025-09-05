@@ -103,16 +103,3 @@ class FORDivision(BaseModel):
 
 
 
-
-class Category(BaseModel):
-    """A flexible research category linked to FOR codes."""
-    model_config = {"extra": "forbid"}
-    name: str = Field(description="Name of the category")
-    description: str = Field(description="A few sentences describing what this category is about, including its scope, focus areas, and the types of research or technologies it encompasses")
-    # keywords: List[str] = Field(description="List of keywords associated with this category")
-    # for_code: FORCode = Field(description="The 2-digit FOR code this category falls under")
-
-class CategoryList(BaseModel):
-    """A list of research categories."""
-    model_config = {"extra": "forbid"}
-    categories: List[Category] = Field(description="List of research categories")

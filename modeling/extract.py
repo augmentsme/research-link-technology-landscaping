@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field
 from inspect_ai.scorer import model_graded_qa
 
 
-from metric import total
 import re
 
 from nltk.stem import PorterStemmer

@@ -14,9 +14,20 @@ from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
 from itertools import batched
 import json
-
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
 from inspect_ai._util.answer import answer_character, answer_index
 from inspect_ai.solver._multiple_choice import parse_answers
+
+class Category(BaseModel):
+    model_config = {"extra": "forbid"}
+    name: str = Field(description="Name of the category")
+    description: str = Field(description="A few sentences describing what this category is about, including its scope, focus areas, and the types of research or technologies it encompasses")
+
+
+class CategoryList(BaseModel):
+    model_config = {"extra": "forbid"}
+    categories: List[Category] = Field(description="List of research categories")
 
 
 SYSTEM_PROMPT = f"""

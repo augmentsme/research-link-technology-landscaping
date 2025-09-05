@@ -8,7 +8,6 @@ from pathlib import Path
 from models import Category, CategoryList
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-import json
 from inspect_ai.solver import system_message, generate, multiple_choice
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
@@ -60,16 +59,6 @@ Your primary goal is to condense and abstract the provided lower-level concepts 
 """
 
 
-
-
-
-# class keyword_md_template(template):
-    # def __call__(self, record):
-        # return f"**Keyword**: {record['name']}\n**Description**: {record['description']}"
-    
-
-KEYWORD_MD_TEMPLATE = lambda record: f"**Keyword**: {record['name']}\n**Description**: {record['description']}"
-CATEGORY_MD_TEMPLATE = lambda record: f"**Category**: {record['name']}\n**Description**: {record['description']}"
 
 from typing import Callable
 
@@ -143,7 +132,7 @@ def load_classification_dataset(cats_texts, keywords) -> MemoryDataset:
     return dataset
 
 MCQ_PROMPT = r"""
-Answer the following multiple choice question. The entire content of your response should be of the following format: 'ANSWER: $LETTER' (without quotes and without dollar sign) where LETTER is one of {letters}.
+Answer the following multiple choice question. The entire content of your response should be of the following format: 'ANSWER: $LETTER' (without quotes and without the dollar sign) where LETTER is one of {letters}.
 
 {question}
 

@@ -156,17 +156,10 @@ class KeywordsList(BaseModel):
     keywords: List[Keyword] = Field(description="List of all extracted keywords with their types and descriptions")
 
 
-
-#
 @task
 def extract(filter_finished=True) -> Task:
-    finished_grants = config.finished_grants()
+    finished_grants = config.Keywords.finished_grants()
     dataset = MemoryDataset(list(map(record_to_sample, utils.load_jsonl_file(config.Grants.grants_path, as_dataframe=True).to_dict(orient="records"))))
-    # dataset = utils.load_jsonl_file(config.Keywords.extracted_keywords_path, as_dataframe=True).map(record_to_sample)
-    # dataset = json_dataset(
-    #         str(config.Grants.grants_path),
-    #         record_to_sample
-    #     )
 
     if filter_finished:
         dataset = dataset.filter(lambda sample: sample.id not in finished_grants)

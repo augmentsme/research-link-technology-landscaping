@@ -14,9 +14,7 @@ parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir / "pyrla"))
 
 
-from pyrla.cli import enrich_grants_with_summaries
-from pyrla.client import RLAClient
-from for_codes_cleaner import main as clean_for_codes
+from anzsrc_cleaner import process_for_codes
 
 
 
@@ -72,6 +70,8 @@ async def enrich_grants_data(grants_data):
         return grants_data
     
     try:
+        from pyrla.cli import enrich_grants_with_summaries
+        from pyrla.client import RLAClient
         client = RLAClient(debug=False)
         enriched_data = await enrich_grants_with_summaries(
             client=client,
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     # PROCESS FOR CODES DATA
     # ===============================================================================
     # Process FOR codes (single short status print)
-    for_hierarchy = clean_for_codes(FOR_CODES_CLEANED_PATH)
+    for_hierarchy = process_for_codes(FOR_CODES_CLEANED_PATH)
     if for_hierarchy:
         divisions = len(for_hierarchy)
         groups = sum(len(div['groups']) for div in for_hierarchy.values())
@@ -185,7 +185,6 @@ if __name__ == "__main__":
     if config.Grants.enriched_path.exists():
         with open(config.Grants.enriched_path, 'r') as f:
             enriched_data = json.load(f)
-
     else:
         enriched_data = run_async_enrichment(grants_data)
         save_to_json(enriched_data, config.Grants.enriched_path)

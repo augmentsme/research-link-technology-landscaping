@@ -3,7 +3,7 @@ import pandas as pd
 import re
 from webutils import load_data
 
-st.set_page_config(page_title="Search", page_icon="🔍")
+st.set_page_config(page_title="Search", page_icon="🔍", layout="wide")
 
 st.markdown("# 🔍 Search")
 st.sidebar.header("Search")

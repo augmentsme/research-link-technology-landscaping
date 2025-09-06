@@ -11,13 +11,8 @@ import pandas as pd
 def load_jsonl_file(path: Path, as_dataframe: bool = False) -> List[Dict[str, Any]]:
     if isinstance(path, str):
         path = Path(path)
-    if not path.exists():
-        # if as_dataframe:
-        #     return pd.DataFrame()
-        return []
-        # raise FileNotFoundError(f"File not found at {path}")
     if as_dataframe:
-        return pd.read_json(path, lines=True)
+        return pd.read_json(path, lines=True, orient="records")
     return pd.read_json(path, lines=True).to_dict(orient="records")
 
 def save_jsonl_file(data: List[Dict[str, Any]], path: Path) -> None:

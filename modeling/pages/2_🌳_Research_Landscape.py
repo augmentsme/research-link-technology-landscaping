@@ -2,7 +2,7 @@ import streamlit as st
 from webutils import load_data
 from visualisation import create_research_landscape_treemap
 
-st.set_page_config(page_title="Research Landscape", page_icon="🌳")
+st.set_page_config(page_title="Research Landscape", page_icon="🌳", layout="wide")
 
 st.markdown("# 🌳 Research Landscape")
 st.sidebar.header("Research Landscape")

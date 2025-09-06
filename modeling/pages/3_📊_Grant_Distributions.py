@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from webutils import load_data, load_for_codes_mapping, get_unique_for_codes, create_for_code_options, has_for_code
 
-st.set_page_config(page_title="Grant Distributions", page_icon="📊")
+st.set_page_config(page_title="Grant Distributions", page_icon="📊", layout="wide")
 
 st.markdown("# 📊 Grant Distributions")
 st.sidebar.header("Grant Distributions")

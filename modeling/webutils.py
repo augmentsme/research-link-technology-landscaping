@@ -116,3 +116,26 @@ def has_for_code(for_codes_str, for_primary_val, for_code_filter):
             if any(filter_code in for_code.strip() for for_code in for_codes_list):
                 return True
     return False
+
+@st.cache_data
+def load_category_mapping(level=None):
+    """Load category mapping data as DataFrame"""
+    try:
+        return config.Categories.load_mapping(level)
+    except Exception as e:
+        st.error(f"Error loading category mapping: {e}")
+        import pandas as pd
+        return pd.DataFrame(columns=['source_item', 'target_item'])
+
+@st.cache_data 
+def load_all_category_levels():
+    """Load all available category levels"""
+    try:
+        levels = []
+        for file in config.Categories.category_dir.glob("*.jsonl"):
+            if file.stem.isnumeric():
+                levels.append(int(file.stem))
+        return sorted(levels)
+    except Exception as e:
+        st.error(f"Error loading category levels: {e}")
+        return []

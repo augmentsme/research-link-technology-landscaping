@@ -64,13 +64,76 @@ class Keywords:
 class Categories:
     category_dir: Path = RESULTS_DIR / "category"
     category_dir.mkdir(parents=True, exist_ok=True)
-    batch_size: int = 2000
-    keywords_type: str = None
-    categories_path: Path = category_dir / "categories.jsonl"
-    def load() -> Any:
-        return utils.load_jsonl_file(Categories.categories_path, as_dataframe=True)
-    def load_proposal() -> Any:
-        return utils.load_jsonl_file(Categories.category_proposal_path, as_dataframe=True)
+    batch_size: int = 100
+    def load(level=None) -> Any:
+        if level is None:
+            level = Categories.get_max_level()
+        return utils.load_jsonl_file(Categories.category_dir / f"{level}.jsonl", as_dataframe=True)
+    def get_max_level():
+        levels = []
+        for file in (Categories.category_dir).glob("*.jsonl"):
+            if file.stem.isnumeric():
+                levels.append(int(file.stem))
+        return max(levels)
+    
+    def get_available_mappings() -> List[tuple]:
+        """Get list of available mapping files.
+        
+        Returns:
+            List of tuples (source_level, target_level) for available mappings
+        """
+        mappings = []
+        for file in Categories.category_dir.glob("*.mapping.jsonl"):
+            # File format: "source-target.mapping.jsonl"
+            stem = file.stem.replace(".mapping", "")
+            if "-" in stem:
+                try:
+                    source_level, target_level = stem.split("-")
+                    mappings.append((int(source_level), int(target_level)))
+                except ValueError:
+                    continue
+        return sorted(mappings)
+    
+    def has_mapping(level=None, source_level=None) -> bool:
+        """Check if a mapping file exists for the given levels.
+        
+        Args:
+            level: Target level
+            source_level: Source level (defaults to level-1)
+        
+        Returns:
+            True if mapping file exists, False otherwise
+        """
+        if level is None:
+            level = Categories.get_max_level()
+        if source_level is None:
+            source_level = level - 1 if level > 0 else 0
+        
+        mapping_path = Categories.category_dir / f"{source_level}-{level}.mapping.jsonl"
+        return mapping_path.exists()
+    
+    def load_mapping(level=None, source_level=None) -> Any:
+        """Load level mapping data with standardized column names.
+        
+        Args:
+            level: Target level to load mappings for
+            source_level: Source level (defaults to level-1)
+        
+        Returns:
+            DataFrame with columns ['source_item', 'target_item']
+        """
+        if level is None:
+            level = Categories.get_max_level()
+        if source_level is None:
+            source_level = level - 1 if level > 0 else 0
+        
+        mapping_path = Categories.category_dir / f"{source_level}-{level}.mapping.jsonl"
+        
+        df = utils.load_jsonl_file(mapping_path, as_dataframe=True)
+        df = df.rename(columns={str(source_level): "source_item", str(level): "target_item"})
+        return df
+
+
 
 @dataclass
 class Grants:
@@ -80,7 +143,7 @@ class Grants:
     raw_path = DATA_DIR / "grants_raw.json"
     enriched_path = DATA_DIR / "grants_enriched.json"
     grants_path = DATA_DIR / "grants.jsonl"
-    neo4j_password = CONFIG["NEO4J_PASSWORD"]  # Ensure this key exists in your .env file
+    neo4j_password = CONFIG.get("NEO4J_PASSWORD")
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
 
 

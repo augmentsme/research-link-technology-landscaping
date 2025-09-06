@@ -3,10 +3,6 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
-
-
-
-
 class FORCode(str, Enum):
     """Enumeration of 2-digit Fields of Research (FOR) codes."""
     AGRICULTURAL_VETERINARY_FOOD_SCIENCES = "30"
@@ -65,40 +61,40 @@ class FORCode(str, Enum):
 
 
 
-class FORDefinition(BaseModel):
-    """Definition structure for FOR codes with description and exclusions."""
-    model_config = {"extra": "forbid"}
-    description: str = Field(description="The main description of the FOR code")
-    exclusions: Optional[List[str]] = Field(default=None, description="List of exclusions for this FOR code")
+# class FORDefinition(BaseModel):
+#     """Definition structure for FOR codes with description and exclusions."""
+#     model_config = {"extra": "forbid"}
+#     description: str = Field(description="The main description of the FOR code")
+#     exclusions: Optional[List[str]] = Field(default=None, description="List of exclusions for this FOR code")
 
 
-class FORField(BaseModel):
-    """Individual FOR field (6-digit code)."""
-    model_config = {"extra": "forbid"}
-    code: str = Field(description="6-digit FOR field code")
-    name: str = Field(description="Name of the FOR field")
-    definition: Optional[FORDefinition] = Field(default=None, description="Field definition with description and exclusions")
-    exclusions: Optional[List[str]] = Field(default=None, description="Field-specific exclusions")
+# class FORField(BaseModel):
+#     """Individual FOR field (6-digit code)."""
+#     model_config = {"extra": "forbid"}
+#     code: str = Field(description="6-digit FOR field code")
+#     name: str = Field(description="Name of the FOR field")
+#     definition: Optional[FORDefinition] = Field(default=None, description="Field definition with description and exclusions")
+#     exclusions: Optional[List[str]] = Field(default=None, description="Field-specific exclusions")
 
 
-class FORGroup(BaseModel):
-    """FOR group (4-digit code) containing multiple fields."""
-    model_config = {"extra": "forbid"}
-    code: str = Field(description="4-digit FOR group code")
-    name: str = Field(description="Name of the FOR group")
-    definition: Optional[FORDefinition] = Field(default=None, description="Group definition with description and exclusions")
-    exclusions: Optional[List[str]] = Field(default=None, description="Group-specific exclusions")
-    fields: Dict[str, FORField] = Field(default_factory=dict, description="Dictionary of fields in this group, keyed by field code")
+# class FORGroup(BaseModel):
+#     """FOR group (4-digit code) containing multiple fields."""
+#     model_config = {"extra": "forbid"}
+#     code: str = Field(description="4-digit FOR group code")
+#     name: str = Field(description="Name of the FOR group")
+#     definition: Optional[FORDefinition] = Field(default=None, description="Group definition with description and exclusions")
+#     exclusions: Optional[List[str]] = Field(default=None, description="Group-specific exclusions")
+#     fields: Dict[str, FORField] = Field(default_factory=dict, description="Dictionary of fields in this group, keyed by field code")
 
 
-class FORDivision(BaseModel):
-    """FOR division (2-digit code) containing multiple groups."""
-    model_config = {"extra": "forbid"}
-    code: str = Field(description="2-digit FOR division code")
-    name: str = Field(description="Name of the FOR division")
-    definition: Optional[FORDefinition] = Field(default=None, description="Division definition with description and exclusions")
-    exclusions: Optional[List[str]] = Field(default=None, description="Division-specific exclusions")
-    groups: Dict[str, FORGroup] = Field(default_factory=dict, description="Dictionary of groups in this division, keyed by group code")
+# class FORDivision(BaseModel):
+#     """FOR division (2-digit code) containing multiple groups."""
+#     model_config = {"extra": "forbid"}
+#     code: str = Field(description="2-digit FOR division code")
+#     name: str = Field(description="Name of the FOR division")
+#     definition: Optional[FORDefinition] = Field(default=None, description="Division definition with description and exclusions")
+#     exclusions: Optional[List[str]] = Field(default=None, description="Division-specific exclusions")
+#     groups: Dict[str, FORGroup] = Field(default_factory=dict, description="Dictionary of groups in this division, keyed by group code")
 
 
 

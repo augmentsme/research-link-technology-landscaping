@@ -27,7 +27,7 @@ class Template:
         if self.format == "html":
             return f"<{self.type}>{''.join([f'<{key}>{record[key]}</{key}>' for key in self.keys])}</{self.type}>"
         elif self.format == "md":
-            return f"{''.join([f'**{key}**: {record[key]}\n\n' for key in self.keys])}"
+            return f"{''.join([f'**{key}**: {record[key]}\n' for key in self.keys])}"
         raise ValueError("Unsupported format")
 
     def inverse(self, s: str) -> Dict[str, str]:
@@ -64,7 +64,7 @@ class Keywords:
 class Categories:
     category_dir: Path = RESULTS_DIR / "category"
     category_dir.mkdir(parents=True, exist_ok=True)
-    batch_size: int = 100
+    # batch_size: int = 100
     def load(level=None) -> Any:
         if level is None:
             level = Categories.get_max_level()

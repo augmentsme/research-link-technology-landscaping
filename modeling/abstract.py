@@ -8,7 +8,7 @@ from pathlib import Path
 # from models import Category, CategoryList
 from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
 from inspect_ai.dataset import json_dataset, FieldSpec, Sample, MemoryDataset
-from inspect_ai.solver import system_message, generate, multiple_choice
+from inspect_ai.solver import system_message, generate, multiple_choice, self_critique
 from inspect_ai.model import GenerateConfig, ResponseSchema
 from inspect_ai.util import json_schema
 from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, accuracy, mean
@@ -38,13 +38,13 @@ COMPRESSION_RATIOS = {
 }
 
 
-@scorer(metrics=[accuracy(), mean()])
+@scorer(metrics=[mean()])
 def category_count_scorer():
     """
-    Scorer to check if the output number of categories matches the expected target.
+    Scorer to record the actual compression rate achieved.
     
     Returns:
-        Score: Accuracy score and deviation metrics
+        Score: Records actual compression rate and category counts
     """
     
     async def score(state, target):
@@ -54,45 +54,44 @@ def category_count_scorer():
             result_json = json.loads(completion)
             actual_count = len(result_json.get('categories', []))
             
-            # Get expected count from sample metadata
+            # Get input count and expected count from sample metadata
+            input_count = state.metadata.get("input_count")
             expected_count = state.metadata.get("expected_categories")
             
-            if expected_count is None:
-                # If no expected count in metadata, we can't score
+            if input_count is None:
                 return Score(
-                    value=INCORRECT,
+                    value=actual_count,
                     answer=str(actual_count),
-                    explanation=f"Generated {actual_count} categories (no expected count in metadata)"
+                    explanation=f"Generated {actual_count} categories (no input count in metadata)"
                 )
             
-            expected_count = int(expected_count)
+            input_count = int(input_count)
             
-            # Calculate deviation
-            deviation = abs(actual_count - expected_count)
-            deviation_percentage = (deviation / expected_count) * 100 if expected_count > 0 else 100
+            # Calculate actual compression rate
+            actual_compression_rate = actual_count / input_count if input_count > 0 else 0
             
-            # Consider it correct if within 20% of target
-            tolerance = max(1, int(expected_count * 0.2))  # At least 1 category tolerance
-            is_correct = deviation <= tolerance
+            explanation = f"Generated {actual_count} categories from {input_count} inputs (compression rate: {actual_compression_rate:.3f})"
             
-            explanation = f"Generated {actual_count} categories, expected ~{expected_count} (deviation: {deviation}, {deviation_percentage:.1f}%)"
+            if expected_count is not None:
+                expected_count = int(expected_count)
+                expected_compression_rate = expected_count / input_count if input_count > 0 else 0
+                explanation += f", expected ~{expected_count} (target rate: {expected_compression_rate:.3f})"
             
             return Score(
-                value=CORRECT if is_correct else INCORRECT,
+                value=actual_compression_rate,
                 answer=str(actual_count),
                 explanation=explanation,
                 metadata={
                     "actual_count": actual_count,
-                    "expected_count": expected_count,
-                    "deviation": deviation,
-                    "deviation_percentage": deviation_percentage,
-                    "tolerance": tolerance
+                    "input_count": input_count,
+                    "actual_compression_rate": actual_compression_rate,
+                    "expected_count": expected_count
                 }
             )
             
         except Exception as e:
             return Score(
-                value=INCORRECT,
+                value=0,
                 answer="error",
                 explanation=f"Error parsing categories: {str(e)}"
             )
@@ -100,7 +99,7 @@ def category_count_scorer():
     return score
 
 
-def create_system_prompt(granularity: str = "medium", batch_size: int = None) -> str:
+def create_system_prompt(granularity: str = "medium", batch_size: int = 200) -> str:
     """
     Create a system prompt with configurable granularity for categorization.
     
@@ -112,8 +111,8 @@ def create_system_prompt(granularity: str = "medium", batch_size: int = None) ->
         batch_size: Number of input items to be categorized (used to calculate target categories)
     """
     
-    if batch_size is None:
-        batch_size = config.Categories.batch_size
+    # if batch_size is None:
+    #     batch_size = config.Categories.batch_size
     
     ratio = COMPRESSION_RATIOS.get(granularity, COMPRESSION_RATIOS["medium"])
     target_categories = max(4, int(batch_size * ratio))  # Minimum of 4 categories
@@ -159,24 +158,35 @@ Your primary goal is to condense and abstract the provided {batch_size} lower-le
 
 ### **CRITICAL RULES FOR ABSTRACTION:**
 
-**1. Abstraction & Condensation:**
-*   **Thematic Grouping:** Identify overarching themes that can encompass multiple lower-level concepts. Look for shared principles, methodologies, or application domains.
-*   **Hierarchical Thinking:** Create categories that sit at a higher level of abstraction than the input concepts, representing broader research domains or technological areas.
-*   **Conceptual Synthesis:** Combine related concepts into unified categories that capture their common essence while maintaining meaningful distinctions.
+**1. STRICT INPUT-BASED CATEGORIZATION:**
+*   **MANDATORY INPUT REFLECTION:** You are STRICTLY FORBIDDEN from creating any category that does not directly reflect and encompass concepts present in the provided input. Every category MUST be grounded in the actual input concepts provided.
+*   **NO EXTERNAL CONCEPTS:** Do NOT introduce categories based on general knowledge, assumptions, or concepts not explicitly present in the input. Only create categories that emerge from the actual input data.
+*   **INPUT VALIDATION:** Before finalizing any category, verify that it represents genuine themes found within the provided input concepts. Categories must be traceable back to specific input concepts.
+*   **PROHIBITED BEHAVIOR:** You are absolutely forbidden from generating categories that reflect your general knowledge rather than the specific input provided. This includes creating "expected" or "typical" categories that are not supported by the actual input data.
+
+**2. Abstraction & Condensation:**
+*   **Thematic Grouping:** Identify overarching themes that can encompass multiple lower-level concepts from the input. Look for shared principles, methodologies, or application domains that are actually present in the provided concepts.
+*   **Hierarchical Thinking:** Create categories that sit at a higher level of abstraction than the input concepts, representing broader research domains or technological areas that are evidenced in the input.
+*   **Conceptual Synthesis:** Combine related concepts into unified categories that capture their common essence while maintaining meaningful distinctions, but only based on what is actually provided in the input.
 *   **Compression Target:** Aim to reduce {batch_size} input concepts to approximately {target_categories} output categories.
 
-**2. Category Formation:**
+**3. Category Formation:**
 *   **Emergent Patterns:** Look for patterns across the lower-level concepts that suggest natural higher-level groupings.
 *   **Interdisciplinary Recognition:** Identify where concepts from different fields converge into broader interdisciplinary domains.
 *   **Innovation Focus:** Prioritize categories that represent emerging or transformative areas of research and technology.
 
-**3. Output Requirements:**
+**4. DUPLICATE ELIMINATION:**
+*   **Unique Categories:** Ensure that each category is distinct and non-overlapping. Eliminate any duplicate or highly similar categories.
+*   **Semantic Distinctness:** Categories should be semantically distinct, representing genuinely different themes or domains. Avoid creating multiple categories that essentially cover the same conceptual space.
+*   **Consolidation Imperative:** If you identify potential duplicates or highly similar categories, consolidate them into a single, more comprehensive category that captures the broader theme.
+*   **Final Review:** Before finalizing your output, review all categories to ensure no duplicates or near-duplicates exist. Each category must have a clear, unique scope.
+
+**5. Output Requirements:**
 *   **Category Naming:** Each category requires a concise, descriptive `name` (ideally 2-4 words) that captures the essence of the abstracted theme.
 *   **Comprehensive Descriptions:** The `description` for each category must explain how the lower-level concepts relate to this higher-level theme and what unifies them under this category.
 """
 
-# Default system prompt for backward compatibility
-SYSTEM_PROMPT = create_system_prompt("medium", config.Categories.batch_size)
+
 
 
 
@@ -186,10 +196,14 @@ def load_dataset(input_path: Path, template: Callable, batch_size: int, expected
     inputs = utils.load_jsonl_file(input_path)
     samples = []
     for idx, batch in enumerate(batched(inputs, batch_size)):
+        actual_batch_size = len(batch)  # Track actual batch size for this batch
         sample = Sample(
             id=f"{idx}", 
             input="\n".join([template(item) for item in batch]),
-            metadata={"expected_categories": expected_categories}
+            metadata={
+                "expected_categories": expected_categories,
+                "input_count": actual_batch_size
+            }
         )
         samples.append(sample)
     return MemoryDataset(samples)
@@ -224,8 +238,9 @@ def categorise(input_path: Path, output_path: Path, template: Callable, batch_si
         solver=[
             system_message(system_prompt),
             generate(),
+            # self_critique(),
         ],
-        scorer=category_count_scorer(),
+        scorer=[category_count_scorer()],
         config=GenerateConfig(
             response_schema=ResponseSchema(
                 name="Categories",
@@ -237,7 +252,7 @@ def categorise(input_path: Path, output_path: Path, template: Callable, batch_si
     )
 
 @task
-def abstract(level: int = None, granularity: str = "medium"):
+def abstract(level: int = None, granularity: str = "medium", batch_size: int = 200) -> Task:
     """
     Create abstracted categories from lower-level concepts.
     
@@ -259,7 +274,7 @@ def abstract(level: int = None, granularity: str = "medium"):
         input_path=input_file, 
         output_path=output_file, 
         template=config.Template(), 
-        batch_size=config.Categories.batch_size,
+        batch_size=batch_size,
         granularity=granularity
     )
 
@@ -282,15 +297,50 @@ Answer the following multiple choice question. The entire content of your respon
 
 {choices}
 """.strip()
+
+def parse_classification_answer(sample: Sample) -> str:
+    """
+    Parse the answer letter from a sample's output for classification tasks.
+    
+    Args:
+        sample: Sample object containing the model's output
+        
+    Returns:
+        The answer letter (e.g., 'A', 'B', 'C', etc.)
+    """
+    if not sample.output or not sample.output.completion:
+        raise ValueError("No completion found in sample output")
+    
+    completion = sample.output.completion.strip()
+    
+    # Look for "ANSWER: X" pattern
+    import re
+    answer_match = re.search(r'ANSWER:\s*([A-Z])', completion, re.IGNORECASE)
+    if answer_match:
+        return answer_match.group(1).upper()
+    
+    # Fallback: look for single letter at the end or beginning
+    single_letter_match = re.search(r'^([A-Z])$|([A-Z])$', completion, re.MULTILINE)
+    if single_letter_match:
+        return (single_letter_match.group(1) or single_letter_match.group(2)).upper()
+    
+    # Another fallback: find any single capital letter in the response
+    letters = re.findall(r'\b([A-Z])\b', completion)
+    if letters:
+        return letters[0]
+    
+    raise ValueError(f"Could not parse answer letter from completion: {completion}")
+
 @task
 def classify(target_level: int = None, source_level: int = 0):
 
     if target_level is None:
         target_level = config.Categories.get_max_level()
 
-    category_md_template = config.Template(output_format="md", keys=["name", "description"], type="category")
+    # category_md_template = config.Template(output_format="md", keys=["name", "description"], type="category")
+    category_html_template = config.Template(output_format="html", keys=["name", "description"], type="category")
     targets = config.Categories.load(target_level)
-    targets_text = targets.apply(category_md_template, axis=1).tolist()
+    targets_text = targets.apply(category_html_template, axis=1).tolist()
     data = config.Categories.load(level=source_level)
     data_type = f"level_{source_level}_item"
     dataset = load_classification_dataset(targets_text, data, data_type, source_level)
@@ -302,15 +352,19 @@ def classify(target_level: int = None, source_level: int = 0):
             self.writer = jsonlines.open(config.Categories.category_dir / f"{source_level}-{target_level}.mapping.jsonl", 'w')
 
         async def on_sample_end(self, data: SampleEnd) -> None:
-            answer_letter = parse_answers(data.sample, multiple_correct=False)
-            choice_index = answer_index(list(answer_letter)[0])
+
+            answer_letter = parse_classification_answer(data.sample)
+            choice_index = answer_index(answer_letter)
             metadata_key = data_type  # Use the data_type as the metadata key
-            self.writer.write({f"level_{source_level}": data.sample.metadata[metadata_key], f"level_{target_level}": targets.iloc[choice_index]['name']})
+            self.writer.write({
+                f"level_{source_level}": data.sample.metadata[metadata_key], 
+                f"level_{target_level}": targets.iloc[choice_index]['name']
+            })
+
 
         async def on_task_end(self, data: TaskEnd) -> None:
             self.writer.close()
 
-    
     return Task(
         dataset=dataset,
         solver=[
@@ -318,4 +372,3 @@ def classify(target_level: int = None, source_level: int = 0):
         ],
         hooks=["ClassificationOutputHook"]
     )
-

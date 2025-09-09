@@ -16,14 +16,13 @@ import plotly.graph_objects as go
 import numpy as np
 
 import config
-from models import FORCode, FORCodesHierarchy
 
 
 def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, min_count: int = 10, 
                               funder_filter: Optional[List[str]] = None, 
                               source_filter: Optional[List[str]] = None,
                               keyword_type_filter: Optional[List[str]] = None,
-                              for_code_filter: Optional[List[str]] = None) -> pd.DataFrame:
+                              field_filter: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Create keyword trends data from keywords and grants dataframes
     
@@ -34,7 +33,7 @@ def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFram
         funder_filter: Optional list of funders to filter by
         source_filter: Optional list of sources to filter by
         keyword_type_filter: Optional list of keyword types to filter by
-        for_code_filter: Optional list of FOR codes to filter by
+        for_code_filter: Optional list of research fields to filter by
         
     Returns:
         pandas.DataFrame: DataFrame with keyword trends over time
@@ -51,32 +50,53 @@ def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFram
     if source_filter:
         filtered_grants_df = filtered_grants_df[filtered_grants_df['source'].isin(source_filter)]
     
-    # Apply FOR code filter to grants
-    if for_code_filter:
-        # Function to check if any of the filter codes are in the grant's FOR codes
-        def has_for_code(for_codes_str, for_primary_val):
-            if pd.isna(for_codes_str) and pd.isna(for_primary_val):
+    # Apply research field filter to grants (simplified to use only primary FOR code)
+    if field_filter:
+        # Helper function to convert field names to division codes for filtering
+        def field_to_division_codes(field_names):
+            field_to_division = {
+                'AGRICULTURAL_VETERINARY_FOOD_SCIENCES': '30',
+                'BIOLOGICAL_SCIENCES': '31',
+                'BIOMEDICAL_CLINICAL_SCIENCES': '32',
+                'BUILT_ENVIRONMENT_DESIGN': '33',
+                'CHEMICAL_SCIENCES': '34',
+                'COMMERCE_MANAGEMENT_TOURISM_SERVICES': '35',
+                'CREATIVE_ARTS_WRITING': '36',
+                'EARTH_SCIENCES': '37',
+                'ECONOMICS': '38',
+                'EDUCATION': '39',
+                'ENGINEERING': '40',
+                'ENVIRONMENTAL_SCIENCES': '41',
+                'HEALTH_SCIENCES': '42',
+                'HISTORY_HERITAGE_ARCHAEOLOGY': '43',
+                'HUMAN_SOCIETY': '44',
+                'INDIGENOUS_STUDIES': '45',
+                'INFORMATION_COMPUTING_SCIENCES': '46',
+                'LANGUAGE_COMMUNICATION_CULTURE': '47',
+                'LAW_LEGAL_STUDIES': '48',
+                'MATHEMATICAL_SCIENCES': '49',
+                'PHILOSOPHY_RELIGIOUS_STUDIES': '50',
+                'PHYSICAL_SCIENCES': '51',
+                'PSYCHOLOGY': '52'
+            }
+            return [field_to_division[field] for field in field_names if field in field_to_division]
+        
+        # Convert field names to division codes for filtering  
+        division_codes = field_to_division_codes(field_filter)
+        
+        # Simplified function to check only primary FOR code
+        def has_research_field(for_primary_val):
+            if pd.isna(for_primary_val):
                 return False
             
-            # Check primary FOR code
-            if not pd.isna(for_primary_val):
-                # Convert float to string for comparison (e.g., 406.0 -> "406")
-                primary_str = str(int(for_primary_val))
-                if any(code in primary_str for code in for_code_filter):
-                    return True
-            
-            # Check secondary FOR codes (comma-separated string)
-            if not pd.isna(for_codes_str):
-                for_codes_list = str(for_codes_str).split(',')
-                for filter_code in for_code_filter:
-                    if any(filter_code in for_code.strip() for for_code in for_codes_list):
-                        return True
-            
+            # Extract 2-digit division code from primary FOR code
+            primary_str = str(int(for_primary_val))
+            if len(primary_str) >= 2:
+                primary_division = primary_str[:2]
+                return primary_division in division_codes
             return False
         
-        mask = filtered_grants_df.apply(
-            lambda row: has_for_code(row.get('for'), row.get('for_primary')), axis=1
-        )
+        mask = filtered_grants_df['for_primary'].apply(has_research_field)
         filtered_grants_df = filtered_grants_df[mask]
     
     # Apply keyword type filter to keywords
@@ -98,12 +118,12 @@ def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFram
             lambda x: [filtered_grants_df.loc[i, "start_year"] for i in x if i in filtered_grants_df.index and not np.isnan(filtered_grants_df.loc[i, "start_year"])]
         )
     
-    # Explode the keywords to create term-year pairs
+    # Explode the keywords to create name-year pairs
     kw_years_list = []
     for idx, row in filtered_keywords.iterrows():
-        term = row['term'] if 'term' in row else row.name
+        name = row['name'] if 'name' in row else row.name
         for year in row['start_year']:
-            kw_years_list.append({'term': term, 'start_year': int(year)})
+            kw_years_list.append({'name': name, 'start_year': int(year)})
     
     return pd.DataFrame(kw_years_list)
 
@@ -123,7 +143,7 @@ def create_keyword_trends_visualization(
     funder_filter: Optional[List[str]] = None,
     source_filter: Optional[List[str]] = None,
     keyword_type_filter: Optional[List[str]] = None,
-    for_code_filter: Optional[List[str]] = None,
+    field_filter: Optional[List[str]] = None,
     use_cumulative: bool = True
 ) -> Optional[go.Figure]:
     """
@@ -152,50 +172,50 @@ def create_keyword_trends_visualization(
     """
     
     # Create keyword trends data
-    kw_years = create_keyword_trends_data(keywords_df, grants_df, min_count, funder_filter, source_filter, keyword_type_filter, for_code_filter)
+    kw_years = create_keyword_trends_data(keywords_df, grants_df, min_count, funder_filter, source_filter, keyword_type_filter, field_filter)
     
     if kw_years.empty:
         return None
     
     # Create full population data for average calculation (if needed)
     if average_from_population and show_average:
-        # Use all terms that meet min_count for average calculation
+        # Use all names that meet min_count for average calculation
         df_population = (
             kw_years
-            .groupby(['term', 'start_year'])
+            .groupby(['name', 'start_year'])
             .size()
             .reset_index(name='occurrences')
-            .sort_values(['term', 'start_year'])
+            .sort_values(['name', 'start_year'])
         )
     
-    # Find terms for individual line display
+    # Find names for individual line display
     if custom_keywords:
         # Use user-specified custom keywords
         # Filter to only include keywords that exist in the data and meet min_count
-        available_keywords = kw_years['term'].value_counts()
+        available_keywords = kw_years['name'].value_counts()
         valid_custom_keywords = [kw for kw in custom_keywords if kw in available_keywords and available_keywords[kw] >= min_count]
         
         if valid_custom_keywords:
             df_top = (
-                kw_years[kw_years['term'].isin(valid_custom_keywords)]
-                .groupby(['term', 'start_year'])
+                kw_years[kw_years['name'].isin(valid_custom_keywords)]
+                .groupby(['name', 'start_year'])
                 .size()
                 .reset_index(name='occurrences')
-                .sort_values(['term', 'start_year'])
+                .sort_values(['name', 'start_year'])
             )
         else:
             df_top = pd.DataFrame()
     elif top_n > 0:
         # Use top N keywords by occurrence count
-        top_terms = kw_years['term'].value_counts().head(top_n).index.tolist()
+        top_names = kw_years['name'].value_counts().head(top_n).index.tolist()
         
-        # Build df_top (occurrences per term-year) from kw_years and top_terms
+        # Build df_top (occurrences per name-year) from kw_years and top_names
         df_top = (
-            kw_years[kw_years['term'].isin(top_terms)]
-            .groupby(['term', 'start_year'])
+            kw_years[kw_years['name'].isin(top_names)]
+            .groupby(['name', 'start_year'])
             .size()
             .reset_index(name='occurrences')
-            .sort_values(['term', 'start_year'])
+            .sort_values(['name', 'start_year'])
         )
     else:
         # If top_n is 0 and no custom keywords, no individual lines will be shown
@@ -204,13 +224,13 @@ def create_keyword_trends_visualization(
     # Choose data source for average calculation
     if show_average:
         if average_from_population:
-            # Use all terms that meet min_count for average calculation
+            # Use all names that meet min_count for average calculation
             df_population = (
                 kw_years
-                .groupby(['term', 'start_year'])
+                .groupby(['name', 'start_year'])
                 .size()
                 .reset_index(name='occurrences')
-                .sort_values(['term', 'start_year'])
+                .sort_values(['name', 'start_year'])
             )
             df_avg = df_population
         else:
@@ -219,10 +239,10 @@ def create_keyword_trends_visualization(
                 # If no sample data, fall back to population
                 df_avg = (
                     kw_years
-                    .groupby(['term', 'start_year'])
+                    .groupby(['name', 'start_year'])
                     .size()
                     .reset_index(name='occurrences')
-                    .sort_values(['term', 'start_year'])
+                    .sort_values(['name', 'start_year'])
                 )
             else:
                 df_avg = df_top
@@ -236,7 +256,7 @@ def create_keyword_trends_visualization(
         years = np.arange(df_top['start_year'].min(), df_top['start_year'].max() + 1)
         occ_matrix_display = (
             df_top
-            .groupby(['start_year', 'term'])['occurrences']
+            .groupby(['start_year', 'name'])['occurrences']
             .sum()
             .unstack(fill_value=0)
             .reindex(index=years, fill_value=0)
@@ -301,7 +321,7 @@ def create_keyword_trends_visualization(
         years_avg = np.arange(df_avg['start_year'].min(), df_avg['start_year'].max() + 1)
         occ_matrix_avg = (
             df_avg
-            .groupby(['start_year', 'term'])['occurrences']
+            .groupby(['start_year', 'name'])['occurrences']
             .sum()
             .unstack(fill_value=0)
             .reindex(index=years_avg, fill_value=0)
@@ -314,12 +334,12 @@ def create_keyword_trends_visualization(
     
     # Add individual keyword traces only if we have display data (custom keywords or top_n > 0)
     if (custom_keywords or top_n > 0) and not occ_matrix_display.empty:
-        for term in occ_matrix_display.columns:
+        for name in occ_matrix_display.columns:
             fig_cum.add_trace(go.Scatter(
                 x=occ_matrix_display.index,
-                y=occ_matrix_display[term],
+                y=occ_matrix_display[name],
                 mode='lines+markers',
-                name=term,
+                name=name,
                 opacity=0.6,
                 line=dict(width=1.5),
                 marker=dict(size=4)
@@ -456,42 +476,51 @@ def save_keyword_trends_to_html(
 
 def create_treemap_data(
     categories: List[Dict[str, Any]], 
-    max_for_classes: Optional[int] = None,
-    max_categories_per_for: Optional[int] = None,
+    max_research_fields: Optional[int] = None,
+    max_categories_per_field: Optional[int] = None,
     max_keywords_per_category: Optional[int] = None
 ) -> pd.DataFrame:
     """
-    Create hierarchical data structure for treemap visualization with FOR classes as parents
+    Create hierarchical data structure for treemap visualization with research fields as parents
     
     Args:
-        categories: List of category data with keywords
-        max_for_classes: Maximum number of FOR classes to include (None for all)
-        max_categories_per_for: Maximum number of categories per FOR class (None for all)
+        categories: List of category data with keywords and field_of_research
+        max_for_classes: Maximum number of research fields to include (None for all)
+        max_categories_per_for: Maximum number of categories per research field (None for all)
         max_keywords_per_category: Maximum number of keywords per category (None for all)
         
     Returns:
-        pandas.DataFrame: Treemap data with hierarchical structure (FOR Classes → Categories → Keywords)
+        pandas.DataFrame: Treemap data with hierarchical structure (Research Fields → Categories → Keywords)
     """
     treemap_data = []
     
     # Group categories by FOR division
     for_groups = {}
     for category in categories:
-        for_code = category.get('for_code', 'Unknown')
+        # Use the new field_of_research field, or fallback to the old for_code structure
+        field_of_research = category.get('field_of_research')
         
-        # Handle the new format (string) and fallback for any old format (dict)
-        if isinstance(for_code, str):
-            # New format: just the string value "46"
-            for_code_value = for_code
-            for_division_name = FORCode.get_name(for_code_value)
-        elif isinstance(for_code, dict):
-            # Old format: {"code": "46", "name": "..."}
-            for_code_value = for_code.get('code', 'Unknown')
-            for_division_name = for_code.get('name', f'FOR {for_code_value}')
+        if field_of_research:
+            # New format: field_of_research contains the enum value like "BIOLOGICAL_SCIENCES"
+            for_code_value = field_of_research
+            # Convert enum-style name to readable format
+            for_division_name = field_of_research.replace('_', ' ').title()
         else:
-            # Fallback for invalid format
-            for_code_value = 'Unknown'
-            for_division_name = 'Unknown FOR Division'
+            # Fallback: try the old for_code structure
+            for_code = category.get('for_code', 'Unknown')
+            
+            if isinstance(for_code, str):
+                # Old format: just the string value "46"
+                for_code_value = for_code
+                for_division_name = f'FOR {for_code_value}'
+            elif isinstance(for_code, dict):
+                # Old format: {"code": "46", "name": "..."}
+                for_code_value = for_code.get('code', 'Unknown')
+                for_division_name = for_code.get('name', f'FOR {for_code_value}')
+            else:
+                # Fallback for invalid format
+                for_code_value = 'Unknown'
+                for_division_name = 'Unknown FOR Division'
         
         if for_code_value not in for_groups:
             for_groups[for_code_value] = {
@@ -500,24 +529,24 @@ def create_treemap_data(
             }
         for_groups[for_code_value]['categories'].append(category)
     
-    # Apply FOR class limit by sorting by total keyword count (descending)
-    if max_for_classes is not None:
+    # Apply research field limit by sorting by total keyword count (descending)
+    if max_research_fields is not None:
         for_items = []
-        for for_code, for_data in for_groups.items():
+        for for_code_value, for_data in for_groups.items():
             total_keywords = sum(len(cat.get('keywords', [])) for cat in for_data['categories'])
-            for_items.append((for_code, for_data, total_keywords))
+            for_items.append((for_code_value, for_data, total_keywords))
         
         # Sort by keyword count (descending) and limit
         for_items.sort(key=lambda x: x[2], reverse=True)
-        for_groups = {item[0]: item[1] for item in for_items[:max_for_classes]}
+        for_groups = {item[0]: item[1] for item in for_items[:max_research_fields]}
     
     # Create treemap data with 3-level hierarchy
-    for for_code, for_data in for_groups.items():
+    for for_code_value, for_data in for_groups.items():
         for_name = for_data['name']
         
-        # Get categories for this FOR (apply category limit if specified)
+        # Get categories for this research field (apply category limit if specified)
         categories_for_this_for = for_data['categories']
-        if max_categories_per_for is not None:
+        if max_categories_per_field is not None:
             category_items = []
             for category in categories_for_this_for:
                 keyword_count = len(category.get('keywords', []))
@@ -525,9 +554,9 @@ def create_treemap_data(
             
             # Sort by keyword count (descending) and limit
             category_items.sort(key=lambda x: x[1], reverse=True)
-            categories_for_this_for = [item[0] for item in category_items[:max_categories_per_for]]
+            categories_for_this_for = [item[0] for item in category_items[:max_categories_per_field]]
         
-        # Calculate total keywords for this FOR division (after limits applied)
+        # Calculate total keywords for this research field (after limits applied)
         for_keyword_count = 0
         for category in categories_for_this_for:
             keywords = category.get('keywords', [])
@@ -537,17 +566,17 @@ def create_treemap_data(
         
         for_size = max(1, for_keyword_count)
         
-        # Level 1: FOR Classes (top level)
+        # Level 1: Research Fields (top level)
         treemap_data.append({
-            'id': f"FOR_{for_code}",
+            'id': f"FIELD_{for_code_value}",
             'parent': '',
-            'name': f"FOR {for_code}: {for_name}",
+            'name': for_name,
             'value': for_size,
-            'level': 'FOR Class',
-            'item_type': 'for_class'
+            'level': 'Research Field',
+            'item_type': 'research_field'
         })
         
-        # Level 2: Categories under FOR classes  
+        # Level 2: Categories under research fields  
         for category in categories_for_this_for:
             category_name = category['name']
             keywords = category.get('keywords', [])
@@ -560,8 +589,8 @@ def create_treemap_data(
             category_size = max(1, len(keywords))
             
             treemap_data.append({
-                'id': f"FOR_{for_code} >> {category_name}",
-                'parent': f"FOR_{for_code}",
+                'id': f"FIELD_{for_code_value} >> {category_name}",
+                'parent': f"FIELD_{for_code_value}",
                 'name': category_name,
                 'value': category_size,
                 'level': 'Category',
@@ -571,8 +600,8 @@ def create_treemap_data(
             # Level 3: Keywords under categories
             for keyword in keywords:
                 treemap_data.append({
-                    'id': f"FOR_{for_code} >> {category_name} >> KW: {keyword}",
-                    'parent': f"FOR_{for_code} >> {category_name}",
+                    'id': f"FIELD_{for_code_value} >> {category_name} >> KW: {keyword}",
+                    'parent': f"FIELD_{for_code_value} >> {category_name}",
                     'name': keyword,
                     'value': 1,
                     'level': 'Keyword',
@@ -589,8 +618,8 @@ def create_research_landscape_treemap(
     height: int = 800,
     font_size: int = 9,
     color_map: Optional[Dict[str, str]] = None,
-    max_for_classes: Optional[int] = None,
-    max_categories_per_for: Optional[int] = None,
+    max_research_fields: Optional[int] = None,
+    max_categories_per_field: Optional[int] = None,
     max_keywords_per_category: Optional[int] = None
 ) -> Optional[go.Figure]:
     """
@@ -603,10 +632,8 @@ def create_research_landscape_treemap(
         height: Height of the visualization in pixels
         font_size: Font size for labels
         color_map: Custom color mapping for hierarchy levels
-        category_path: Path to categories file (if categories not provided)
-        classification_path: Path to classification file (if results not provided)
-        max_for_classes: Maximum number of FOR classes to include (None for all)
-        max_categories_per_for: Maximum number of categories per FOR class (None for all)
+        max_research_fields: Maximum number of research fields to include (None for all)
+        max_categories_per_field: Maximum number of categories per research field (None for all)
         max_keywords_per_category: Maximum number of keywords per category (None for all)
         
     Returns:
@@ -624,8 +651,8 @@ def create_research_landscape_treemap(
     # Create treemap data
     treemap_df = create_treemap_data(
         categories, 
-        max_for_classes=max_for_classes,
-        max_categories_per_for=max_categories_per_for,
+        max_research_fields=max_research_fields,
+        max_categories_per_field=max_categories_per_field,
         max_keywords_per_category=max_keywords_per_category
     )
     # print(treemap_df)
@@ -635,14 +662,14 @@ def create_research_landscape_treemap(
     # Define default color mapping for 3-level hierarchy
     if color_map is None:
         color_map = {
-            'FOR Class': '#1f77b4',      # Blue
+            'Research Field': '#1f77b4',      # Blue
             'Category': '#ff7f0e',       # Orange  
             'Keyword': '#2ca02c',        # Green
         }
 
     # Create title
     if title is None:
-        title = 'Research Landscape: FOR Classes → Categories → Keywords'
+        title = 'Research Landscape: Research Fields → Categories → Keywords'
 
     # Create the treemap
     fig = px.treemap(

@@ -1,5 +1,4 @@
 from pathlib import Path
-import tiktoken
 from typing import Any, Dict, List
 from dotenv import dotenv_values
 import json
@@ -16,59 +15,22 @@ FIGURES_DIR = ROOT_DIR / "figures"
 
 
 
-
-
 # GRANTS_FILE = DATA_DIR / "grants_cleaned.jsonl"
 PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
 
-
-
-
-
-
-# KEYWORDS_EMBEDDING_DBPATH = RESULTS_DIR / "keywords_embeddings"
-# SIMILARITY_THRESHOLD = 0.75
-# MIN_CLUSTER_SIZE = 5
-
-
-
-# CLUSTERS_PROPOSAL_PATH = RESULTS_DIR / "clusters_proposal.json"
-# REVIEW_FILE = RESULTS_DIR / "review.json"
-# CLUSTERS_FINAL_PATH = RESULTS_DIR / "clusters_final.json"
-
-# KEYWORDS_PATH = RESULTS_DIR / "keywords.json"
-
-
-# BATCH_SIZE = 100
-# KEYWORDS_TYPE = None
-
-# CATEGORY_DIR = RESULTS_DIR / "category"
-# CATEGORY_PROPOSAL_PATH = CATEGORY_DIR / "category_proposal.json"
-# CATEGORY_PATH = CATEGORY_DIR / "categories.json"
-
-# COARSENED_CATEGORY_PATH = RESULTS_DIR / "coarsened_categories.json"
-# REFINED_CATEGORY_PATH = RESULTS_DIR / "refined_categories.json"
-# COMPREHENSIVE_TAXONOMY_PATH = RESULTS_DIR / "comprehensive_taxonomy.json"
 FOR_CODES_CLEANED_PATH = DATA_DIR / "for_codes_cleaned.json"
 
 CLASSIFICATION_PATH = RESULTS_DIR / "classification.json"
 
 @dataclass
-class db:
-    # port = 8001
-    # host = "localhost"
-    path = RESULTS_DIR / "db"
-    api_base = "http://localhost:1234/v1"
-    model = "Qwen/Qwen3-Embedding-0.6B"
-
-
-@dataclass
 class Keywords:
-    extracted_keywords_path: Path = RESULTS_DIR / "extracted_keywords.jsonl"
-    keywords_path: Path = RESULTS_DIR / "keywords.jsonl"
-    template = lambda record: f"<keyword><term>{record['term']}</term><description>{record['description']}</description></keyword>"
-    def load():
-        return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
+    keywords_dir = RESULTS_DIR / "keywords"
+    keywords_dir.mkdir(parents=True, exist_ok=True)
+    extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
+    keywords_path: Path = keywords_dir / "keywords.jsonl"
+    template = lambda record: f"<keyword><name>{record['name']}</name><type>{record['type']}</type><description>{record['description']}</description></keyword>"
+    def load(as_dataframe=True):
+        return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=as_dataframe)
     def load_extracted():
         return utils.load_jsonl_file(Keywords.extracted_keywords_path)
 
@@ -76,15 +38,20 @@ class Keywords:
 @dataclass
 class Categories:
     category_dir: Path = RESULTS_DIR / "category"
+    category_dir.mkdir(parents=True, exist_ok=True)
     category_proposal_path: Path = category_dir / "category_proposal.jsonl"
-    batch_size: int = 100
-    keywords_type: str = None
-    categories_path: Path = category_dir / "categories.jsonl"
+    clusters_cache_path: Path = category_dir / "semantic_clusters_cache.json"
+    embeddings_cache_path: Path = category_dir / "embeddings_cache.json"
+    
     unknown_keywords_path: Path = category_dir / "unknown_keywords.jsonl"
     missing_keywords_path: Path = category_dir / "missing_keywords.jsonl"
-    template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{', '.join(record['keywords'])}</keywords></category>"
-    def __post_init__(self):
-        self.category_dir.mkdir(parents=True, exist_ok=True)
+    
+    
+    merge_missing_path: Path = category_dir / "merge_missing_keywords.jsonl"
+    merge_unknown_path: Path = category_dir / "merge_unknown_keywords.jsonl"
+    categories_path: Path = category_dir / "categories.jsonl"
+    template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{''.join(f'<keyword>{k}</keyword>' for k in record.get('keywords', []))}</keywords></category>"
+
     def load():
         return utils.load_jsonl_file(Categories.categories_path, as_dataframe=True)
     def load_proposal():
@@ -93,16 +60,7 @@ class Categories:
         return utils.load_jsonl_file(Categories.unknown_keywords_path, as_dataframe=True)
     def load_missing_keywords():
         return utils.load_jsonl_file(Categories.missing_keywords_path, as_dataframe=True)
-    # def count_proposal_token():
-    #     from tiktoken import SimpleBytePairEncoding
-    #     cats = Categories.load_proposal()
-    #     enc = SimpleBytePairEncoding.from_tiktoken("cl100k_base")
-    #     enc.encode(cats)
-        
-        
-        # from transformers import AutoTokenizer
-        # proposals = Categories.load_proposal()
-        # return proposals.apply(Categories.template, axis=1).map(AutoTokenizer.from_pretrained("Qwen/Qwen3-4B-Thinking-2507").encode).map(len)
+    
 
 @dataclass
 class Grants:
@@ -116,16 +74,20 @@ class Grants:
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
 
 
-    def load():
-        return utils.load_jsonl_file(Grants.grants_path, as_dataframe=True)
+    def load(as_dataframe=True):
+        return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
 
-    def load_enriched():
-        return utils.load_json_file(Grants.enriched_path, as_dataframe=True)
+    def load_enriched(as_dataframe=True):
+        return utils.load_json_file(Grants.enriched_path, as_dataframe=as_dataframe)
 
-    def load_raw():
-        return utils.load_json_file(Grants.raw_path, as_dataframe=True)
+    def load_raw(as_dataframe=True):
+        return utils.load_json_file(Grants.raw_path, as_dataframe=as_dataframe)
 
 def finished_grants():
-    keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
-    return keywords.grants.explode().unique()
-    
+    if Keywords.keywords_path.exists():
+        keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
+        if keywords.empty:
+            return []
+        return keywords.grants.explode().unique()
+    else:
+        return []

@@ -130,6 +130,11 @@ def clean_enriched_data(enriched_file_path):
 
         df_cleaned = pd.concat([arc, nhmrc], axis=0)
         df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for", "source"]]
+        
+        # Filter out grants with empty or null grant_summary
+        # df_cleaned = df_cleaned.dropna(subset=['grant_summary'])
+        # df_cleaned = df_cleaned[df_cleaned['grant_summary'].str.strip() != '']
+        
         return df_cleaned
 
     except Exception as e:

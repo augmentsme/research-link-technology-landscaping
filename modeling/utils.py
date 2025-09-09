@@ -6,16 +6,45 @@ import json
 import jsonlines
 import pandas as pd
 
-    
+from inspect_ai.model import ModelOutput
+import re
+
 
 def load_jsonl_file(path: Path, as_dataframe: bool = False) -> List[Dict[str, Any]]:
     if isinstance(path, str):
         path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found at {path}")
+    
     if as_dataframe:
-        return pd.read_json(path, lines=True)
-    return pd.read_json(path, lines=True).to_dict(orient="records")
+        try:
+            return pd.read_json(path, lines=True)
+        except ValueError:
+            # If pandas fails, fall back to manual parsing
+            data = []
+            with open(path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            return pd.DataFrame(data)
+    
+    # For non-dataframe case, use manual parsing to skip corrupted lines
+    data = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return data
 
 def save_jsonl_file(data: List[Dict[str, Any]], path: Path) -> None:
     if isinstance(path, str):
@@ -52,19 +81,17 @@ def save_json_file(data: Any, path: Path) -> None:
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-from inspect_ai.model import ModelOutput
-import re
 
-def parse_html(output: ModelOutput, tag="think"):
+def parse_results(input_string: str, tag="think"):
     pat = f"<{tag}>(.*?)</{tag}>"
     think_re = re.compile(pat, re.DOTALL | re.IGNORECASE)
-    m = think_re.search(output.completion)
+    m = think_re.search(input_string)
     if m:
         think_text = m.group(1).strip()
-        rest = think_re.sub('', output.completion).strip()
+        rest = think_re.sub('', input_string).strip()
     else:
         think_text = ""
-        rest = output.completion.strip()
+        rest = input_string.strip()
     return think_text, json.loads(rest)
 
 def sanitise_grant_id(grant_id: str) -> str:

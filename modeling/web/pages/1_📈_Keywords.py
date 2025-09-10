@@ -23,7 +23,7 @@ from shared_utils import (
     get_unique_values_from_data, create_research_field_options,
     field_to_division_codes, has_research_field_simple, clear_previous_page_state
 )
-from visualisation import create_keyword_trends_visualization
+from visualisation import KeywordTrendsVisualizer, FilterConfig as VisFilterConfig, VisualizationConfig
 
 
 @dataclass
@@ -34,6 +34,7 @@ class FilterConfig:
     field_filter: List[str]
     keyword_type_filter: List[str]
     min_count: int
+    max_count: int
 
 
 @dataclass
@@ -50,9 +51,6 @@ class KeywordSelectionConfig:
 @dataclass
 class DisplayConfig:
     """Configuration for display settings"""
-    show_average: bool
-    average_from_population: bool
-    show_error_bars: bool
     show_baseline: bool
     use_cumulative: bool
 
@@ -97,10 +95,11 @@ class FilterManager:
             
             filtered_grants_ids = set(filtered_grants['id'])
             filtered_keywords = filtered_keywords[filtered_keywords['grants'].apply(
-                lambda x: len([g for g in x if g in filtered_grants_ids]) >= config.min_count
+                lambda x: config.min_count <= len([g for g in x if g in filtered_grants_ids]) <= config.max_count
             )]
         else:
-            filtered_keywords = filtered_keywords[filtered_keywords.grants.map(len) >= config.min_count]
+            grant_counts = filtered_keywords.grants.map(len)
+            filtered_keywords = filtered_keywords[(grant_counts >= config.min_count) & (grant_counts <= config.max_count)]
         
         return filtered_keywords
     
@@ -165,20 +164,121 @@ class KeywordSelector:
     def _create_top_n_title(self, filter_config: FilterConfig, selection_config: KeywordSelectionConfig, display_config: DisplayConfig) -> str:
         """Create title for top N keyword selection"""
         count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        return f"{count_type} Keyword Trends (min_count={filter_config.min_count}, top_n={selection_config.top_n})"
+        return f"{count_type} Keyword Trends (count_range={filter_config.min_count}-{filter_config.max_count}, top_n={selection_config.top_n})"
 
 
 class SidebarControls:
-    """Manages all sidebar UI controls"""
+    """Handles all sidebar UI controls"""
     
-    def __init__(self, unique_funders: List[str], unique_sources: List[str], 
-                 unique_keyword_types: List[str], field_options: List[str], field_values: List[str]):
-        self.unique_funders = unique_funders
-        self.unique_sources = unique_sources
-        self.unique_keyword_types = unique_keyword_types
-        self.field_options = field_options
-        self.field_values = field_values
-        self.option_to_field = dict(zip(field_options, field_values))
+    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame, categories_df: pd.DataFrame):
+        self.keywords_df = keywords_df
+        self.grants_df = grants_df
+        self.categories_df = categories_df
+        
+        # Get unique values using the shared utility function
+        self.unique_funders, self.unique_sources, self.unique_keyword_types, unique_research_fields = get_unique_values_from_data(
+            keywords_df, grants_df, categories_df
+        )
+        
+        # Get research field options
+        self.field_options, self.field_values = create_research_field_options(unique_research_fields)
+        
+        # Create mapping from options to field values
+        self.option_to_field = dict(zip(self.field_options, self.field_values))
+    
+    def _get_keyword_count_range_from_percentiles(self, filtered_keywords: pd.DataFrame, lower_percentile: float, upper_percentile: float) -> Tuple[int, int]:
+        """Convert percentile range to actual keyword count range based on keyword ranking"""
+        if filtered_keywords.empty:
+            return 1, 50
+        
+        # Calculate grant counts for all keywords and sort by occurrence
+        grant_counts = filtered_keywords['grants'].apply(len)
+        sorted_counts = grant_counts.sort_values(ascending=True)  # Sort ascending (least to most frequent)
+        
+        # Get the total number of keywords
+        total_keywords = len(sorted_counts)
+        
+        # Calculate the indices based on percentiles (rank-based)
+        lower_index = int(lower_percentile * total_keywords)
+        upper_index = int(upper_percentile * total_keywords)
+        
+        # Ensure indices are within bounds
+        lower_index = max(0, min(lower_index, total_keywords - 1))
+        upper_index = max(lower_index, min(upper_index, total_keywords - 1))
+        
+        # Get the actual count thresholds at these positions
+        min_count = max(1, sorted_counts.iloc[lower_index])
+        max_count = sorted_counts.iloc[upper_index]
+        
+        # Ensure max_count is at least min_count
+        if max_count < min_count:
+            max_count = min_count
+        
+        return min_count, max_count
+    
+    def _get_keyword_count_range_from_log_scale(self, filtered_keywords: pd.DataFrame, lower_log: float, upper_log: float) -> Tuple[int, int]:
+        """Convert log scale values to actual keyword count range"""
+        if filtered_keywords.empty:
+            return 1, 50
+        
+        # Calculate grant counts for all keywords
+        grant_counts = filtered_keywords['grants'].apply(len)
+        min_possible = max(1, grant_counts.min())
+        max_possible = grant_counts.max()
+        
+        # Handle edge case where all keywords have the same count
+        if min_possible == max_possible:
+            return min_possible, max_possible
+        
+        # Convert from log scale (0-1) to actual counts
+        log_min = np.log(min_possible)
+        log_max = np.log(max_possible)
+        
+        # Map slider values (0-1) to log space
+        lower_log_val = log_min + lower_log * (log_max - log_min)
+        upper_log_val = log_min + upper_log * (log_max - log_min)
+        
+        # Convert back to actual counts
+        min_count = max(1, int(np.exp(lower_log_val)))
+        max_count = max(min_count, int(np.exp(upper_log_val)))
+        
+        return min_count, max_count
+    
+    def _format_log_scale_value(self, x: float, filtered_keywords: pd.DataFrame) -> str:
+        """Format a single log scale value to show the corresponding occurrence count"""
+        if filtered_keywords.empty:
+            return f"{x:.0%}"
+        
+        grant_counts = filtered_keywords['grants'].apply(len)
+        min_possible = max(1, grant_counts.min())
+        max_possible = grant_counts.max()
+        
+        if min_possible == max_possible:
+            return str(min_possible)
+        
+        log_min = np.log(min_possible)
+        log_max = np.log(max_possible)
+        log_val = log_min + x * (log_max - log_min)
+        count = max(1, int(np.exp(log_val)))
+        
+        return str(count)
+    
+    def _format_percentile_range(self, lower: float, upper: float, filtered_keywords: pd.DataFrame) -> str:
+        """Format the percentile range display based on keyword ranking"""
+        if filtered_keywords.empty:
+            return f"{lower:.0%} - {upper:.0%}"
+        
+        min_count, max_count = self._get_keyword_count_range_from_percentiles(filtered_keywords, lower, upper)
+        
+        # Calculate how many keywords fall in this range
+        grant_counts = filtered_keywords['grants'].apply(len)
+        included_keywords = ((grant_counts >= min_count) & (grant_counts <= max_count)).sum()
+        total_keywords = len(grant_counts)
+        
+        # Calculate the expected number of keywords based on percentile range
+        expected_keywords = int((upper - lower) * total_keywords)
+        
+        return f"{lower:.0%} - {upper:.0%} (rank-based: {min_count}-{max_count} grants, ~{expected_keywords} keywords)"
     
     def render_sidebar(self) -> Tuple[FilterConfig, KeywordSelectionConfig, DisplayConfig]:
         """Render all sidebar controls and return configuration objects"""
@@ -192,7 +292,6 @@ class SidebarControls:
             display_config = self._render_display_settings()
             
             st.markdown("---")
-            update_settings = st.button("Update Settings", type="primary", use_container_width=True)
             
             return filter_config, selection_config, display_config
     
@@ -234,15 +333,48 @@ class SidebarControls:
             
             self._show_active_filters(funder_filter, source_filter, field_filter, keyword_type_filter)
             
-            min_count = st.slider(
-                "Minimum keyword count", 
-                min_value=1, 
-                max_value=50, 
-                value=10,
-                help="Minimum number of occurrences for a keyword to be included"
+            # Create a temporary config to get filtered keywords for calculating count options
+            temp_config = FilterConfig(funder_filter, source_filter, field_filter, keyword_type_filter, 1, 999999)
+            filter_manager = FilterManager(self.keywords_df, self.grants_df)
+            temp_filtered_keywords = filter_manager.apply_keyword_filters(temp_config)
+            
+            # Use select_slider with log scale range (0-1)
+            log_range = st.select_slider(
+                "Keyword occurrence range (log scale)", 
+                options=[i/20 for i in range(21)],  # 0.0, 0.05, 0.10, ..., 1.0
+                value=(0.0, 1.0),  # Default: include all keywords
+                format_func=lambda x: self._format_log_scale_value(x, temp_filtered_keywords) if not temp_filtered_keywords.empty else f"{x:.0%}",
+                help="Select keywords by occurrence count using a logarithmic scale. This provides better distribution across the range, especially for handling keywords with low occurrence counts. 0.0-1.0 includes all keywords."
             )
+            
+            # Convert log scale range to actual counts
+            min_count, max_count = self._get_keyword_count_range_from_log_scale(
+                temp_filtered_keywords, log_range[0], log_range[1]
+            )
+            
+            # Show summary of current selection
+            if not temp_filtered_keywords.empty:
+                total_keywords = len(temp_filtered_keywords)
+                
+                # Calculate actual keywords in range for verification
+                grant_counts = temp_filtered_keywords['grants'].apply(len)
+                actual_included = ((grant_counts >= min_count) & (grant_counts <= max_count)).sum()
+                
+                # Get the actual occurrence range for display
+                if temp_filtered_keywords.empty:
+                    occurrence_range_text = "No keywords available"
+                else:
+                    all_counts = grant_counts.sort_values()
+                    if len(all_counts) > 0:
+                        min_occurrence = all_counts.min()
+                        max_occurrence = all_counts.max()
+                        occurrence_range_text = f"Available range: {min_occurrence}-{max_occurrence} grants"
+                    else:
+                        occurrence_range_text = "No keywords available"
+                
+                st.caption(f"Selected range: {log_range[0]:.0%}-{log_range[1]:.0%} (log scale) → {min_count}-{max_count} grants → {actual_included} keywords | {occurrence_range_text}")
         
-        return FilterConfig(funder_filter, source_filter, field_filter, keyword_type_filter, min_count)
+        return FilterConfig(funder_filter, source_filter, field_filter, keyword_type_filter, min_count, max_count)
     
     def _render_keyword_selection(self, filter_config: FilterConfig) -> KeywordSelectionConfig:
         """Render keyword selection options"""
@@ -250,7 +382,7 @@ class SidebarControls:
             method = st.radio(
                 "Keyword selection method",
                 options=["Top N keywords", "Random sample", "Specify custom keywords"],
-                index=1,
+                index=0,
                 help="Choose how to select keywords to display"
             )
             
@@ -264,21 +396,6 @@ class SidebarControls:
     def _render_display_settings(self) -> DisplayConfig:
         """Render display settings section"""
         with st.expander("📊 Display Settings", expanded=True):
-            show_average = st.checkbox("Show average line", value=True)
-            
-            if show_average:
-                average_from_population = st.radio(
-                    "Average calculation method",
-                    options=[False, True],
-                    format_func=lambda x: "Sample (Top N)" if not x else "Population (All keywords)",
-                    index=1,
-                    help="Choose whether average is calculated from top N keywords or entire population"
-                )
-                show_error_bars = st.checkbox("Show error bars", value=True)
-            else:
-                average_from_population = False
-                show_error_bars = False
-            
             show_baseline = st.checkbox(
                 "Show baseline (avg keywords/grant)", 
                 value=True,
@@ -287,11 +404,11 @@ class SidebarControls:
             
             use_cumulative = st.checkbox(
                 "Use cumulative counts",
-                value=False,
+                value=True,
                 help="Show cumulative keyword counts over time (checked) or raw yearly counts (unchecked)"
             )
         
-        return DisplayConfig(show_average, average_from_population, show_error_bars, show_baseline, use_cumulative)
+        return DisplayConfig(show_baseline, use_cumulative)
     
     def _render_top_n_selection(self) -> KeywordSelectionConfig:
         """Render top N keywords selection"""
@@ -431,29 +548,34 @@ class TrendsVisualization:
             
             title_with_filters = self._add_filter_info_to_title(title, filter_config)
             
-            fig_trends = create_keyword_trends_visualization(
-                keywords_df=self.keywords_df,
-                grants_df=self.grants_df,
-                min_count=filter_config.min_count,
-                top_n=selection_config.top_n if selection_config.method == "Top N keywords" else 0,
-                title=title_with_filters,
-                height=600,
-                show_average=display_config.show_average,
-                show_error_bars=display_config.show_error_bars,
-                average_from_population=display_config.average_from_population,
-                show_baseline=display_config.show_baseline,
-                custom_keywords=selected_keywords if selected_keywords else None,
+            # Create visualization using the KeywordTrendsVisualizer class
+            visualizer = KeywordTrendsVisualizer(self.keywords_df, self.grants_df)
+            
+            # Convert our FilterConfig to VisFilterConfig
+            vis_filter_config = VisFilterConfig(
                 funder_filter=filter_config.funder_filter if filter_config.funder_filter else None,
                 source_filter=filter_config.source_filter if filter_config.source_filter else None,
                 keyword_type_filter=filter_config.keyword_type_filter if filter_config.keyword_type_filter else None,
                 field_filter=filter_config.field_filter if filter_config.field_filter else None,
-                use_cumulative=display_config.use_cumulative
+                min_count=filter_config.min_count,
+                max_count=filter_config.max_count
             )
+            
+            # Create visualization config
+            vis_config = VisualizationConfig(
+                title=title_with_filters,
+                height=600,
+                show_baseline=display_config.show_baseline,
+                use_cumulative=display_config.use_cumulative,
+                top_n=selection_config.top_n if selection_config.method == "Top N keywords" else 0,
+                custom_keywords=selected_keywords if selected_keywords else None
+            )
+            
+            fig_trends = visualizer.create_visualization(vis_filter_config, vis_config)
             
             if fig_trends is not None:
                 st.plotly_chart(fig_trends, use_container_width=True)
                 self._show_statistics(filter_config, selection_config, selected_keywords)
-                self._show_selected_keywords(selection_config, selected_keywords)
             else:
                 st.warning("No data available for the selected parameters.")
     
@@ -508,18 +630,6 @@ class TrendsVisualization:
             return len(selection_config.custom_keywords)
         return 0
     
-    def _show_selected_keywords(self, selection_config: KeywordSelectionConfig, selected_keywords: List[str]):
-        """Display the selected keywords"""
-        if selection_config.method == "Random sample" and selected_keywords:
-            st.subheader("Randomly Selected Keywords:")
-            st.write(", ".join(str(kw) for kw in selected_keywords))
-            if selection_config.use_random_seed and selection_config.random_seed is not None:
-                effective_seed = selection_config.random_seed + st.session_state.get('random_sample_counter', 0)
-                st.info(f"Random seed used: {effective_seed}")
-        elif selection_config.method == "Specify custom keywords" and selection_config.custom_keywords:
-            st.subheader("Selected Keywords:")
-            st.write(", ".join(str(kw) for kw in selection_config.custom_keywords))
-
 
 class DataExploration:
     """Manages the data exploration tab"""
@@ -532,28 +642,69 @@ class DataExploration:
     def render_tab(self, filter_config: FilterConfig):
         """Render the data exploration tab"""
         st.markdown("### Keywords Dataset")
-        st.markdown("Explore the complete keywords dataset with filtering and search capabilities.")
+        st.markdown("Explore the complete keywords dataset with filtering, search capabilities, and distribution analysis.")
         
         filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config)
         
+        if len(filtered_keywords) == 0:
+            st.warning("No keywords found with current filters. Please adjust your filter settings.")
+            return
+        
         self._show_summary_statistics(filtered_keywords)
+        self._create_histogram_visualization(filtered_keywords)
         search_term = self._render_search_input()
         display_keywords = self._apply_search_filter(filtered_keywords, search_term)
         self._display_keywords_dataframe(display_keywords)
     
+    def _create_histogram_visualization(self, filtered_keywords: pd.DataFrame):
+        """Create and display the histogram"""
+        import plotly.graph_objects as go
+        
+        st.markdown("#### 📊 Keywords Occurrence Distribution")
+        
+        grant_counts = filtered_keywords['grants'].apply(len)
+        
+        # Create controls for histogram customization
+        use_log_scale = st.checkbox("Use log scale for y-axis", help="Useful when distribution is highly skewed")
+        
+        # Create histogram with automatic binning
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(
+            x=grant_counts,
+            name="Keyword Frequency",
+            marker_color='rgba(55, 83, 109, 0.7)',
+            marker_line=dict(color='rgba(55, 83, 109, 1.0)', width=1)
+        ))
+        
+        fig.update_layout(
+            title="Distribution of Keyword Occurrences Across Grants",
+            xaxis_title="Number of Grants per Keyword",
+            yaxis_title="Number of Keywords",
+            height=400,
+            showlegend=False,
+            template="plotly_white"
+        )
+        
+        if use_log_scale:
+            fig.update_yaxes(type="log")
+        
+        st.plotly_chart(fig, use_container_width=True)
+    
     def _show_summary_statistics(self, filtered_keywords: pd.DataFrame):
         """Display summary statistics"""
-        col1, col2, col3 = st.columns(3)
+        grant_counts = filtered_keywords['grants'].apply(len)
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("Total Keywords", len(self.keywords_df))
         with col2:
             st.metric("Filtered Keywords", len(filtered_keywords))
         with col3:
-            if len(filtered_keywords) > 0:
-                avg_grants_per_keyword = filtered_keywords['grants'].apply(len).mean()
-                st.metric("Avg Grants/Keyword", f"{avg_grants_per_keyword:.1f}")
-            else:
-                st.metric("Avg Grants/Keyword", "0")
+            st.metric("Mean Occurrences", f"{grant_counts.mean():.1f}")
+        with col4:
+            st.metric("Median Occurrences", f"{grant_counts.median():.0f}")
+        with col5:
+            st.metric("Max Occurrences", f"{grant_counts.max():.0f}")
     
     def _render_search_input(self) -> str:
         """Render search input and return search term"""
@@ -585,14 +736,6 @@ class DataExploration:
             display_df = self._prepare_display_dataframe(display_keywords)
             
             st.dataframe(display_df, use_container_width=True, height=400)
-            
-            csv = display_df.to_csv(index=True)
-            st.download_button(
-                label="📥 Download filtered keywords as CSV",
-                data=csv,
-                file_name="filtered_keywords.csv",
-                mime="text/csv"
-            )
             
             st.info(f"Showing {len(display_keywords)} keywords" + 
                     (f" (filtered from {len(self.keywords_df)} total)" if len(display_keywords) < len(self.keywords_df) else ""))
@@ -665,19 +808,8 @@ class KeywordsPage:
     
     def run(self):
         """Main execution method"""
-        # Get unique values for filter options
-        unique_funders, unique_sources, unique_keyword_types, unique_research_fields = get_unique_values_from_data(
-            self.keywords_df, self.grants_df, self.categories_df
-        )
-        
-        # Get research field options
-        unique_research_fields = self._get_unique_research_fields_from_grants()
-        field_options, field_values = create_research_field_options(unique_research_fields)
-        
         # Create sidebar controls
-        sidebar_controls = SidebarControls(
-            unique_funders, unique_sources, unique_keyword_types, field_options, field_values
-        )
+        sidebar_controls = SidebarControls(self.keywords_df, self.grants_df, self.categories_df)
         
         # Get configurations from sidebar
         filter_config, selection_config, display_config = sidebar_controls.render_sidebar()

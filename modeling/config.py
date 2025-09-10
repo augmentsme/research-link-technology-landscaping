@@ -66,9 +66,9 @@ class Categories:
 class Grants:
     neo4j_uri = "bolt://localhost:7687"
     neo4j_username = "neo4j"
-    cipher_query = "MATCH (g:grant) RETURN g"
-    raw_path = DATA_DIR / "grants_raw.json"
-    enriched_path = DATA_DIR / "grants_enriched.json"
+    cipher_query = f"MATCH (g:grant) RETURN g LIMIT 100"
+    raw_path = DATA_DIR / "grants_raw.jsonl"
+    enriched_path = DATA_DIR / "grants_enriched.jsonl"
     grants_path = DATA_DIR / "grants.jsonl"
     neo4j_password = CONFIG["NEO4J_PASSWORD"]  # Ensure this key exists in your .env file
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
@@ -78,16 +78,7 @@ class Grants:
         return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
 
     def load_enriched(as_dataframe=True):
-        return utils.load_json_file(Grants.enriched_path, as_dataframe=as_dataframe)
+        return utils.load_jsonl_file(Grants.enriched_path, as_dataframe=as_dataframe)
 
     def load_raw(as_dataframe=True):
-        return utils.load_json_file(Grants.raw_path, as_dataframe=as_dataframe)
-
-def finished_grants():
-    if Keywords.keywords_path.exists():
-        keywords = utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=True)
-        if keywords.empty:
-            return []
-        return keywords.grants.explode().unique()
-    else:
-        return []
+        return utils.load_jsonl_file(Grants.raw_path, as_dataframe=as_dataframe)

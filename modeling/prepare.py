@@ -15,6 +15,15 @@ import logging
 from urllib.parse import urljoin
 from datetime import datetime
 from dataclasses import dataclass, field
+import typer
+
+
+def get_cipher_query(limit: Optional[int] = None) -> str:
+    """Generate Neo4j cipher query with optional limit"""
+    base_query = "MATCH (g:grant) RETURN g"
+    if limit is not None:
+        return f"{base_query} LIMIT {limit}"
+    return base_query
 
 
 # RLA Client Configuration
@@ -23,7 +32,7 @@ class APIConfig:
     DEFAULT_TIMEOUT = 60
     DEFAULT_PAGE_SIZE = 10
     MAX_PAGE_SIZE = 250
-    DEFAULT_MAX_CONCURRENT = 5
+    DEFAULT_MAX_CONCURRENT = 100
     BASE_URL = "https://researchlink.ardc.edu.au"
 
 
@@ -372,111 +381,192 @@ class GrantsCleaner:
     
     def clean_enriched_data(self, enriched_file_path: Path) -> Optional[pd.DataFrame]:
         """
-        Clean the enriched grants data by filtering ARC and NHMRC grants
-        and standardizing the funding amount field.
-        
-        Note: This version handles cases where RLA enrichment failed
-        and expected fields are not available.
+        Clean the enriched grants data by filtering and standardizing data from all sources:
+        - nhmrc.org: NHMRC grants with funding amounts
+        - arc.gov.au: ARC grants with funding amounts and FOR codes
+        - orcid.org: Additional grant records (often without summaries)
+        - crossref.org: International grants with funding amounts
         
         Args:
             enriched_file_path: Path to the enriched grants JSONL file
             
         Returns:
-            pandas.DataFrame: Cleaned grants data
+            pandas.DataFrame: Cleaned grants data with standardized columns
         """
         try:
             df = utils.load_jsonl_file(enriched_file_path, as_dataframe=True)
             df = df.rename(columns={"key": "id"})
             df = df.set_index("id")
-
-            # Check if we have ARC and NHMRC specific fields from RLA enrichment
-            has_arc_fields = 'arc_funding_at_announcement' in df.columns
-            has_nhmrc_fields = 'nhmrc_funding_amount' in df.columns
             
-            if not has_arc_fields and not has_nhmrc_fields:
-                return self._clean_basic_grant_data(df)
-            else:
-                return self._clean_enriched_grant_data(df, has_arc_fields, has_nhmrc_fields)
+            print(f"Loaded {len(df):,} total records from {len(df.source.unique())} sources")
+            for source in df.source.unique():
+                count = len(df[df.source == source])
+                print(f"  - {source}: {count:,} records")
+            
+            return self._clean_all_sources(df)
         
         except Exception as e:
             print(f"Error during data cleaning: {e}")
             return None
     
-    def _clean_basic_grant_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean grant data when RLA enrichment is not available"""
-        print("Warning: RLA enrichment data not available. Using basic grant data filtered by funder.")
+    def _clean_all_sources(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean grant data from all sources with unified approach"""
+        cleaned_parts = []
         
-        # Filter for ARC and NHMRC grants based on funder field
-        arc = df[df.funder == "Australian Research Council"]
-        nhmrc = df[df.funder == "National Health and Medical Research Council"]
+        # Process NHMRC grants (nhmrc.org)
+        nhmrc_data = self._clean_nhmrc_grants(df[df.source == 'nhmrc.org'])
+        if not nhmrc_data.empty:
+            cleaned_parts.append(nhmrc_data)
+            print(f"Processed NHMRC grants: {len(nhmrc_data):,} records")
         
-        # Set basic fields that we can derive
-        if not arc.empty:
-            arc = arc.copy()
-            arc.loc[:, 'funding_amount'] = None  # No funding amount available
-            arc.loc[:, "for_primary"] = None     # No FOR codes available
-            arc.loc[:, "for"] = None
+        # Process ARC grants (arc.gov.au)
+        arc_data = self._clean_arc_grants(df[df.source == 'arc.gov.au'])
+        if not arc_data.empty:
+            cleaned_parts.append(arc_data)
+            print(f"Processed ARC grants: {len(arc_data):,} records")
         
-        if not nhmrc.empty:
-            nhmrc = nhmrc.copy()
-            nhmrc.loc[:, 'funding_amount'] = None  # No funding amount available
-            nhmrc.loc[:, "for_primary"] = None
-            nhmrc.loc[:, "for"] = None
+        # Process ORCID grants (orcid.org) - filter for Australian funders
+        orcid_data = self._clean_orcid_grants(df[df.source == 'orcid.org'])
+        if not orcid_data.empty:
+            cleaned_parts.append(orcid_data)
+            print(f"Processed ORCID grants: {len(orcid_data):,} records")
         
-        df_cleaned = pd.concat([arc, nhmrc], axis=0)
+        # Process Crossref grants (crossref.org) - keep all with funding amounts
+        crossref_data = self._clean_crossref_grants(df[df.source == 'crossref.org'])
+        if not crossref_data.empty:
+            cleaned_parts.append(crossref_data)
+            print(f"Processed Crossref grants: {len(crossref_data):,} records")
         
-        if df_cleaned.empty:
-            print("No ARC or NHMRC grants found in the dataset")
+        # Combine all cleaned data
+        if cleaned_parts:
+            df_cleaned = pd.concat(cleaned_parts, axis=0, ignore_index=False)
+            df_cleaned = self._standardize_final_columns(df_cleaned)
+            print(f"Total cleaned records: {len(df_cleaned):,}")
             return df_cleaned
-        
-        return self._standardize_columns(df_cleaned)
+        else:
+            print("No grants found after cleaning")
+            return pd.DataFrame()
     
-    def _clean_enriched_grant_data(self, df: pd.DataFrame, has_arc_fields: bool, has_nhmrc_fields: bool) -> pd.DataFrame:
-        """Clean grant data when RLA enrichment is available"""
-        arc = df[df.index.str.startswith("arc")]
-        if not arc.empty and has_arc_fields:
-            arc = arc.copy()
-            arc.loc[:, 'funding_amount'] = arc['arc_funding_at_announcement']
-            arc.loc[:, "for_primary"] = arc["arc_for_primary"]
-            arc.loc[:, "for"] = arc["arc_for"]
-
-        nhmrc = df[df.index.str.startswith("nhmrc")]
-        if not nhmrc.empty and has_nhmrc_fields:
-            nhmrc = nhmrc.copy()
-            nhmrc.loc[:, 'funding_amount'] = nhmrc['nhmrc_funding_amount']
-
-        df_cleaned = pd.concat([arc, nhmrc], axis=0)
-        df_cleaned = df_cleaned[['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for", "source"]]
+    def _clean_nhmrc_grants(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean NHMRC grants from nhmrc.org source"""
+        if df.empty:
+            return df
         
-        return df_cleaned
+        # Filter for NHMRC grants with funding amounts
+        nhmrc_grants = df[
+            (df['funder'] == 'National Health and Medical Research Council') &
+            (df['nhmrc_funding_amount'].notna())
+        ].copy()
+        
+        if nhmrc_grants.empty:
+            return pd.DataFrame()
+        
+        # Standardize columns
+        nhmrc_grants.loc[:, 'funding_amount'] = nhmrc_grants['nhmrc_funding_amount']
+        nhmrc_grants.loc[:, 'for_primary'] = pd.NA  # NHMRC doesn't have FOR codes
+        nhmrc_grants.loc[:, 'for'] = pd.NA
+        nhmrc_grants.loc[:, 'funder'] = 'NHMRC'
+        
+        return nhmrc_grants
     
-    def _standardize_columns(self, df_cleaned: pd.DataFrame) -> pd.DataFrame:
+    def _clean_arc_grants(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean ARC grants from arc.gov.au source"""
+        if df.empty:
+            return df
+        
+        # Take all ARC grants (they should all have funding amounts)
+        arc_grants = df[df['arc_funding_at_announcement'].notna()].copy()
+        
+        if arc_grants.empty:
+            return pd.DataFrame()
+        
+        # Standardize columns
+        arc_grants.loc[:, 'funding_amount'] = arc_grants['arc_funding_at_announcement']
+        arc_grants.loc[:, 'for_primary'] = arc_grants['arc_for_primary']
+        arc_grants.loc[:, 'for'] = arc_grants['arc_for']
+        arc_grants.loc[:, 'funder'] = 'ARC'
+        
+        return arc_grants
+    
+    def _clean_orcid_grants(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean ORCID grants - filter for Australian funders"""
+        if df.empty:
+            return df
+        
+        # Filter for Australian funders from ORCID data
+        australian_funders = [
+            'Australian Research Council',
+            'National Health and Medical Research Council',
+            'Cancer Australia'
+        ]
+        
+        orcid_grants = df[df['funder'].isin(australian_funders)].copy()
+        
+        if orcid_grants.empty:
+            return pd.DataFrame()
+        
+        # Standardize columns - ORCID grants typically don't have funding amounts or FOR codes
+        orcid_grants.loc[:, 'funding_amount'] = pd.NA  # Use pandas NA instead of None
+        orcid_grants.loc[:, 'for_primary'] = pd.NA
+        orcid_grants.loc[:, 'for'] = pd.NA
+        
+        # Standardize funder names
+        funder_mapping = {
+            'Australian Research Council': 'ARC',
+            'National Health and Medical Research Council': 'NHMRC',
+            'Cancer Australia': 'Cancer Australia'
+        }
+        orcid_grants.loc[:, 'funder'] = orcid_grants['funder'].map(funder_mapping)
+        
+        return orcid_grants
+    
+    def _clean_crossref_grants(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean Crossref grants - keep those with funding amounts"""
+        if df.empty:
+            return df
+        
+        # Filter for grants with funding amounts
+        crossref_grants = df[df['funding_amount'].notna()].copy()
+        
+        if crossref_grants.empty:
+            return pd.DataFrame()
+        
+        # Standardize columns
+        crossref_grants.loc[:, 'for_primary'] = pd.NA
+        crossref_grants.loc[:, 'for'] = pd.NA
+        # Keep original funder name for international grants
+        
+        return crossref_grants
+    
+    def _standardize_final_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure all required columns are present and in the correct order"""
-        required_columns = ['title', 'grant_summary', 'funding_amount', 'start_year', 'funder', "for_primary", "for", "source"]
+        required_columns = [
+            'title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 
+            'funder', 'for_primary', 'for', 'source'
+        ]
         
-        # Add missing columns with None values
+        # Add missing columns with pd.NA values
         for col in required_columns:
-            if col not in df_cleaned.columns:
-                df_cleaned[col] = None
+            if col not in df.columns:
+                df[col] = pd.NA
         
-        # Add end_year if start_year exists (just set to None for now)
-        if 'start_year' in df_cleaned.columns and 'end_year' not in df_cleaned.columns:
-            df_cleaned['end_year'] = None
+        # Select final columns in the desired order
+        df_final = df[required_columns].copy()
         
-        # Final column selection
-        final_columns = ['title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 'funder', "for_primary", "for", "source"]
-        available_final_columns = [col for col in final_columns if col in df_cleaned.columns]
-        df_cleaned = df_cleaned[available_final_columns]
+        # Fill missing end_year with pd.NA if not present
+        if 'end_year' not in df.columns:
+            df_final['end_year'] = pd.NA
         
-        return df_cleaned
+        return df_final
 
 
 class DataPreprocessor:
     """Main orchestrator for the data preprocessing pipeline"""
     
-    def __init__(self, debug: bool = False, force_rerun: bool = False):
+    def __init__(self, debug: bool = False, force_rerun: bool = False, limit: Optional[int] = None):
         self.debug = debug
         self.force_rerun = force_rerun
+        self.limit = limit
         self.output_file = DATA_DIR / "grants_raw.jsonl"
         self.enricher = GrantsEnricher(debug=debug)
         self.cleaner = GrantsCleaner()
@@ -492,17 +582,6 @@ class DataPreprocessor:
         """Saves a list of dictionaries to a JSONL file using utils function."""
         if data is not None:
             utils.save_jsonl_file(data, filename)
-    
-    def process_for_codes(self) -> None:
-        """Process FOR codes data"""
-        print("Processing FOR codes...")
-        for_hierarchy = clean_for_codes(FOR_CODES_CLEANED_PATH)
-        if for_hierarchy:
-            divisions = len(for_hierarchy)
-            groups = sum(len(div['groups']) for div in for_hierarchy.values())
-            print(f"FOR codes processed: {divisions} divisions, {groups} groups")
-        else:
-            print("FOR codes processing skipped or failed")
     
     def load_or_fetch_grants_data(self) -> Optional[List[dict]]:
         """Load existing grants data or fetch from Neo4j"""
@@ -523,7 +602,8 @@ class DataPreprocessor:
             else:
                 print("Fetching grants data from Neo4j...")
             
-            grants_data = self.neo4j_connector.get_grant_nodes_as_json(config.Grants.cipher_query)
+            cipher_query = get_cipher_query(self.limit)
+            grants_data = self.neo4j_connector.get_grant_nodes_as_json(cipher_query)
             
             if grants_data is not None:
                 self.save_to_jsonl(grants_data, self.output_file)
@@ -578,9 +658,7 @@ class DataPreprocessor:
             print("🔄 FORCE RERUN MODE - All data will be regenerated from scratch")
         print()
         
-        # Process FOR codes
-        self.process_for_codes()
-        print("\n" + "="*70 + "\n")
+
         
         # Process grants data
         grants_data = self.load_or_fetch_grants_data()
@@ -597,26 +675,35 @@ class DataPreprocessor:
         print("🎉 Data preprocessing pipeline completed!")
         print("="*70)
 
-if __name__ == "__main__":
-    import argparse
-    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Research Link Technology Landscaping - Data Preprocessing")
-    parser.add_argument(
+
+app = typer.Typer(help="Research Link Technology Landscaping - Data Preprocessing")
+
+
+@app.command()
+def main(
+    force_rerun: bool = typer.Option(
+        False, 
         "--force-rerun", 
-        action="store_true", 
         help="Force rerun all steps including Neo4j query, ignoring existing data files"
-    )
-    parser.add_argument(
+    ),
+    debug: bool = typer.Option(
+        False, 
         "--debug", 
-        action="store_true", 
         help="Enable debug output"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, 
+        "--limit", 
+        help="Limit the number of grants retrieved from Neo4j (default: no limit, retrieves all grants)"
     )
-    
-    args = parser.parse_args()
-    
+):
+    """Run the data preprocessing pipeline"""
     # Create and run the data preprocessing pipeline
-    preprocessor = DataPreprocessor(debug=args.debug, force_rerun=args.force_rerun)
+    preprocessor = DataPreprocessor(debug=debug, force_rerun=force_rerun, limit=limit)
     preprocessor.run_pipeline()
+
+
+if __name__ == "__main__":
+    app()
     
 

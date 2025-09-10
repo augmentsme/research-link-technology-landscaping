@@ -24,7 +24,6 @@ if parent_dir not in sys.path:
 os.chdir(parent_dir)
 
 import config
-from visualisation import create_keyword_trends_visualization, create_research_landscape_treemap
 
 # Utility functions for simplified field filtering
 def field_to_division_codes(field_names):
@@ -66,6 +65,20 @@ def has_research_field_simple(for_primary_val, division_codes):
     if len(primary_str) >= 2:
         primary_division = primary_str[:2]
         return primary_division in division_codes
+    return False
+
+def has_research_field_all_codes(for_codes_str, division_codes):
+    """Check if any FOR code in the 'for' field matches any division codes"""
+    if pd.isna(for_codes_str):
+        return False
+    
+    # Split the FOR codes and check each one
+    for code in str(for_codes_str).split(','):
+        code = code.strip()
+        if code and len(code) >= 2:
+            division_code = code[:2]
+            if division_code in division_codes:
+                return True
     return False
 
 # Load data with caching
@@ -116,6 +129,63 @@ def get_unique_values_from_data(keywords, grants, categories):
     except Exception as e:
         st.error(f"Error extracting unique values: {e}")
         return [], [], [], []
+
+@st.cache_data
+def get_unique_research_fields():
+    """Get unique research fields from grants data efficiently - cached computation"""
+    try:
+        # Load grants data
+        _, grants, _ = load_data()
+        if grants is None:
+            return set()
+            
+        division_to_field = {
+            '30': 'AGRICULTURAL_VETERINARY_FOOD_SCIENCES',
+            '31': 'BIOLOGICAL_SCIENCES',
+            '32': 'BIOMEDICAL_CLINICAL_SCIENCES',
+            '33': 'BUILT_ENVIRONMENT_DESIGN',
+            '34': 'CHEMICAL_SCIENCES',
+            '35': 'COMMERCE_MANAGEMENT_TOURISM_SERVICES',
+            '36': 'CREATIVE_ARTS_WRITING',
+            '37': 'EARTH_SCIENCES',
+            '38': 'ECONOMICS',
+            '39': 'EDUCATION',
+            '40': 'ENGINEERING',
+            '41': 'ENVIRONMENTAL_SCIENCES',
+            '42': 'HEALTH_SCIENCES',
+            '43': 'HISTORY_HERITAGE_ARCHAEOLOGY',
+            '44': 'HUMAN_SOCIETY',
+            '45': 'INDIGENOUS_STUDIES',
+            '46': 'INFORMATION_COMPUTING_SCIENCES',
+            '47': 'LANGUAGE_COMMUNICATION_CULTURE',
+            '48': 'LAW_LEGAL_STUDIES',
+            '49': 'MATHEMATICAL_SCIENCES',
+            '50': 'PHILOSOPHY_RELIGIOUS_STUDIES',
+            '51': 'PHYSICAL_SCIENCES',
+            '52': 'PSYCHOLOGY'
+        }
+        
+        unique_fields = set()
+        
+        # Add fields from primary FOR codes
+        for val in grants['for_primary'].dropna():
+            division_code = str(int(val))[:2]
+            if division_code in division_to_field:
+                unique_fields.add(division_to_field[division_code])
+        
+        # Add fields from secondary FOR codes
+        for for_codes_str in grants['for'].dropna():
+            for code in str(for_codes_str).split(','):
+                code = code.strip()
+                if code and len(code) >= 2:
+                    division_code = code[:2]
+                    if division_code in division_to_field:
+                        unique_fields.add(division_to_field[division_code])
+        
+        return unique_fields
+    except Exception as e:
+        st.error(f"Error getting unique research fields: {e}")
+        return set()
 
 def create_research_field_options(unique_fields):
     """Create research field options for dropdowns with display names"""

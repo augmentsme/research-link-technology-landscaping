@@ -15,6 +15,7 @@ from shared_utils import (
     load_data,
     field_to_division_codes, 
     has_research_field_simple,
+    has_research_field_all_codes,
     get_unique_research_fields,
     create_research_field_options,
     clear_previous_page_state
@@ -80,6 +81,14 @@ with st.sidebar:
         # Convert selected options back to codes
         field_filter_grants = [option_to_field_grants[option] for option in selected_field_options_grants]
         
+        # Add toggle for FOR code filtering method
+        st.markdown("**FOR Code Filtering Method:**")
+        use_all_for_codes = st.checkbox(
+            "Include all FOR codes (not just primary)",
+            value=False,
+            help="When checked, filters grants based on all FOR codes in the 'for' field. When unchecked, only uses the primary FOR code."
+        )
+        
         # Show current filter status for grants
         active_filters_grants = []
         if funder_filter_grants:
@@ -119,24 +128,24 @@ with st.sidebar:
             field_display_grants = ', '.join(field_display_parts_grants)
             if len(field_filter_grants) > 3:
                 field_display_grants += f"... and {len(field_filter_grants) - 3} more"
-            active_filters_grants.append(f"Research Fields: {field_display_grants}")
+            
+            # Add filtering method info
+            filter_method = "All FOR codes" if use_all_for_codes else "Primary FOR code only"
+            active_filters_grants.append(f"Research Fields ({filter_method}): {field_display_grants}")
             
         if active_filters_grants:
             st.info(f"Active filters: {' | '.join(active_filters_grants)}")
     
-    # Update settings button at bottom of sidebar
+    # Settings updated automatically
     st.markdown("---")
-    update_settings = st.button("Update Settings", type="primary", use_container_width=True)
 
-# Auto-generate grant distribution visualization (on page load or when update button is clicked)
+# Auto-generate grant distribution visualization (on page load)
 # Use session state to track if this is the first load
 if "distributions_initialized" not in st.session_state:
     st.session_state.distributions_initialized = True
     should_generate = True
-elif update_settings:
-    should_generate = True
 else:
-    should_generate = False
+    should_generate = True  # Always generate when filters change
 
 if should_generate:
     with st.spinner("Creating grant distribution visualization..."):
@@ -155,10 +164,18 @@ if should_generate:
         if field_filter_grants:
             # Convert field names to division codes for filtering  
             division_codes_grants = field_to_division_codes(field_filter_grants)
-            # Apply simplified research field filtering (primary FOR code only)
-            mask = filtered_grants['for_primary'].apply(
-                lambda x: has_research_field_simple(x, division_codes_grants)
-            )
+            
+            if use_all_for_codes:
+                # Apply filtering based on all FOR codes in the 'for' field
+                mask = filtered_grants['for'].apply(
+                    lambda x: has_research_field_all_codes(x, division_codes_grants)
+                )
+            else:
+                # Apply simplified research field filtering (primary FOR code only)
+                mask = filtered_grants['for_primary'].apply(
+                    lambda x: has_research_field_simple(x, division_codes_grants)
+                )
+            
             filtered_grants = filtered_grants[mask]
         
         if len(filtered_grants) == 0:
@@ -255,4 +272,4 @@ if should_generate:
             with col4:
                 st.metric("Peak Year", f"{grants_per_year.loc[grants_per_year['count'].idxmax(), 'start_year']} ({grants_per_year['count'].max()} grants)")
 else:
-    st.info("💡 Adjust settings in the sidebar and click 'Update Settings' to generate a new visualization.")
+    st.info("💡 Adjust settings in the sidebar to customize the visualization.")

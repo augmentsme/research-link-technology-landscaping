@@ -93,7 +93,8 @@ Provide your evaluation following the required JSON schema.
 """
             
             # Use evaluator model with proper schema
-            evaluator_model = get_model()  # Use the same model for evaluation
+            # evaluator_model = get_model("openai/Qwen/Qwen3-4B-Instruct-2507", base_url="http://localhost:8001/v1")  # Use the same model for evaluation
+            evaluator_model = get_model()
             
             # Create evaluation config with proper schema
             eval_config = GenerateConfig(
@@ -364,10 +365,10 @@ Provide accurate, specific keywords that capture the innovative and emerging asp
 
 @task
 def extract(filter_finished=True) -> Task:
-    finished_grants = config.finished_grants()
+    finished_grants_list = finished_grants()
     dataset = load_extract_dataset()
     if filter_finished:
-        dataset = dataset.filter(lambda sample: sample.id not in finished_grants)
+        dataset = dataset.filter(lambda sample: sample.id not in finished_grants_list)
     return Task(
         dataset=dataset,
         solver=[
@@ -386,4 +387,18 @@ def extract(filter_finished=True) -> Task:
         ],
         hooks=["KeywordsExtractionHook"],
     )
+
+
+def finished_grants():
+    """
+    Returns a list of grant IDs that have already had keywords extracted.
+    Checks the extracted_keywords_path instead of the final keywords_path.
+    """
+    if config.Keywords.extracted_keywords_path.exists():
+        keywords = utils.load_jsonl_file(config.Keywords.extracted_keywords_path, as_dataframe=True)
+        if keywords.empty:
+            return []
+        return keywords.grant_id.unique()
+    else:
+        return []
 

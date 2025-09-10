@@ -1,14 +1,17 @@
 """
-Research Landscape Visualizations
+Research Landscape Visualizations - Refactored
 
 This module contains visualization functions for the research link technology 
 landscaping analysis, including treemap visualizations of research categories 
 and keywords, and keyword trends over time.
+
+Refactored to use modular classes and methods for better maintainability.
 """
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union, Any
 from collections import Counter
+from dataclasses import dataclass
 
 import pandas as pd
 import plotly.express as px
@@ -18,257 +21,210 @@ import numpy as np
 import config
 
 
-def create_keyword_trends_data(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, min_count: int = 10, 
-                              funder_filter: Optional[List[str]] = None, 
-                              source_filter: Optional[List[str]] = None,
-                              keyword_type_filter: Optional[List[str]] = None,
-                              field_filter: Optional[List[str]] = None) -> pd.DataFrame:
-    """
-    Create keyword trends data from keywords and grants dataframes
-    
-    Args:
-        keywords_df: DataFrame with keywords data
-        grants_df: DataFrame with grants data (should have 'start_year' column)
-        min_count: Minimum count threshold for keywords to include
-        funder_filter: Optional list of funders to filter by
-        source_filter: Optional list of sources to filter by
-        keyword_type_filter: Optional list of keyword types to filter by
-        for_code_filter: Optional list of research fields to filter by
-        
-    Returns:
-        pandas.DataFrame: DataFrame with keyword trends over time
-    """
-    # Filter keywords by minimum count
-    # Only set index if it's not already set to avoid KeyError
-    if 'id' in grants_df.columns:
-        grants_df = grants_df.set_index('id')
-    
-    # Apply funder and source filters to grants
-    filtered_grants_df = grants_df.copy()
-    if funder_filter:
-        filtered_grants_df = filtered_grants_df[filtered_grants_df['funder'].isin(funder_filter)]
-    if source_filter:
-        filtered_grants_df = filtered_grants_df[filtered_grants_df['source'].isin(source_filter)]
-    
-    # Apply research field filter to grants (simplified to use only primary FOR code)
-    if field_filter:
-        # Helper function to convert field names to division codes for filtering
-        def field_to_division_codes(field_names):
-            field_to_division = {
-                'AGRICULTURAL_VETERINARY_FOOD_SCIENCES': '30',
-                'BIOLOGICAL_SCIENCES': '31',
-                'BIOMEDICAL_CLINICAL_SCIENCES': '32',
-                'BUILT_ENVIRONMENT_DESIGN': '33',
-                'CHEMICAL_SCIENCES': '34',
-                'COMMERCE_MANAGEMENT_TOURISM_SERVICES': '35',
-                'CREATIVE_ARTS_WRITING': '36',
-                'EARTH_SCIENCES': '37',
-                'ECONOMICS': '38',
-                'EDUCATION': '39',
-                'ENGINEERING': '40',
-                'ENVIRONMENTAL_SCIENCES': '41',
-                'HEALTH_SCIENCES': '42',
-                'HISTORY_HERITAGE_ARCHAEOLOGY': '43',
-                'HUMAN_SOCIETY': '44',
-                'INDIGENOUS_STUDIES': '45',
-                'INFORMATION_COMPUTING_SCIENCES': '46',
-                'LANGUAGE_COMMUNICATION_CULTURE': '47',
-                'LAW_LEGAL_STUDIES': '48',
-                'MATHEMATICAL_SCIENCES': '49',
-                'PHILOSOPHY_RELIGIOUS_STUDIES': '50',
-                'PHYSICAL_SCIENCES': '51',
-                'PSYCHOLOGY': '52'
-            }
-            return [field_to_division[field] for field in field_names if field in field_to_division]
-        
-        # Convert field names to division codes for filtering  
-        division_codes = field_to_division_codes(field_filter)
-        
-        # Simplified function to check only primary FOR code
-        def has_research_field(for_primary_val):
-            if pd.isna(for_primary_val):
-                return False
-            
-            # Extract 2-digit division code from primary FOR code
-            primary_str = str(int(for_primary_val))
-            if len(primary_str) >= 2:
-                primary_division = primary_str[:2]
-                return primary_division in division_codes
-            return False
-        
-        mask = filtered_grants_df['for_primary'].apply(has_research_field)
-        filtered_grants_df = filtered_grants_df[mask]
-    
-    # Apply keyword type filter to keywords
-    filtered_keywords_df = keywords_df.copy()
-    if keyword_type_filter:
-        filtered_keywords_df = filtered_keywords_df[filtered_keywords_df['type'].isin(keyword_type_filter)]
-    
-    # Filter keywords to only include those with grants in the filtered set
-    filtered_keywords_df['filtered_grants'] = filtered_keywords_df['grants'].apply(
-        lambda x: [grant_id for grant_id in x if grant_id in filtered_grants_df.index]
-    )
-    filtered_keywords_df['filtered_count'] = filtered_keywords_df['filtered_grants'].map(len)
-    
-    filtered_keywords = filtered_keywords_df[filtered_keywords_df['filtered_count'] > min_count].copy()
-    
-    # Create start_year mapping for each keyword using filtered grants
-    if 'start_year' not in filtered_keywords.columns:
-        filtered_keywords['start_year'] = filtered_keywords['filtered_grants'].map(
-            lambda x: [filtered_grants_df.loc[i, "start_year"] for i in x if i in filtered_grants_df.index and not np.isnan(filtered_grants_df.loc[i, "start_year"])]
-        )
-    
-    # Explode the keywords to create name-year pairs
-    kw_years_list = []
-    for idx, row in filtered_keywords.iterrows():
-        name = row['name'] if 'name' in row else row.name
-        for year in row['start_year']:
-            kw_years_list.append({'name': name, 'start_year': int(year)})
-    
-    return pd.DataFrame(kw_years_list)
+@dataclass
+class FilterConfig:
+    """Configuration for data filtering"""
+    funder_filter: Optional[List[str]] = None
+    source_filter: Optional[List[str]] = None
+    keyword_type_filter: Optional[List[str]] = None
+    field_filter: Optional[List[str]] = None
+    min_count: int = 10
+    max_count: int = 999999
 
 
-def create_keyword_trends_visualization(
-    keywords_df: Optional[pd.DataFrame] = config.Keywords.load(),
-    grants_df: Optional[pd.DataFrame] = config.Grants.load(),
-    min_count: int = 10,
-    top_n: int = 20,
-    title: str = "Cumulative keyword occurrences over time — Top keywords",
-    height: int = 600,
-    show_average: bool = True,
-    show_error_bars: bool = True,
-    average_from_population: bool = False,
-    show_baseline: bool = False,
-    custom_keywords: Optional[List[str]] = None,
-    funder_filter: Optional[List[str]] = None,
-    source_filter: Optional[List[str]] = None,
-    keyword_type_filter: Optional[List[str]] = None,
-    field_filter: Optional[List[str]] = None,
+@dataclass
+class VisualizationConfig:
+    """Configuration for visualization settings"""
+    title: str = "Cumulative keyword occurrences over time — Top keywords"
+    height: int = 600
+    show_baseline: bool = False
     use_cumulative: bool = True
-) -> Optional[go.Figure]:
-    """
-    Create keyword trends visualization with cumulative or yearly occurrences over time
+    top_n: int = 20
+    custom_keywords: Optional[List[str]] = None
+
+
+class DataFilterManager:
+    """Manages data filtering operations for visualizations"""
     
-    Args:
-        keywords_df: DataFrame with keywords data
-        grants_df: DataFrame with grants data (should have 'start_year' column)
-        min_count: Minimum count threshold for keywords to include
-        top_n: Number of top keywords to show as individual lines (0 to show only average)
-        title: Title for the visualization
-        height: Height of the visualization in pixels
-        show_average: Whether to show average trend line
-        show_error_bars: Whether to show error bars around average
-        average_from_population: Whether to calculate average from all keywords or just top N
-        show_baseline: Whether to show baseline trend (keywords per grant per year)
-        custom_keywords: List of specific keywords to display
-        funder_filter: Filter by specific funders
-        source_filter: Filter by specific sources  
-        keyword_type_filter: Filter by keyword types
-        for_code_filter: Filter by FOR codes
-        use_cumulative: If True, show cumulative counts; if False, show yearly raw counts
+    @staticmethod
+    def apply_grant_filters(grants_df: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
+        """Apply filters to grants dataframe"""
+        filtered_grants = grants_df.copy()
+        
+        if filter_config.funder_filter:
+            filtered_grants = filtered_grants[filtered_grants['funder'].isin(filter_config.funder_filter)]
+        
+        if filter_config.source_filter:
+            filtered_grants = filtered_grants[filtered_grants['source'].isin(filter_config.source_filter)]
+        
+        if filter_config.field_filter:
+            division_codes = DataFilterManager._field_to_division_codes(filter_config.field_filter)
+            mask = filtered_grants['for_primary'].apply(
+                lambda x: DataFilterManager._has_research_field(x, division_codes)
+            )
+            filtered_grants = filtered_grants[mask]
+        
+        return filtered_grants
     
-    Returns:
-        Plotly figure object or None if no data available
-    """
+    @staticmethod
+    def apply_keyword_filters(keywords_df: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
+        """Apply filters to keywords dataframe"""
+        filtered_keywords = keywords_df.copy()
+        
+        if filter_config.keyword_type_filter:
+            filtered_keywords = filtered_keywords[filtered_keywords['type'].isin(filter_config.keyword_type_filter)]
+        
+        return filtered_keywords
     
-    # Create keyword trends data
-    kw_years = create_keyword_trends_data(keywords_df, grants_df, min_count, funder_filter, source_filter, keyword_type_filter, field_filter)
+    @staticmethod
+    def _field_to_division_codes(field_names: List[str]) -> List[str]:
+        """Convert field names to division codes for filtering"""
+        field_to_division = {
+            'AGRICULTURAL_VETERINARY_FOOD_SCIENCES': '30',
+            'BIOLOGICAL_SCIENCES': '31',
+            'BIOMEDICAL_CLINICAL_SCIENCES': '32',
+            'BUILT_ENVIRONMENT_DESIGN': '33',
+            'CHEMICAL_SCIENCES': '34',
+            'COMMERCE_MANAGEMENT_TOURISM_SERVICES': '35',
+            'CREATIVE_ARTS_WRITING': '36',
+            'EARTH_SCIENCES': '37',
+            'ECONOMICS': '38',
+            'EDUCATION': '39',
+            'ENGINEERING': '40',
+            'ENVIRONMENTAL_SCIENCES': '41',
+            'HEALTH_SCIENCES': '42',
+            'HISTORY_HERITAGE_ARCHAEOLOGY': '43',
+            'HUMAN_SOCIETY': '44',
+            'INDIGENOUS_STUDIES': '45',
+            'INFORMATION_COMPUTING_SCIENCES': '46',
+            'LANGUAGE_COMMUNICATION_CULTURE': '47',
+            'LAW_LEGAL_STUDIES': '48',
+            'MATHEMATICAL_SCIENCES': '49',
+            'PHILOSOPHY_RELIGIOUS_STUDIES': '50',
+            'PHYSICAL_SCIENCES': '51',
+            'PSYCHOLOGY': '52'
+        }
+        return [field_to_division[field] for field in field_names if field in field_to_division]
     
-    if kw_years.empty:
-        return None
+    @staticmethod
+    def _has_research_field(for_primary_val: float, division_codes: List[str]) -> bool:
+        """Check if primary FOR code matches any of the division codes"""
+        if pd.isna(for_primary_val):
+            return False
+        division_code = str(int(for_primary_val))[:2]
+        return division_code in division_codes
+
+
+class KeywordTrendsDataProcessor:
+    """Processes keyword trends data for visualization"""
     
-    # Create full population data for average calculation (if needed)
-    if average_from_population and show_average:
-        # Use all names that meet min_count for average calculation
-        df_population = (
-            kw_years
-            .groupby(['name', 'start_year'])
-            .size()
-            .reset_index(name='occurrences')
-            .sort_values(['name', 'start_year'])
+    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
+        self.keywords_df = keywords_df
+        self.grants_df = grants_df
+    
+    def create_trends_data(self, filter_config: FilterConfig) -> pd.DataFrame:
+        """Create keyword trends data from keywords and grants dataframes"""
+        # Prepare grants data
+        grants_df = self._prepare_grants_data()
+        
+        # Apply filters
+        filtered_grants = DataFilterManager.apply_grant_filters(grants_df, filter_config)
+        filtered_keywords = DataFilterManager.apply_keyword_filters(self.keywords_df, filter_config)
+        
+        # Filter keywords to only include those with grants in the filtered set
+        filtered_keywords = self._filter_keywords_by_grants(filtered_keywords, filtered_grants, filter_config.min_count, filter_config.max_count)
+        
+        # Create keyword-year pairs
+        return self._create_keyword_year_pairs(filtered_keywords, filtered_grants)
+    
+    def _prepare_grants_data(self) -> pd.DataFrame:
+        """Prepare grants data by setting index if needed"""
+        grants_df = self.grants_df.copy()
+        if 'id' in grants_df.columns:
+            grants_df = grants_df.set_index('id')
+        return grants_df
+    
+    def _filter_keywords_by_grants(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame, min_count: int, max_count: int = 999999) -> pd.DataFrame:
+        """Filter keywords to only include those with grants in the filtered set"""
+        keywords_df['filtered_grants'] = keywords_df['grants'].apply(
+            lambda x: [grant_id for grant_id in x if grant_id in grants_df.index]
         )
+        keywords_df['filtered_count'] = keywords_df['filtered_grants'].map(len)
+        
+        return keywords_df[(keywords_df['filtered_count'] > min_count) & (keywords_df['filtered_count'] <= max_count)].copy()
     
-    # Find names for individual line display
-    if custom_keywords:
-        # Use user-specified custom keywords
-        # Filter to only include keywords that exist in the data and meet min_count
+    def _create_keyword_year_pairs(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame) -> pd.DataFrame:
+        """Create keyword-year pairs from filtered data"""
+        # Create start_year mapping for each keyword using filtered grants
+        if 'start_year' not in keywords_df.columns:
+            keywords_df['start_year'] = keywords_df['filtered_grants'].map(
+                lambda x: [grants_df.loc[i, "start_year"] for i in x 
+                          if i in grants_df.index and not np.isnan(grants_df.loc[i, "start_year"])]
+            )
+        
+        # Explode the keywords to create name-year pairs
+        kw_years_list = []
+        for idx, row in keywords_df.iterrows():
+            name = row['name'] if 'name' in row else row.name
+            for year in row['start_year']:
+                kw_years_list.append({'name': name, 'start_year': int(year)})
+        
+        return pd.DataFrame(kw_years_list)
+
+
+class KeywordSelector:
+    """Handles keyword selection for visualization"""
+    
+    @staticmethod
+    def select_keywords_for_display(kw_years: pd.DataFrame, viz_config: VisualizationConfig) -> pd.DataFrame:
+        """Select keywords for individual line display"""
+        if viz_config.custom_keywords:
+            return KeywordSelector._select_custom_keywords(kw_years, viz_config.custom_keywords)
+        elif viz_config.top_n > 0:
+            return KeywordSelector._select_top_n_keywords(kw_years, viz_config.top_n)
+        else:
+            return pd.DataFrame()
+    
+    @staticmethod
+    def _select_custom_keywords(kw_years: pd.DataFrame, custom_keywords: List[str]) -> pd.DataFrame:
+        """Select user-specified custom keywords"""
         available_keywords = kw_years['name'].value_counts()
-        valid_custom_keywords = [kw for kw in custom_keywords if kw in available_keywords and available_keywords[kw] >= min_count]
+        valid_custom_keywords = [kw for kw in custom_keywords if kw in available_keywords]
         
         if valid_custom_keywords:
-            df_top = (
+            return (
                 kw_years[kw_years['name'].isin(valid_custom_keywords)]
                 .groupby(['name', 'start_year'])
                 .size()
                 .reset_index(name='occurrences')
                 .sort_values(['name', 'start_year'])
             )
-        else:
-            df_top = pd.DataFrame()
-    elif top_n > 0:
-        # Use top N keywords by occurrence count
+        return pd.DataFrame()
+    
+    @staticmethod
+    def _select_top_n_keywords(kw_years: pd.DataFrame, top_n: int) -> pd.DataFrame:
+        """Select top N keywords by occurrence count"""
         top_names = kw_years['name'].value_counts().head(top_n).index.tolist()
         
-        # Build df_top (occurrences per name-year) from kw_years and top_names
-        df_top = (
+        return (
             kw_years[kw_years['name'].isin(top_names)]
             .groupby(['name', 'start_year'])
             .size()
             .reset_index(name='occurrences')
             .sort_values(['name', 'start_year'])
         )
-    else:
-        # If top_n is 0 and no custom keywords, no individual lines will be shown
-        df_top = pd.DataFrame()
+
+
+class BaselineCalculator:
+    """Calculates baseline data for visualization"""
     
-    # Choose data source for average calculation
-    if show_average:
-        if average_from_population:
-            # Use all names that meet min_count for average calculation
-            df_population = (
-                kw_years
-                .groupby(['name', 'start_year'])
-                .size()
-                .reset_index(name='occurrences')
-                .sort_values(['name', 'start_year'])
-            )
-            df_avg = df_population
-        else:
-            # Use sample (top_n) for average calculation
-            if df_top.empty:
-                # If no sample data, fall back to population
-                df_avg = (
-                    kw_years
-                    .groupby(['name', 'start_year'])
-                    .size()
-                    .reset_index(name='occurrences')
-                    .sort_values(['name', 'start_year'])
-                )
-            else:
-                df_avg = df_top
-    
-    if show_average and df_avg.empty:
-        return None
-    
-    # Create matrices for visualization
-    # Matrix for individual lines (custom keywords or top_n keywords)
-    if (custom_keywords or top_n > 0) and not df_top.empty:
-        years = np.arange(df_top['start_year'].min(), df_top['start_year'].max() + 1)
-        occ_matrix_display = (
-            df_top
-            .groupby(['start_year', 'name'])['occurrences']
-            .sum()
-            .unstack(fill_value=0)
-            .reindex(index=years, fill_value=0)
-        )
-        if use_cumulative:
-            occ_matrix_display = occ_matrix_display.cumsum()
-    else:
-        occ_matrix_display = pd.DataFrame()
-    
-    # Calculate baseline: cumulative average keywords per grant per year
-    baseline_data = None
-    if show_baseline:
+    @staticmethod
+    def calculate_baseline(kw_years: pd.DataFrame, grants_df: pd.DataFrame, 
+                          viz_config: VisualizationConfig, year_range: Tuple[int, int]) -> Optional[pd.Series]:
+        """Calculate baseline: cumulative average keywords per grant per year"""
+        if not viz_config.show_baseline:
+            return None
+        
         # Count total keywords generated per year across all grants
         yearly_keyword_counts = (
             kw_years.groupby('start_year')
@@ -293,49 +249,87 @@ def create_keyword_trends_visualization(
             yearly_baseline['total_keywords'] / yearly_baseline['total_grants']
         )
         
-        # Determine year range for baseline
-        if show_average and not df_avg.empty:
-            baseline_min_year = df_avg['start_year'].min()
-            baseline_max_year = df_avg['start_year'].max()
-        elif (custom_keywords or top_n > 0) and not df_top.empty:
-            baseline_min_year = df_top['start_year'].min()
-            baseline_max_year = df_top['start_year'].max()
-        else:
-            baseline_min_year = yearly_baseline['start_year'].min()
-            baseline_max_year = yearly_baseline['start_year'].max()
-            baseline_max_year = yearly_baseline['start_year'].max()
-        
-        baseline_years = np.arange(baseline_min_year, baseline_max_year + 1)
-        
-        # Reindex to match year range and conditionally calculate cumulative sum
+        # Create baseline series for the specified year range
+        baseline_years = np.arange(year_range[0], year_range[1] + 1)
         baseline_series = (
             yearly_baseline.set_index('start_year')['keywords_per_grant']
             .reindex(baseline_years, fill_value=0)
         )
-        if use_cumulative:
+        
+        if viz_config.use_cumulative:
             baseline_series = baseline_series.cumsum()
-        baseline_data = baseline_series
+        
+        return baseline_series
+
+
+class MatrixProcessor:
+    """Processes data matrices for visualization"""
     
-    # Matrix for average calculation
-    if show_average:
-        years_avg = np.arange(df_avg['start_year'].min(), df_avg['start_year'].max() + 1)
-        occ_matrix_avg = (
-            df_avg
-            .groupby(['start_year', 'name'])['occurrences']
+    @staticmethod
+    def create_occurrence_matrix(df: pd.DataFrame, use_cumulative: bool) -> pd.DataFrame:
+        """Create occurrence matrix from dataframe"""
+        if df.empty:
+            return pd.DataFrame()
+        
+        years = np.arange(df['start_year'].min(), df['start_year'].max() + 1)
+        occ_matrix = (
+            df.groupby(['start_year', 'name'])['occurrences']
             .sum()
             .unstack(fill_value=0)
-            .reindex(index=years_avg, fill_value=0)
+            .reindex(index=years, fill_value=0)
         )
+        
         if use_cumulative:
-            occ_matrix_avg = occ_matrix_avg.cumsum()
+            occ_matrix = occ_matrix.cumsum()
+        
+        return occ_matrix
     
-    # Create the figure using graph_objects for more control
-    fig_cum = go.Figure()
+    @staticmethod
+    def sort_matrix_columns(matrix: pd.DataFrame, use_cumulative: bool) -> List[str]:
+        """Sort matrix columns for legend ordering"""
+        if matrix.empty:
+            return []
+        
+        if use_cumulative:
+            # For cumulative data, sort by final cumulative value (last row)
+            return matrix.iloc[-1].sort_values(ascending=True).index.tolist()
+        else:
+            # For yearly data, sort by total sum across all years
+            return matrix.sum(axis=0).sort_values(ascending=True).index.tolist()
+
+
+class PlotBuilder:
+    """Builds plotly figures for visualization"""
     
-    # Add individual keyword traces only if we have display data (custom keywords or top_n > 0)
-    if (custom_keywords or top_n > 0) and not occ_matrix_display.empty:
-        for name in occ_matrix_display.columns:
-            fig_cum.add_trace(go.Scatter(
+    def __init__(self, viz_config: VisualizationConfig):
+        self.viz_config = viz_config
+    
+    def create_keyword_trends_figure(self, occ_matrix_display: pd.DataFrame, 
+                                   baseline_data: Optional[pd.Series]) -> go.Figure:
+        """Create the main keyword trends figure"""
+        fig = go.Figure()
+        
+        # Add individual keyword traces
+        self._add_keyword_traces(fig, occ_matrix_display)
+        
+        # Add baseline
+        self._add_baseline(fig, baseline_data)
+        
+        # Update layout
+        self._update_layout(fig)
+        
+        return fig
+    
+    def _add_keyword_traces(self, fig: go.Figure, occ_matrix_display: pd.DataFrame):
+        """Add individual keyword traces to the figure"""
+        if occ_matrix_display.empty:
+            return
+        
+        # Sort columns for legend ordering
+        sorted_columns = MatrixProcessor.sort_matrix_columns(occ_matrix_display, self.viz_config.use_cumulative)
+        
+        for name in sorted_columns:
+            fig.add_trace(go.Scatter(
                 x=occ_matrix_display.index,
                 y=occ_matrix_display[name],
                 mode='lines+markers',
@@ -345,50 +339,12 @@ def create_keyword_trends_visualization(
                 marker=dict(size=4)
             ))
     
-    # Add average trend with error bars if requested
-    if show_average:
-        # Calculate statistics across keywords for each year
-        avg_occurrences = occ_matrix_avg.mean(axis=1)
-        std_occurrences = occ_matrix_avg.std(axis=1)
-        sem_occurrences = std_occurrences / np.sqrt(occ_matrix_avg.shape[1])  # Standard error of mean
+    def _add_baseline(self, fig: go.Figure, baseline_data: Optional[pd.Series]):
+        """Add baseline to the figure"""
+        if baseline_data is None or not self.viz_config.show_baseline:
+            return
         
-        # Add error bars (standard error) first if requested
-        if show_error_bars:
-            fig_cum.add_trace(go.Scatter(
-                x=occ_matrix_avg.index,
-                y=avg_occurrences + sem_occurrences,
-                mode='lines',
-                line=dict(width=0, color='rgba(0,0,0,0)'),
-                showlegend=False,
-                hoverinfo='skip',
-                name='Upper bound'
-            ))
-            fig_cum.add_trace(go.Scatter(
-                x=occ_matrix_avg.index,
-                y=avg_occurrences - sem_occurrences,
-                mode='lines',
-                line=dict(width=0, color='rgba(0,0,0,0)'),
-                fill='tonexty',
-                fillcolor='rgba(0,0,0,0.1)',
-                name='±SE',
-                hoverinfo='skip'
-            ))
-        
-        # Add average line on top
-        avg_name = 'Average (Population)' if average_from_population else 'Average (Sample)'
-        fig_cum.add_trace(go.Scatter(
-            x=occ_matrix_avg.index,
-            y=avg_occurrences,
-            mode='lines+markers',
-            name=avg_name,
-            line=dict(width=3, color='black'),
-            marker=dict(size=6, color='black'),
-            opacity=1.0
-        ))
-    
-    # Add baseline (cumulative average keywords per grant per year)
-    if show_baseline and baseline_data is not None:
-        fig_cum.add_trace(go.Scatter(
+        fig.add_trace(go.Scatter(
             x=baseline_data.index,
             y=baseline_data.values,
             mode='lines+markers',
@@ -398,139 +354,129 @@ def create_keyword_trends_visualization(
             opacity=0.8
         ))
     
-    # Update layout
-    y_axis_title = 'Cumulative occurrences' if use_cumulative else 'Yearly occurrences'
-    
-    fig_cum.update_layout(
-        title=title,
-        xaxis_title='Year',
-        yaxis_title=y_axis_title,
-        legend_title='Keyword',
-        height=height,
-        hovermode='x unified'
-    )
-    
-    return fig_cum
-
-
-def save_keyword_trends_to_html(
-    keywords_df: Optional[pd.DataFrame] = None,
-    grants_df: Optional[pd.DataFrame] = None,
-    min_count: int = 10,
-    top_n: int = 20,
-    title: str = "Cumulative keyword occurrences over time — Top keywords",
-    output_path: Optional[Path] = None,
-    show_average: bool = True,
-    show_error_bars: bool = True,
-    average_from_population: bool = False,
-    show_baseline: bool = False,
-    custom_keywords: Optional[List[str]] = None
-) -> Optional[Path]:
-    """
-    Create and save keyword trends visualization to HTML file
-    
-    Args:
-        keywords_df: DataFrame with keywords data
-        grants_df: DataFrame with grants data
-        min_count: Minimum count threshold for keywords to include
-        top_n: Number of top keywords to show as individual lines
-        title: Title for the visualization
-        output_path: Path to save the HTML file (defaults to figures/keyword_trends.html)
-        show_average: Whether to show average trend line
-        show_error_bars: Whether to show error bars around average
-        average_from_population: Whether to compute average from entire population (True) or sample (False)
-        show_baseline: Whether to show baseline (average keywords per grant per year)
-        custom_keywords: Optional list of specific keywords to track (overrides top_n if provided)
+    def _update_layout(self, fig: go.Figure):
+        """Update figure layout"""
+        y_axis_title = 'Cumulative occurrences' if self.viz_config.use_cumulative else 'Yearly occurrences'
         
-    Returns:
-        Path to saved HTML file or None if no data
-    """
-    if output_path is None:
-        output_path = Path("figures/keyword_trends.html")
-    
-    fig = create_keyword_trends_visualization(
-        keywords_df=keywords_df,
-        grants_df=grants_df,
-        min_count=min_count,
-        top_n=top_n,
-        title=title,
-        show_average=show_average,
-        show_error_bars=show_error_bars,
-        average_from_population=average_from_population,
-        show_baseline=show_baseline,
-        custom_keywords=custom_keywords,
-        use_cumulative=True  # Default to cumulative for backward compatibility
-    )
-    
-    if fig is None:
-        return None
-    
-    # Create figures directory if it doesn't exist
-    output_path.parent.mkdir(exist_ok=True)
-    
-    # Save to HTML
-    fig.write_html(str(output_path))
-    
-    return output_path
+        fig.update_layout(
+            title=self.viz_config.title,
+            xaxis_title='Year',
+            yaxis_title=y_axis_title,
+            legend_title='Keyword',
+            height=self.viz_config.height,
+            hovermode='x unified'
+        )
 
 
-def create_treemap_data(
-    categories: List[Dict[str, Any]], 
-    max_research_fields: Optional[int] = None,
-    max_categories_per_field: Optional[int] = None,
-    max_keywords_per_category: Optional[int] = None
-) -> pd.DataFrame:
-    """
-    Create hierarchical data structure for treemap visualization with research fields as parents
+class KeywordTrendsVisualizer:
+    """Main class for creating keyword trends visualizations"""
     
-    Args:
-        categories: List of category data with keywords and field_of_research
-        max_for_classes: Maximum number of research fields to include (None for all)
-        max_categories_per_for: Maximum number of categories per research field (None for all)
-        max_keywords_per_category: Maximum number of keywords per category (None for all)
-        
-    Returns:
-        pandas.DataFrame: Treemap data with hierarchical structure (Research Fields → Categories → Keywords)
-    """
-    treemap_data = []
+    def __init__(self, keywords_df: Optional[pd.DataFrame] = None, 
+                 grants_df: Optional[pd.DataFrame] = None):
+        self.keywords_df = keywords_df if keywords_df is not None else config.Keywords.load()
+        self.grants_df = grants_df if grants_df is not None else config.Grants.load()
+        self.data_processor = KeywordTrendsDataProcessor(self.keywords_df, self.grants_df)
     
-    # Group categories by FOR division
-    for_groups = {}
-    for category in categories:
-        # Use the new field_of_research field, or fallback to the old for_code structure
-        field_of_research = category.get('field_of_research')
+    def create_visualization(self, filter_config: FilterConfig, 
+                           viz_config: VisualizationConfig) -> Optional[go.Figure]:
+        """Create keyword trends visualization"""
+        # Create keyword trends data
+        kw_years = self.data_processor.create_trends_data(filter_config)
         
-        if field_of_research:
-            # New format: field_of_research contains the enum value like "BIOLOGICAL_SCIENCES"
-            for_code_value = field_of_research
-            # Convert enum-style name to readable format
-            for_division_name = field_of_research.replace('_', ' ').title()
+        if kw_years.empty:
+            return None
+        
+        # Select keywords for display
+        df_top = KeywordSelector.select_keywords_for_display(kw_years, viz_config)
+        
+        # Create matrices for visualization
+        occ_matrix_display = MatrixProcessor.create_occurrence_matrix(df_top, viz_config.use_cumulative)
+        
+        # Calculate baseline
+        year_range = self._determine_year_range(df_top)
+        baseline_data = BaselineCalculator.calculate_baseline(kw_years, self.grants_df, viz_config, year_range)
+        
+        # Create and return figure
+        plot_builder = PlotBuilder(viz_config)
+        return plot_builder.create_keyword_trends_figure(occ_matrix_display, baseline_data)
+    
+    def _determine_year_range(self, df_top: pd.DataFrame) -> Tuple[int, int]:
+        """Determine the year range for baseline calculation"""
+        if not df_top.empty:
+            return df_top['start_year'].min(), df_top['start_year'].max()
         else:
-            # Fallback: try the old for_code structure
-            for_code = category.get('for_code', 'Unknown')
-            
-            if isinstance(for_code, str):
-                # Old format: just the string value "46"
-                for_code_value = for_code
-                for_division_name = f'FOR {for_code_value}'
-            elif isinstance(for_code, dict):
-                # Old format: {"code": "46", "name": "..."}
-                for_code_value = for_code.get('code', 'Unknown')
-                for_division_name = for_code.get('name', f'FOR {for_code_value}')
-            else:
-                # Fallback for invalid format
-                for_code_value = 'Unknown'
-                for_division_name = 'Unknown FOR Division'
-        
-        if for_code_value not in for_groups:
-            for_groups[for_code_value] = {
-                'name': for_division_name,
-                'categories': []
-            }
-        for_groups[for_code_value]['categories'].append(category)
+            # Fallback to grants data range
+            return self.grants_df['start_year'].min(), self.grants_df['start_year'].max()
+
+
+class TreemapDataProcessor:
+    """Processes data for treemap visualizations"""
     
-    # Apply research field limit by sorting by total keyword count (descending)
-    if max_research_fields is not None:
+    @staticmethod
+    def create_treemap_data(categories: List[Dict[str, Any]], 
+                          max_research_fields: Optional[int] = None,
+                          max_categories_per_field: Optional[int] = None,
+                          max_keywords_per_category: Optional[int] = None) -> pd.DataFrame:
+        """Create hierarchical data structure for treemap visualization"""
+        treemap_data = []
+        
+        # Group categories by FOR division
+        for_groups = TreemapDataProcessor._group_categories_by_field(categories)
+        
+        # Apply research field limit
+        if max_research_fields is not None:
+            for_groups = TreemapDataProcessor._limit_research_fields(for_groups, max_research_fields)
+        
+        # Create treemap data with 3-level hierarchy
+        for for_code_value, for_data in for_groups.items():
+            TreemapDataProcessor._add_field_level_data(
+                treemap_data, for_code_value, for_data, 
+                max_categories_per_field, max_keywords_per_category
+            )
+        
+        return pd.DataFrame(treemap_data)
+    
+    @staticmethod
+    def _group_categories_by_field(categories: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Group categories by research field"""
+        for_groups = {}
+        
+        for category in categories:
+            field_of_research = category.get('field_of_research')
+            
+            if field_of_research:
+                for_code_value = field_of_research
+                for_division_name = field_of_research.replace('_', ' ').title()
+            else:
+                # Fallback to old for_code structure
+                for_code = category.get('for_code', 'Unknown')
+                for_code_value, for_division_name = TreemapDataProcessor._parse_for_code(for_code)
+            
+            if for_code_value not in for_groups:
+                for_groups[for_code_value] = {
+                    'name': for_division_name,
+                    'categories': []
+                }
+            for_groups[for_code_value]['categories'].append(category)
+        
+        return for_groups
+    
+    @staticmethod
+    def _parse_for_code(for_code: Union[str, Dict[str, Any]]) -> Tuple[str, str]:
+        """Parse for_code to extract code value and name"""
+        if isinstance(for_code, str):
+            return for_code, f'FOR {for_code}'
+        elif isinstance(for_code, dict):
+            code_value = for_code.get('code', 'Unknown')
+            division_name = for_code.get('name', f'FOR {code_value}')
+            return code_value, division_name
+        else:
+            return 'Unknown', 'Unknown FOR Division'
+    
+    @staticmethod
+    def _limit_research_fields(for_groups: Dict[str, Dict[str, Any]], 
+                             max_research_fields: int) -> Dict[str, Dict[str, Any]]:
+        """Limit research fields by sorting by total keyword count"""
         for_items = []
         for for_code_value, for_data in for_groups.items():
             total_keywords = sum(len(cat.get('keywords', [])) for cat in for_data['categories'])
@@ -538,32 +484,27 @@ def create_treemap_data(
         
         # Sort by keyword count (descending) and limit
         for_items.sort(key=lambda x: x[2], reverse=True)
-        for_groups = {item[0]: item[1] for item in for_items[:max_research_fields]}
+        return {item[0]: item[1] for item in for_items[:max_research_fields]}
     
-    # Create treemap data with 3-level hierarchy
-    for for_code_value, for_data in for_groups.items():
+    @staticmethod
+    def _add_field_level_data(treemap_data: List[Dict[str, Any]], for_code_value: str, 
+                            for_data: Dict[str, Any], max_categories_per_field: Optional[int],
+                            max_keywords_per_category: Optional[int]):
+        """Add field-level data to treemap"""
         for_name = for_data['name']
         
         # Get categories for this research field (apply category limit if specified)
         categories_for_this_for = for_data['categories']
         if max_categories_per_field is not None:
-            category_items = []
-            for category in categories_for_this_for:
-                keyword_count = len(category.get('keywords', []))
-                category_items.append((category, keyword_count))
-            
-            # Sort by keyword count (descending) and limit
-            category_items.sort(key=lambda x: x[1], reverse=True)
-            categories_for_this_for = [item[0] for item in category_items[:max_categories_per_field]]
+            categories_for_this_for = TreemapDataProcessor._limit_categories(
+                categories_for_this_for, max_categories_per_field
+            )
         
-        # Calculate total keywords for this research field (after limits applied)
-        for_keyword_count = 0
-        for category in categories_for_this_for:
-            keywords = category.get('keywords', [])
-            if max_keywords_per_category is not None:
-                keywords = keywords[:max_keywords_per_category]
-            for_keyword_count += len(keywords)
-        
+        # Calculate total keywords for this research field
+        for_keyword_count = sum(
+            len(cat.get('keywords', [])[:max_keywords_per_category] if max_keywords_per_category else cat.get('keywords', []))
+            for cat in categories_for_this_for
+        )
         for_size = max(1, for_keyword_count)
         
         # Level 1: Research Fields (top level)
@@ -576,18 +517,39 @@ def create_treemap_data(
             'item_type': 'research_field'
         })
         
-        # Level 2: Categories under research fields  
-        for category in categories_for_this_for:
+        # Level 2 & 3: Categories and Keywords
+        TreemapDataProcessor._add_category_and_keyword_data(
+            treemap_data, for_code_value, categories_for_this_for, max_keywords_per_category
+        )
+    
+    @staticmethod
+    def _limit_categories(categories: List[Dict[str, Any]], max_categories: int) -> List[Dict[str, Any]]:
+        """Limit categories by keyword count"""
+        category_items = []
+        for category in categories:
+            keyword_count = len(category.get('keywords', []))
+            category_items.append((category, keyword_count))
+        
+        # Sort by keyword count (descending) and limit
+        category_items.sort(key=lambda x: x[1], reverse=True)
+        return [item[0] for item in category_items[:max_categories]]
+    
+    @staticmethod
+    def _add_category_and_keyword_data(treemap_data: List[Dict[str, Any]], for_code_value: str,
+                                     categories: List[Dict[str, Any]], max_keywords_per_category: Optional[int]):
+        """Add category and keyword level data to treemap"""
+        for category in categories:
             category_name = category['name']
             keywords = category.get('keywords', [])
             
-            # Apply keyword limit (take first N keywords)
+            # Apply keyword limit
             if max_keywords_per_category is not None:
                 keywords = keywords[:max_keywords_per_category]
             
             # Size by number of keywords (minimum 1)
             category_size = max(1, len(keywords))
             
+            # Level 2: Categories
             treemap_data.append({
                 'id': f"FIELD_{for_code_value} >> {category_name}",
                 'parent': f"FIELD_{for_code_value}",
@@ -597,7 +559,7 @@ def create_treemap_data(
                 'item_type': 'category'
             })
             
-            # Level 3: Keywords under categories
+            # Level 3: Keywords
             for keyword in keywords:
                 treemap_data.append({
                     'id': f"FIELD_{for_code_value} >> {category_name} >> KW: {keyword}",
@@ -608,95 +570,105 @@ def create_treemap_data(
                     'item_type': 'keyword'
                 })
 
-    return pd.DataFrame(treemap_data)
 
-
-def create_research_landscape_treemap(
-    categories: Optional[List[Dict[str, Any]]] = None,
-    classification_results: Optional[List[Dict[str, Any]]] = None,
-    title: Optional[str] = None,
-    height: int = 800,
-    font_size: int = 9,
-    color_map: Optional[Dict[str, str]] = None,
-    max_research_fields: Optional[int] = None,
-    max_categories_per_field: Optional[int] = None,
-    max_keywords_per_category: Optional[int] = None
-) -> Optional[go.Figure]:
-    """
-    Create a comprehensive treemap visualization of the research landscape
+class TreemapVisualizer:
+    """Creates treemap visualizations"""
     
-    Args:
-        categories: Optional pre-loaded categories data
-        classification_results: Optional pre-loaded classification results
-        title: Optional custom title for the visualization
-        height: Height of the visualization in pixels
-        font_size: Font size for labels
-        color_map: Custom color mapping for hierarchy levels
-        max_research_fields: Maximum number of research fields to include (None for all)
-        max_categories_per_field: Maximum number of categories per research field (None for all)
-        max_keywords_per_category: Maximum number of keywords per category (None for all)
+    def __init__(self):
+        pass
+    
+    def create_research_landscape_treemap(self, categories: Optional[List[Dict[str, Any]]] = None,
+                                        classification_results: Optional[List[Dict[str, Any]]] = None,
+                                        title: Optional[str] = None,
+                                        height: int = 800,
+                                        font_size: int = 9,
+                                        color_map: Optional[Dict[str, str]] = None,
+                                        max_research_fields: Optional[int] = None,
+                                        max_categories_per_field: Optional[int] = None,
+                                        max_keywords_per_category: Optional[int] = None) -> Optional[go.Figure]:
+        """Create a comprehensive treemap visualization of the research landscape"""
         
-    Returns:
-        plotly.graph_objects.Figure: Interactive treemap visualization or None if no data
-    """
-    # Load data if not provided
-    if categories is None or classification_results is None:
-        categories = config.Categories.load().to_dict('records')
-        # classification_results = load_classification_results(classification_path)
-        classification_results = []  # Placeholder since function is not defined
-    # print(categories, classification_results)
-    if not categories:
-        return None
+        # Load data if not provided
+        if categories is None:
+            categories = config.Categories.load().to_dict('records')
+        
+        if not categories:
+            return None
+        
+        # Create treemap data
+        treemap_df = TreemapDataProcessor.create_treemap_data(
+            categories, 
+            max_research_fields=max_research_fields,
+            max_categories_per_field=max_categories_per_field,
+            max_keywords_per_category=max_keywords_per_category
+        )
+        
+        if treemap_df.empty:
+            return None
+        
+        # Setup visualization parameters
+        color_map = color_map or self._get_default_color_map()
+        title = title or 'Research Landscape: Research Fields → Categories → Keywords'
+        
+        # Create the treemap
+        fig = px.treemap(
+            treemap_df,
+            ids='id',
+            names='name',
+            parents='parent', 
+            values='value',
+            title=title,
+            color='level',
+            color_discrete_map=color_map,
+            hover_data=['level', 'value', 'item_type']
+        )
+        
+        # Update layout and traces
+        fig.update_layout(
+            font_size=font_size,
+            title_font_size=font_size + 7,
+            height=height,
+            margin=dict(t=60, l=25, r=25, b=25)
+        )
+        
+        fig.update_traces(
+            textinfo="label",
+            textfont_size=font_size,
+            textposition="middle center"
+        )
+        
+        return fig
+    
+    @staticmethod
+    def _get_default_color_map() -> Dict[str, str]:
+        """Get default color mapping for treemap levels"""
+        return {
+            'Research Field': '#1f77b4',  # Blue
+            'Category': '#ff7f0e',        # Orange  
+            'Keyword': '#2ca02c',         # Green
+        }
 
-    # Create treemap data
-    treemap_df = create_treemap_data(
-        categories, 
+
+# Convenience functions for backward compatibility
+def create_research_landscape_treemap(categories: Optional[List[Dict[str, Any]]] = None,
+                                    classification_results: Optional[List[Dict[str, Any]]] = None,
+                                    title: Optional[str] = None,
+                                    height: int = 800,
+                                    font_size: int = 9,
+                                    color_map: Optional[Dict[str, str]] = None,
+                                    max_research_fields: Optional[int] = None,
+                                    max_categories_per_field: Optional[int] = None,
+                                    max_keywords_per_category: Optional[int] = None) -> Optional[go.Figure]:
+    """Create a research landscape treemap - convenience function"""
+    visualizer = TreemapVisualizer()
+    return visualizer.create_research_landscape_treemap(
+        categories=categories,
+        classification_results=classification_results,
+        title=title,
+        height=height,
+        font_size=font_size,
+        color_map=color_map,
         max_research_fields=max_research_fields,
         max_categories_per_field=max_categories_per_field,
         max_keywords_per_category=max_keywords_per_category
     )
-    # print(treemap_df)
-    if treemap_df.empty:
-        return None
-    
-    # Define default color mapping for 3-level hierarchy
-    if color_map is None:
-        color_map = {
-            'Research Field': '#1f77b4',      # Blue
-            'Category': '#ff7f0e',       # Orange  
-            'Keyword': '#2ca02c',        # Green
-        }
-
-    # Create title
-    if title is None:
-        title = 'Research Landscape: Research Fields → Categories → Keywords'
-
-    # Create the treemap
-    fig = px.treemap(
-        treemap_df,
-        ids='id',
-        names='name',
-        parents='parent', 
-        values='value',
-        title=title,
-        color='level',
-        color_discrete_map=color_map,
-        hover_data=['level', 'value', 'item_type']
-    )
-
-    fig.update_layout(
-        font_size=font_size,
-        title_font_size=font_size + 7,
-        height=height,
-        margin=dict(t=60, l=25, r=25, b=25)
-    )
-
-    # Update traces for better text visibility
-    fig.update_traces(
-        textinfo="label",
-        textfont_size=font_size,
-        textposition="middle center"
-    )
-
-    return fig
-

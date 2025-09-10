@@ -13,12 +13,7 @@ DATA_DIR = ROOT_DIR / "data"
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
 
-
-
-# GRANTS_FILE = DATA_DIR / "grants_cleaned.jsonl"
 PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
-
-FOR_CODES_CLEANED_PATH = DATA_DIR / "for_codes_cleaned.json"
 
 CLASSIFICATION_PATH = RESULTS_DIR / "classification.json"
 
@@ -64,13 +59,18 @@ class Categories:
 
 @dataclass
 class Grants:
+    grants_dir = RESULTS_DIR / "grants"
+    grants_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = grants_dir / "grants_raw.jsonl"
+    enriched_path = grants_dir / "grants_enriched.jsonl"
+    grants_path = grants_dir / "grants.jsonl"
+    
     neo4j_uri = "bolt://localhost:7687"
     neo4j_username = "neo4j"
-    cipher_query = f"MATCH (g:grant) RETURN g LIMIT 100"
-    raw_path = DATA_DIR / "grants_raw.jsonl"
-    enriched_path = DATA_DIR / "grants_enriched.jsonl"
-    grants_path = DATA_DIR / "grants.jsonl"
-    neo4j_password = CONFIG["NEO4J_PASSWORD"]  # Ensure this key exists in your .env file
+    neo4j_password = CONFIG["NEO4J_PASSWORD"]
+    
+
+
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
 
 

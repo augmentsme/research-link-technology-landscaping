@@ -1,22 +1,20 @@
 extract: 
 	uv run inspect eval extract.py@extract
+clean-extract: 
+	rm -f logs/*extract*.eval
+	rm -f results/keywords/extracted_keywords.jsonl results/keywords/keywords.jsonl
 
-clustering:
-	uv run clustering.py
-
-review:
-	uv run inspect eval review.py@review
-
-categorise: 
+categorise:
 	uv run inspect eval categorise.py@categorise
+clean-categorise:
+	rm -f logs/*categorise*.eval
+	rm -f results/category/*.jsonl
 
 merge:
-	uv run inspect eval merge.py@merge
+	uv run inspect eval categorise.py@merge --limit 1
+clean-merge:
+	rm -f logs/*merge*.eval
+	rm -f results/merge/*.jsonl
 
-classify: 
-	uv run inspect eval classify.py@classify --limit 100
 
-clean: 
-	rm -f logs/*.eval
-	
-.PHONY: extract harmonise categorise merge classify clean
+.PHONY: extract clean-extract categorise clean-categorise

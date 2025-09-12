@@ -6,7 +6,7 @@ import math
 import jsonlines
 from dataclasses import dataclass
 import utils
-
+import pandas as pd
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
 DATA_DIR = ROOT_DIR / "data"
@@ -23,11 +23,20 @@ class Keywords:
     keywords_dir.mkdir(parents=True, exist_ok=True)
     extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
     keywords_path: Path = keywords_dir / "keywords.jsonl"
+    
+    # Semantic clustering paths
+    keywords_batches_dir: Path = RESULTS_DIR / "keywords_batches"
+    keyword_embeddings_path: Path = keywords_batches_dir / "keyword_embeddings.npy"
+    semantic_clusters_path: Path = keywords_batches_dir / "semantic_clusters.json"
+    batch_dir: Path = keywords_batches_dir / "batches"
+    
     template = lambda record: f"<keyword><name>{record['name']}</name><type>{record['type']}</type><description>{record['description']}</description></keyword>"
+    
     def load(as_dataframe=True):
         return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=as_dataframe)
-    def load_extracted():
-        return utils.load_jsonl_file(Keywords.extracted_keywords_path)
+    
+    def load_extracted(as_dataframe=True):
+        return utils.load_jsonl_file(Keywords.extracted_keywords_path, as_dataframe=as_dataframe)
 
 
 @dataclass
@@ -35,15 +44,23 @@ class Categories:
     category_dir: Path = RESULTS_DIR / "category"
     category_dir.mkdir(parents=True, exist_ok=True)
     category_proposal_path: Path = category_dir / "category_proposal.jsonl"
-    clusters_cache_path: Path = category_dir / "semantic_clusters_cache.json"
-    embeddings_cache_path: Path = category_dir / "embeddings_cache.json"
     
+    # Semantic clustering paths
+    categories_batches_dir: Path = RESULTS_DIR / "categories_batches"
+    categories_batches_dir.mkdir(parents=True, exist_ok=True)
+    category_embeddings_path: Path = categories_batches_dir / "category_embeddings.npy"
+    semantic_clusters_path: Path = categories_batches_dir / "semantic_clusters.json"
+    batch_dir: Path = categories_batches_dir / "batches"
+
+
+
     unknown_keywords_path: Path = category_dir / "unknown_keywords.jsonl"
     missing_keywords_path: Path = category_dir / "missing_keywords.jsonl"
     
-    
     merge_missing_path: Path = category_dir / "merge_missing_keywords.jsonl"
     merge_unknown_path: Path = category_dir / "merge_unknown_keywords.jsonl"
+    
+    
     categories_path: Path = category_dir / "categories.jsonl"
     template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{''.join(f'<keyword>{k}</keyword>' for k in record.get('keywords', []))}</keywords></category>"
 
@@ -69,10 +86,11 @@ class Grants:
     neo4j_username = "neo4j"
     neo4j_password = CONFIG["NEO4J_PASSWORD"]
     
-
+    
+    link_path = grants_dir / "org_researcher_grant_links.jsonl"
+    
 
     template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
-
 
     def load(as_dataframe=True):
         return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
@@ -82,3 +100,7 @@ class Grants:
 
     def load_raw(as_dataframe=True):
         return utils.load_jsonl_file(Grants.raw_path, as_dataframe=as_dataframe)
+    
+    def load_links(as_dataframe=True):
+        return utils.load_jsonl_file(Grants.link_path, as_dataframe=as_dataframe)
+    

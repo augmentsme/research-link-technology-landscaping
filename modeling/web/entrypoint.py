@@ -138,9 +138,9 @@ This application provides comprehensive analysis and visualization of research d
 
 ### 📊 Available Analysis Pages:
 
-- **📈 Keyword Trends** - Analyze how research keywords evolve over time with cumulative occurrence tracking
-- **🌳 Research Landscape** - Interactive treemap visualization of research areas and their relationships  
-- **📊 Grant Distributions** - Explore grant distribution patterns across time and funding sources
+- **Keywords** - Analyze how research keywords evolve over time with cumulative occurrence tracking
+- **Research Landscape** - Interactive treemap visualization of research areas and their relationships  
+- **Grants** - Explore grant distribution patterns across time and funding sources, and view grants with their extracted keywords
 
 ### 🚀 Getting Started:
 

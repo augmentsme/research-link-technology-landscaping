@@ -1,11 +1,12 @@
 import json
 import asyncio
+import concurrent.futures
 from neo4j import GraphDatabase
 import os
 import sys
 from pathlib import Path
 import pandas as pd
-from config import DATA_DIR, FOR_CODES_CLEANED_PATH
+from config import DATA_DIR
 import config
 import utils
 from typing import List, Dict, Any, Optional, Union
@@ -377,7 +378,12 @@ class Neo4jConnector:
 
 
 class GrantsCleaner:
-    """Handles cleaning and processing of enriched grant data"""
+    """
+    Handles cleaning and processing of enriched grant data.
+    
+    Includes deduplication across sources while preserving detailed information
+    from authoritative sources (NHMRC/ARC) and merging organizational links from ORCID.
+    """
     
     def clean_enriched_data(self, enriched_file_path: Path) -> Optional[pd.DataFrame]:
         """
@@ -436,36 +442,70 @@ class GrantsCleaner:
         if not crossref_data.empty:
             cleaned_parts.append(crossref_data)
             print(f"Processed Crossref grants: {len(crossref_data):,} records")
+            
+        df_cleaned = pd.concat(cleaned_parts, axis=0, ignore_index=False)
+        df_cleaned = self._standardize_final_columns(df_cleaned)
         
-        # Combine all cleaned data
-        if cleaned_parts:
-            df_cleaned = pd.concat(cleaned_parts, axis=0, ignore_index=False)
-            df_cleaned = self._standardize_final_columns(df_cleaned)
-            print(f"Total cleaned records: {len(df_cleaned):,}")
-            return df_cleaned
-        else:
-            print("No grants found after cleaning")
-            return pd.DataFrame()
+        normalized_titles = df_cleaned.title.apply(utils.normalize)
+        
+        # Deduplicate grants with same normalized titles
+        # Priority: arc > nhmrc > orcid > crossref
+        # Within same source: prefer records with valid grant_summary
+        
+        # Add normalized title column
+        df_cleaned['normalized_title'] = normalized_titles
+        
+        # Create source priority mapping (lower number = higher priority)
+        source_priority = {
+            'arc.gov.au': 1,
+            'nhmrc.org': 2, 
+            'orcid.org': 3,
+            'crossref.org': 4
+        }
+        df_cleaned['source_priority'] = df_cleaned['source'].map(source_priority)
+        
+        # Create grant_summary validity indicator (1 for valid, 0 for empty/NA)
+        df_cleaned['has_summary'] = (
+            df_cleaned['grant_summary'].notna() & 
+            (df_cleaned['grant_summary'].str.strip() != '')
+        ).astype(int)
+        
+        # Sort by normalized_title, then source_priority (ascending), then has_summary (descending)
+        df_cleaned = df_cleaned.sort_values([
+            'normalized_title', 
+            'source_priority', 
+            'has_summary'
+        ], ascending=[True, True, False])
+        
+        # Keep only the first record for each normalized title (highest priority)
+        df_deduplicated = df_cleaned.drop_duplicates(subset=['normalized_title'], keep='first')
+        
+        # Remove helper columns
+        df_deduplicated = df_deduplicated.drop(columns=['normalized_title', 'source_priority', 'has_summary'])
+        
+        print(f"Before deduplication: {len(df_cleaned):,} records")
+        print(f"After deduplication: {len(df_deduplicated):,} records")
+        print(f"Removed {len(df_cleaned) - len(df_deduplicated):,} duplicate records")
+        
+        df_deduplicated = df_deduplicated[~(df_deduplicated.title == "as above")]
+        df_deduplicated = df_deduplicated[~(df_deduplicated.title.str.lower().str.contains("equipment grant"))]
+        return df_deduplicated
+
     
     def _clean_nhmrc_grants(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean NHMRC grants from nhmrc.org source"""
         if df.empty:
             return df
         
-        # Filter for NHMRC grants with funding amounts
-        nhmrc_grants = df[
-            (df['funder'] == 'National Health and Medical Research Council') &
-            (df['nhmrc_funding_amount'].notna())
-        ].copy()
-        
-        if nhmrc_grants.empty:
-            return pd.DataFrame()
+        # Take all NHMRC grants - if source is nhmrc.org, trust it's NHMRC data
+        nhmrc_grants = df.copy()
         
         # Standardize columns
-        nhmrc_grants.loc[:, 'funding_amount'] = nhmrc_grants['nhmrc_funding_amount']
+        nhmrc_grants.loc[:, 'funding_amount'] = nhmrc_grants.get('nhmrc_funding_amount', pd.NA)
         nhmrc_grants.loc[:, 'for_primary'] = pd.NA  # NHMRC doesn't have FOR codes
         nhmrc_grants.loc[:, 'for'] = pd.NA
-        nhmrc_grants.loc[:, 'funder'] = 'NHMRC'
+        
+        nhmrc_grants = nhmrc_grants[~(nhmrc_grants.funder == 'Australian Research Council')] # This will be covered by arc.gov.au source
         
         return nhmrc_grants
     
@@ -474,75 +514,58 @@ class GrantsCleaner:
         if df.empty:
             return df
         
-        # Take all ARC grants (they should all have funding amounts)
-        arc_grants = df[df['arc_funding_at_announcement'].notna()].copy()
-        
-        if arc_grants.empty:
-            return pd.DataFrame()
+        # Take all ARC grants - if source is arc.gov.au, trust it's ARC data
+        arc_grants = df.copy()
         
         # Standardize columns
-        arc_grants.loc[:, 'funding_amount'] = arc_grants['arc_funding_at_announcement']
-        arc_grants.loc[:, 'for_primary'] = arc_grants['arc_for_primary']
-        arc_grants.loc[:, 'for'] = arc_grants['arc_for']
-        arc_grants.loc[:, 'funder'] = 'ARC'
+        arc_grants.loc[:, 'funding_amount'] = arc_grants.get('arc_funding_at_announcement', pd.NA)
+        arc_grants.loc[:, 'for_primary'] = arc_grants.get('arc_for_primary', pd.NA)
+        arc_grants.loc[:, 'for'] = arc_grants.get('arc_for', pd.NA)
+        arc_grants.loc[:, 'funder'] = 'Australian Research Council'
         
         return arc_grants
     
     def _clean_orcid_grants(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean ORCID grants - filter for Australian funders"""
+        """Clean ORCID grants - take all from orcid.org source"""
         if df.empty:
             return df
         
-        # Filter for Australian funders from ORCID data
-        australian_funders = [
-            'Australian Research Council',
-            'National Health and Medical Research Council',
-            'Cancer Australia'
-        ]
-        
-        orcid_grants = df[df['funder'].isin(australian_funders)].copy()
-        
-        if orcid_grants.empty:
-            return pd.DataFrame()
+        # Take all ORCID grants - if source is orcid.org, trust it's ORCID data
+        orcid_grants = df.copy()
         
         # Standardize columns - ORCID grants typically don't have funding amounts or FOR codes
-        orcid_grants.loc[:, 'funding_amount'] = pd.NA  # Use pandas NA instead of None
+        orcid_grants.loc[:, 'funding_amount'] = pd.NA
         orcid_grants.loc[:, 'for_primary'] = pd.NA
         orcid_grants.loc[:, 'for'] = pd.NA
         
-        # Standardize funder names
-        funder_mapping = {
-            'Australian Research Council': 'ARC',
-            'National Health and Medical Research Council': 'NHMRC',
-            'Cancer Australia': 'Cancer Australia'
-        }
-        orcid_grants.loc[:, 'funder'] = orcid_grants['funder'].map(funder_mapping)
+        # Keep original funder name or set to 'ORCID' if missing
+        orcid_grants.loc[:, 'funder'] = orcid_grants['funder']
         
         return orcid_grants
     
     def _clean_crossref_grants(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean Crossref grants - keep those with funding amounts"""
+        """Clean Crossref grants - take all from crossref.org source"""
         if df.empty:
             return df
         
-        # Filter for grants with funding amounts
-        crossref_grants = df[df['funding_amount'].notna()].copy()
+        # Take all Crossref grants - if source is crossref.org, trust it's Crossref data
+        crossref_grants = df.copy()
         
-        if crossref_grants.empty:
-            return pd.DataFrame()
-        
-        # Standardize columns
+        # Standardize columns - it's fine to keep funding_amount as NA for crossref
+        crossref_grants.loc[:, 'funding_amount'] = crossref_grants.get('funding_amount', pd.NA)
         crossref_grants.loc[:, 'for_primary'] = pd.NA
         crossref_grants.loc[:, 'for'] = pd.NA
-        # Keep original funder name for international grants
         
+        # Keep original funder name or set to 'Crossref' if missing
+        crossref_grants.loc[:, 'funder'] = crossref_grants['funder']
         return crossref_grants
-    
+
     def _standardize_final_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure all required columns are present and in the correct order"""
         required_columns = [
             'title', 'grant_summary', 'funding_amount', 'start_year', 'end_year', 
-            'funder', 'for_primary', 'for', 'source'
+            'funder', 'for_primary', 'for', 'source', 'linked_organizations', 
+            'linked_countries', 'linked_researchers'
         ]
         
         # Add missing columns with pd.NA values
@@ -632,8 +655,103 @@ class DataPreprocessor:
         
         return enriched_data
     
-    def clean_and_save_grants(self, enriched_data: List[dict]) -> int:
-        """Clean enriched data and save final grants file"""
+    def load_or_fetch_links_data(self) -> Optional[List[dict]]:
+        """Load existing links data or fetch from Neo4j"""
+        # Check if links data already exists and force_rerun is not enabled
+        if config.Grants.link_path.exists() and not self.force_rerun:
+            try:
+                links_data = config.Grants.load_links(as_dataframe=False)
+                print(f"Loaded existing links data: {len(links_data)} records")
+                return links_data
+            except Exception:
+                pass
+        
+        # If no existing data, force_rerun is enabled, or loading failed - fetch from Neo4j
+        if self.force_rerun:
+            print("Force rerun enabled - fetching fresh links data from Neo4j...")
+        else:
+            print("Fetching links data from Neo4j...")
+        
+        query = """
+        MATCH (o:organisation)--(r:researcher)--(g:grant)
+        RETURN o.name as org_name, o.country as org_country, r.orcid as researcher_orcid, g.key as grant_key
+        """
+        
+        try:
+            with GraphDatabase.driver(self.neo4j_connector.uri, auth=(self.neo4j_connector.username, self.neo4j_connector.password)) as driver:
+                driver.verify_connectivity()
+                records, summary, keys = driver.execute_query(query, database_="neo4j")
+                
+                results = []
+                for record in records:
+                    result = {
+                        "organisation_name": record["org_name"],
+                        "organisation_country": record["org_country"],
+                        "researcher_orcid": record["researcher_orcid"],
+                        "grant_key": record["grant_key"]
+                    }
+                    results.append(result)
+                
+                self.save_to_jsonl(results, config.Grants.link_path)
+                print(f"Fetched and saved {len(results)} organisation-researcher-grant links")
+                return results
+                
+        except Exception as e:
+            print(f"Failed to fetch links data from Neo4j database: {e}")
+            return None
+    
+    def fill_linked_columns(self, cleaned_data: List[dict], links_data: List[dict]) -> List[dict]:
+        """Fill linked_* columns in grants data based on grant keys from links data"""
+        if not links_data:
+            print("No links data available to fill linked columns")
+            return cleaned_data
+        
+        print("Filling linked_* columns based on grant keys...")
+        
+        # Convert links data to DataFrame for easier processing
+        import pandas as pd
+        links_df = pd.DataFrame(links_data)
+        
+        # Group links by grant_key to aggregate linked information
+        links_grouped = links_df.groupby('grant_key').agg({
+            'organisation_name': lambda x: list(x.dropna().unique()),
+            'organisation_country': lambda x: list(x.dropna().unique()),
+            'researcher_orcid': lambda x: list(x.dropna().unique())
+        }).reset_index()
+        
+        # Convert to dictionary for faster lookup
+        links_dict = {}
+        for _, row in links_grouped.iterrows():
+            links_dict[row['grant_key']] = {
+                'linked_organizations': row['organisation_name'],
+                'linked_countries': row['organisation_country'],
+                'linked_researchers': row['researcher_orcid']
+            }
+        
+        # Fill linked columns in cleaned data
+        updated_data = []
+        filled_count = 0
+        
+        for grant in cleaned_data:
+            grant_key = grant.get('id')  # Using 'id' as it's renamed from 'key' in cleaning
+            if grant_key and grant_key in links_dict:
+                grant['linked_organizations'] = links_dict[grant_key]['linked_organizations']
+                grant['linked_countries'] = links_dict[grant_key]['linked_countries']
+                grant['linked_researchers'] = links_dict[grant_key]['linked_researchers']
+                filled_count += 1
+            else:
+                # Keep existing values or set to empty lists if not present
+                grant['linked_organizations'] = grant.get('linked_organizations', [])
+                grant['linked_countries'] = grant.get('linked_countries', [])
+                grant['linked_researchers'] = grant.get('linked_researchers', [])
+            
+            updated_data.append(grant)
+        
+        print(f"Filled linked columns for {filled_count} out of {len(cleaned_data)} grants")
+        return updated_data
+
+    def clean_and_save_grants(self, enriched_data: List[dict], links_data: Optional[List[dict]] = None) -> int:
+        """Clean enriched data, fill linked columns, and save final grants file"""
         # Always clean and save when called, but show appropriate message for force_rerun
         if self.force_rerun:
             print("Force rerun enabled - cleaning grants data from scratch...")
@@ -644,6 +762,11 @@ class DataPreprocessor:
         
         if df_cleaned is not None:
             cleaned_data = df_cleaned.reset_index().to_dict('records')
+            
+            # Fill linked columns if links data is available
+            if links_data:
+                cleaned_data = self.fill_linked_columns(cleaned_data, links_data)
+            
             utils.save_jsonl_file(cleaned_data, config.Grants.grants_path)
             print(f"Cleaned and saved {len(df_cleaned)} grants")
             return len(df_cleaned)
@@ -656,9 +779,6 @@ class DataPreprocessor:
         print("=== Research Link Technology Landscaping - Data Preprocessing ===")
         if self.force_rerun:
             print("🔄 FORCE RERUN MODE - All data will be regenerated from scratch")
-        print()
-        
-
         
         # Process grants data
         grants_data = self.load_or_fetch_grants_data()
@@ -666,10 +786,17 @@ class DataPreprocessor:
             print("Failed to load or fetch grants data. Exiting.")
             return
         
+        # Process links data
+        links_data = self.load_or_fetch_links_data()
+        if links_data is None:
+            print("Warning: Failed to load or fetch links data. Continuing without linked columns.")
+        
         enriched_data = self.enrich_grants_data(grants_data)
-        cleaned_count = self.clean_and_save_grants(enriched_data)
+        cleaned_count = self.clean_and_save_grants(enriched_data, links_data)
         
         print(f"Grants processed: original={len(grants_data)}, enriched={len(enriched_data)}, cleaned={cleaned_count}")
+        if links_data:
+            print(f"Links processed: {len(links_data)} organisation-researcher-grant relationships")
         
         print("\n" + "="*70)
         print("🎉 Data preprocessing pipeline completed!")
@@ -680,7 +807,7 @@ app = typer.Typer(help="Research Link Technology Landscaping - Data Preprocessin
 
 
 @app.command()
-def main(
+def prepare(
     force_rerun: bool = typer.Option(
         False, 
         "--force-rerun", 
@@ -701,6 +828,62 @@ def main(
     # Create and run the data preprocessing pipeline
     preprocessor = DataPreprocessor(debug=debug, force_rerun=force_rerun, limit=limit)
     preprocessor.run_pipeline()
+
+
+@app.command()
+def link(
+    output_file: str = typer.Option(
+        config.Grants.link_path,
+        "--output",
+        "-o",
+        help="Output JSONL file name (will be saved in data directory)"
+    )
+):
+    """Export all organisation-researcher-grant links from Neo4j database"""
+    query = """
+    MATCH (o:organisation)--(r:researcher)--(g:grant)
+    RETURN o.name as org_name, o.country as org_country, r.orcid as researcher_orcid, g.key as grant_key
+    """
+    
+    try:
+        connector = Neo4jConnector(
+            config.Grants.neo4j_uri,
+            config.Grants.neo4j_username,
+            config.Grants.neo4j_password
+        )
+        
+        with GraphDatabase.driver(connector.uri, auth=(connector.username, connector.password)) as driver:
+            driver.verify_connectivity()
+            records, summary, keys = driver.execute_query(query, database_="neo4j")
+            
+            results = []
+            for record in records:
+                result = {
+                    "organisation_name": record["org_name"],
+                    "organisation_country": record["org_country"],
+                    "researcher_orcid": record["researcher_orcid"],
+                    "grant_key": record["grant_key"]
+                }
+                results.append(result)
+            
+            output_path = DATA_DIR / output_file
+            utils.save_jsonl_file(results, output_path)
+            
+            print(f"✅ Saved {len(results)} organisation-researcher-grant links to {output_path}")
+            print(f"📊 Query executed: Found all relationships between organisations, researchers, and grants")
+            
+            # Show some summary statistics
+            if results:
+                countries = set(r["organisation_country"] for r in results if r["organisation_country"])
+                orgs = set(r["organisation_name"] for r in results if r["organisation_name"])
+                grants = set(r["grant_key"] for r in results if r["grant_key"])
+                researchers = set(r["researcher_orcid"] for r in results if r["researcher_orcid"])
+                
+                print(f"📈 Summary: {len(countries)} countries, {len(orgs)} organisations, {len(researchers)} researchers, {len(grants)} grants")
+            
+    except Exception as e:
+        print(f"❌ Error querying Neo4j database: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -286,16 +286,18 @@ class MatrixProcessor:
     
     @staticmethod
     def sort_matrix_columns(matrix: pd.DataFrame, use_cumulative: bool) -> List[str]:
-        """Sort matrix columns for legend ordering"""
+        """Sort matrix columns for legend ordering - top performers first"""
         if matrix.empty:
             return []
         
         if use_cumulative:
             # For cumulative data, sort by final cumulative value (last row)
-            return matrix.iloc[-1].sort_values(ascending=True).index.tolist()
+            # Use descending=True so highest values appear first in legend (top)
+            return matrix.iloc[-1].sort_values(ascending=False).index.tolist()
         else:
             # For yearly data, sort by total sum across all years
-            return matrix.sum(axis=0).sort_values(ascending=True).index.tolist()
+            # Use descending=True so highest values appear first in legend (top)
+            return matrix.sum(axis=0).sort_values(ascending=False).index.tolist()
 
 
 class PlotBuilder:
@@ -325,9 +327,10 @@ class PlotBuilder:
         if occ_matrix_display.empty:
             return
         
-        # Sort columns for legend ordering
+        # Sort columns for legend ordering (highest values first)
         sorted_columns = MatrixProcessor.sort_matrix_columns(occ_matrix_display, self.viz_config.use_cumulative)
         
+        # Add traces in order - highest performing keywords will appear at top of legend
         for name in sorted_columns:
             fig.add_trace(go.Scatter(
                 x=occ_matrix_display.index,

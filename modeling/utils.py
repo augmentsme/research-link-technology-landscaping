@@ -10,6 +10,43 @@ from inspect_ai.model import ModelOutput
 import re
 
 
+
+from nltk.stem import PorterStemmer
+stemmer = PorterStemmer()  # Initialize stemmer once
+
+def normalize(term: str) -> str:
+    """
+    Normalize keyword terms for deduplication using NLTK stemming.
+    
+    Args:
+        term: The original keyword term
+        
+    Returns:
+        Normalized term for comparison
+    """
+    # Convert to lowercase and strip whitespace
+    normalized = term.lower().strip()
+
+    # Normalize whitespace and remove common separators
+    normalized = re.sub(r'\s+', ' ', normalized)
+    normalized = normalized.replace('-', ' ').replace('_', ' ').replace('/', ' ')
+    
+    # Remove common punctuation that doesn't affect meaning
+    normalized = re.sub(r'[.,;:()[\]{}"]', '', normalized)
+    
+    # Use NLTK stemming for consistent normalization
+    words = normalized.split()
+    stemmed_words = []
+    
+    for word in words:
+        stemmed_word = stemmer.stem(word)
+        stemmed_words.append(stemmed_word)
+    
+    stemmed_normalized = ' '.join(stemmed_words)
+    
+    # Remove extra spaces and return
+    return re.sub(r'\s+', ' ', stemmed_normalized).strip()
+
 def load_jsonl_file(path: Path, as_dataframe: bool = False) -> List[Dict[str, Any]]:
     if isinstance(path, str):
         path = Path(path)
@@ -101,3 +138,35 @@ def sanitise_grant_id(grant_id: str) -> str:
 def desanitise_grant_id(grant_id: str) -> str:
     """Reverse the sanitisation of a grant ID."""
     return grant_id.replace("_", "/")
+
+
+import textwrap
+
+def to_clipboard_with_max_width(series, max_width=80):
+    """
+    Copy a pandas Series to clipboard with controlled maximum width for each field.
+    Long content will be wrapped with newlines instead of truncated.
+    
+    Args:
+        series: pandas Series to copy
+        max_width: maximum width for each line (default: 80)
+    """
+    # Create a copy to avoid modifying original
+    series_copy = series.copy()
+    
+    # Wrap long strings with newlines
+    for key, value in series_copy.items():
+        if isinstance(value, str) and len(value) > max_width:
+            # Use textwrap to break long strings into multiple lines
+            wrapped = textwrap.fill(value, width=max_width, break_long_words=False, break_on_hyphens=False)
+            series_copy[key] = wrapped
+        elif isinstance(value, list):
+            # Handle lists by converting to string and wrapping if needed
+            str_value = str(value)
+            if len(str_value) > max_width:
+                wrapped = textwrap.fill(str_value, width=max_width, break_long_words=False, break_on_hyphens=False)
+                series_copy[key] = wrapped
+    
+    # Copy to clipboard
+    series_copy.to_clipboard()
+    return series_copy

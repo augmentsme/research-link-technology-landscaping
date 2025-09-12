@@ -17,14 +17,13 @@ from typing import List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 import re
-
-from nltk.stem import PorterStemmer
-
-stemmer = PorterStemmer()  # Initialize stemmer once
+import pandas as pd
+from pathlib import Path
 
 # Evaluation schema for the quality scorer
 class OverallScores(BaseModel):
     """Overall quality scores for keyword evaluation"""
+    text_presence: int = Field(..., ge=1, le=10, description="Text presence score 1-10")
     specificity: int = Field(..., ge=1, le=10, description="Technical precision score 1-10")
     uniqueness: int = Field(..., ge=1, le=10, description="Uniqueness score 1-10") 
     technical_precision: int = Field(..., ge=1, le=10, description="Technical precision score 1-10")
@@ -39,7 +38,7 @@ class QualityEvaluation(BaseModel):
     """Complete quality evaluation response"""
     overall_scores: OverallScores = Field(..., description="Overall quality scores")
     keyword_evaluations: List[KeywordEvaluation] = Field(..., description="Individual keyword evaluations")
-    average_score: float = Field(..., ge=1, le=10, description="Average of the three overall scores")
+    average_score: float = Field(..., ge=1, le=10, description="Average of the four overall scores")
     explanation: str = Field(..., description="Brief explanation of the evaluation")
 
 @scorer(metrics=[accuracy()])
@@ -70,21 +69,29 @@ Original Grant Input:
 Extracted Keywords:
 {keywords_text}
 
-Evaluate these keywords on three criteria (score 1-10 for each):
+**CRITICAL REQUIREMENT - Keywords Must Exist in Grant Text:**
+All keywords MUST be directly derivable from or explicitly mentioned in the original grant input text above (including both the grant title and description). 
 
-1. **SPECIFICITY** (1-10): Are the keywords technically precise and domain-specific rather than generic?
+Evaluate these keywords on four criteria (score 1-10 for each):
+
+1. **TEXT_PRESENCE** (1-10): Do the keywords actually appear in or are directly derivable from the grant text (title and description)?
+   - Score 10: Keywords are explicitly mentioned or clearly derivable from specific text in the grant title or description
+   - Score 1: Keywords appear to be invented or not found anywhere in the grant title or description
+
+2. **SPECIFICITY** (1-10): Are the keywords technically precise and domain-specific rather than generic?
    - Score 10: Highly specific technical terms (e.g., "quantum-enhanced magnetometry", "CRISPR-Cas13 diagnostics")
    - Score 1: Generic terms (e.g., "research", "innovation", "technology")
 
-2. **UNIQUENESS** (1-10): Would these keywords uniquely identify this grant among thousands of others?
+3. **UNIQUENESS** (1-10): Would these keywords uniquely identify this grant among thousands of others?
    - Score 10: Keywords could only apply to this specific research or very similar projects
    - Score 1: Keywords could apply to 80%+ of research grants
 
-3. **TECHNICAL_PRECISION** (1-10): Do the keywords capture the core technical essence of the research?
+4. **TECHNICAL_PRECISION** (1-10): Do the keywords capture the core technical essence of the research?
    - Score 10: Keywords precisely capture novel methodologies, specific technologies, or unique approaches
    - Score 1: Keywords are vague or could describe any research project
 
 For each keyword, also identify if it should be REJECTED based on these criteria:
+- **Not present in the grant text (title or description) (MANDATORY REJECTION)**
 - Too generic (could apply to most grants)
 - Administrative/process terms
 - Funding-related boilerplate
@@ -118,6 +125,7 @@ Provide your evaluation following the required JSON schema.
                 
                 # Calculate metrics from structured response
                 overall_scores = eval_result.get("overall_scores", {})
+                text_presence = overall_scores.get("text_presence", 0)
                 specificity = overall_scores.get("specificity", 0)
                 uniqueness = overall_scores.get("uniqueness", 0) 
                 technical_precision = overall_scores.get("technical_precision", 0)
@@ -138,6 +146,7 @@ Provide your evaluation following the required JSON schema.
                     value=final_score,
                     explanation=explanation,
                     metadata={
+                        "text_presence": text_presence,
                         "specificity": specificity,
                         "uniqueness": uniqueness, 
                         "technical_precision": technical_precision,
@@ -156,39 +165,6 @@ Provide your evaluation following the required JSON schema.
             return Score(value=0.0, explanation=f"Error in keyword evaluation: {str(e)}")
     
     return score
-
-def normalize_keyword_term(term: str) -> str:
-    """
-    Normalize keyword terms for deduplication using NLTK stemming.
-    
-    Args:
-        term: The original keyword term
-        
-    Returns:
-        Normalized term for comparison
-    """
-    # Convert to lowercase and strip whitespace
-    normalized = term.lower().strip()
-
-    # Normalize whitespace and remove common separators
-    normalized = re.sub(r'\s+', ' ', normalized)
-    normalized = normalized.replace('-', ' ').replace('_', ' ').replace('/', ' ')
-    
-    # Remove common punctuation that doesn't affect meaning
-    normalized = re.sub(r'[.,;:()[\]{}"]', '', normalized)
-    
-    # Use NLTK stemming for consistent normalization
-    words = normalized.split()
-    stemmed_words = []
-    
-    for word in words:
-        stemmed_word = stemmer.stem(word)
-        stemmed_words.append(stemmed_word)
-    
-    stemmed_normalized = ' '.join(stemmed_words)
-    
-    # Remove extra spaces and return
-    return re.sub(r'\s+', ' ', stemmed_normalized).strip()
 
 @hooks(name="KeywordsExtractionHook", description="Hook to save keywords extraction results as JSON files")
 class KeywordsExtractionHook(Hooks):
@@ -254,40 +230,8 @@ class KeywordsExtractionHook(Hooks):
         # Deduplicate keywords using normalized terms
 
         self.extracted_keywords_writer.close()
-        harmonise()
-
-def harmonise(input_path=config.Keywords.extracted_keywords_path, output_path=config.Keywords.keywords_path):
-        keywords_dict = {}  # normalized_term -> {keyword_data, variants}
-        all_keywords = utils.load_jsonl_file(input_path)  # Ensure file is loaded
-        for keyword in all_keywords:
-            normalized_term = normalize_keyword_term(keyword["name"])
-
-            if normalized_term not in keywords_dict:
-                keywords_dict[normalized_term] = {
-                    "variants": [],
-                    "grants": set()
-                }
-            
-            keywords_dict[normalized_term]["variants"].append(keyword)
-            keywords_dict[normalized_term]["grants"].add(keyword["grant_id"])
-        
-        final_keywords = []
-        # For each normalized term, choose the variant with the longest description
-        for normalized_term, data in keywords_dict.items():
-            # Find variant with longest description
-            best_variant = max(data["variants"], key=lambda k: len(k["description"]))
-            
-            # Create final keyword with all grants
-            final_keyword = {
-                "name": best_variant["name"],
-                "type": best_variant["type"],
-                "description": best_variant["description"],
-                "grants": list(data["grants"])
-            }
-
-            final_keywords.append(final_keyword)
-
-        utils.save_jsonl_file(final_keywords, output_path)
+        from keywords_postprocess import postprocess
+        postprocess()
 
 def load_extract_dataset():
     records = config.Grants.load().to_dict(orient="records")
@@ -320,12 +264,19 @@ Your task is to extract meaningful keywords from research grant information that
 - Finding related research projects working on similar frontiers
 - Understanding emerging research trends and future directions
 
+**FUNDAMENTAL REQUIREMENT - Keywords Must Exist in Grant Text:**
+**ALL KEYWORDS MUST BE DIRECTLY PRESENT IN OR CLEARLY DERIVABLE FROM THE PROVIDED GRANT TEXT (INCLUDING BOTH TITLE AND DESCRIPTION).**
+- Only extract keywords that appear explicitly in the grant title, description, or summary
+- Keywords can be technical terms, methodologies, technologies, or concepts mentioned in the text
+- Do NOT invent or infer keywords that are not clearly present in the source material
+- If a concept is implied but not explicitly mentioned, DO NOT include it as a keyword
+
 Focus on extracting keywords that highlight what's new, innovative, and emerging in the research landscape. Prioritize:
-- Technical terms that represent novel concepts or emerging fields
-- Methodologies that are cutting-edge or represent new approaches
-- Technologies that are innovative or represent emerging tools
-- Applications that address new challenges or emerging needs
-- Scientific terminology that indicates research at the frontiers of knowledge
+- Technical terms that represent novel concepts or emerging fields mentioned in the grant
+- Methodologies that are cutting-edge or represent new approaches described in the text
+- Technologies that are innovative or represent emerging tools referenced in the grant
+- Applications that address new challenges or emerging needs as stated in the grant
+- Scientific terminology that indicates research at the frontiers of knowledge as described
 
 **CRITICAL REQUIREMENT - Avoid Overly Broad Keywords:**
 - **Keywords must be specific and precise, not generic or overly broad**
@@ -335,6 +286,7 @@ Focus on extracting keywords that highlight what's new, innovative, and emerging
 - **Instead of "artificial intelligence," use "graph neural networks" or "federated learning algorithms"**
 - **Avoid general terms like "research," "development," "innovation," "technology," "analysis," "method"**
 - **Each keyword should clearly indicate a specific domain, technique, or application area**
+- **Do NOT extract specific country names**
 
 **UNIQUENESS REQUIREMENT - Keywords Must Be Grant-Specific:**
 - **REJECT keywords that could apply to 80% or more of research grants (e.g., "interdisciplinary research," "international collaboration," "innovative approach," "cutting-edge technology")**
@@ -348,9 +300,10 @@ Focus on extracting keywords that highlight what's new, innovative, and emerging
 **SPECIFICITY TEST:**
 Before including any keyword, ask: "Could this keyword appear in 100+ different grant applications across various fields?" If YES, REJECT it.
 Only extract keywords that are:
-1. Technically precise and domain-specific
-2. Unique to the particular research approach or subject matter
-3. Would help distinguish this grant from 95% of other grants in the database
+1. **Actually present in the grant text (title and description) (MANDATORY)**
+2. Technically precise and domain-specific
+3. Unique to the particular research approach or subject matter
+4. Would help distinguish this grant from 95% of other grants in the database
 
 **LENGTH REQUIREMENT:**
 - **Each keyword must contain only 1-4 words maximum**
@@ -358,7 +311,7 @@ Only extract keywords that are:
 - **Examples: "quantum dots," "CRISPR-Cas9," "machine learning," "photonic crystals"**
 - **Avoid: "advanced quantum dot synthesis techniques" (too long) → use "quantum dot synthesis"**
 
-Provide accurate, specific keywords that capture the innovative and emerging aspects of the research. Prioritize technical precision over comprehensiveness.
+Provide accurate, specific keywords that capture the innovative and emerging aspects of the research while ensuring they are all grounded in the actual grant text (both title and description). Prioritize technical precision over comprehensiveness.
 
 
 """

@@ -50,15 +50,3 @@ class KeywordsList(BaseModel):
     model_config = {"extra": "forbid"}
     keywords: List[Keyword] = Field(description="List of all extracted keywords with their types and descriptions")
 
-class Category(BaseModel):
-    """A flexible research category linked to FOR codes."""
-    model_config = {"extra": "forbid"}
-    name: str = Field(description="Name of the category")
-    description: str = Field(description="A few sentences describing what this category is about, including its scope, focus areas, and the types of research or technologies it encompasses")
-    keywords: List[str] = Field(description="List of keywords associated with this category")
-    field_of_research: FieldOfResearch = Field(description="The field of research division this category falls under")
-
-class CategoryList(BaseModel):
-    """A list of research categories."""
-    model_config = {"extra": "forbid"}
-    categories: List[Category] = Field(description="List of research categories")

@@ -11,7 +11,7 @@ clean-categorise:
 	rm -f results/category/*.jsonl
 
 merge:
-	uv run inspect eval categorise.py@merge --limit 1
+	uv run inspect eval categorise.py@merge
 clean-merge:
 	rm -f logs/*merge*.eval
 	rm -f results/merge/*.jsonl

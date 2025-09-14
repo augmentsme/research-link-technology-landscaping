@@ -38,6 +38,14 @@ class CategoryFilterConfig:
     category_names: List[str]
 
 
+@dataclass
+class CategoryTrendsConfig:
+    """Configuration for category trends visualization"""
+    num_categories: int
+    use_cumulative: bool
+    popularity_metric: str  # "grant_count" or "total_funding"
+
+
 class CategoryDataManager:
     """Manages category data loading and filtering operations"""
     
@@ -213,8 +221,8 @@ class SidebarControls:
     def __init__(self, data_manager: CategoryDataManager):
         self.data_manager = data_manager
     
-    def render_sidebar(self) -> CategoryFilterConfig:
-        """Render sidebar controls and return filter configuration"""
+    def render_sidebar(self) -> Tuple[CategoryFilterConfig, CategoryTrendsConfig]:
+        """Render sidebar controls and return filter and trends configurations"""
         st.sidebar.empty()
         
         with st.sidebar:
@@ -252,16 +260,55 @@ class SidebarControls:
                 help="Filter categories by text search in names or descriptions"
             )
             
+            # Category Trends Settings
+            st.markdown("---")
+            st.header("📈 Trends Settings")
+            
+            # Number of categories to display
+            num_categories = st.slider(
+                "Number of categories to display",
+                min_value=1,
+                max_value=15,
+                value=5,
+                help="Select how many top categories to show in the trends plot"
+            )
+            
+            # Display options
+            use_cumulative = st.checkbox(
+                "Show cumulative trends",
+                value=True,
+                help="Show cumulative category occurrences over time instead of yearly counts"
+            )
+            
+            # Popularity metric selection
+            popularity_metric = st.radio(
+                "Rank categories by:",
+                options=["grant_count", "total_funding"],
+                format_func=lambda x: "Number of Grants" if x == "grant_count" else "Total Funding Amount",
+                help="Choose how to measure category popularity"
+            )
+            
+            # Update visualization button
+            update_trends = st.button("🔄 Update Category Trends", type="secondary")
+            
             # Show active filters
             self._show_active_filters(field_filter, min_keywords, max_keywords, search_term)
         
-        return CategoryFilterConfig(
+        filter_config = CategoryFilterConfig(
             field_filter=field_filter,
             min_keywords=min_keywords,
             max_keywords=max_keywords,
             search_term=search_term,
             category_names=[]
         )
+        
+        trends_config = CategoryTrendsConfig(
+            num_categories=num_categories,
+            use_cumulative=use_cumulative,
+            popularity_metric=popularity_metric
+        )
+        
+        return filter_config, trends_config
     
     def _show_active_filters(self, field_filter: List[str], min_keywords: int, 
                            max_keywords: int, search_term: str):
@@ -285,7 +332,7 @@ class OverviewTab:
         self.data_manager = data_manager
         self.visualizer = CategoryVisualizer()
     
-    def render_tab(self, filter_config: CategoryFilterConfig):
+    def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
         """Render the overview tab"""
         st.markdown("### Category Overview")
         st.markdown("Summary statistics and distributions of research categories.")
@@ -344,7 +391,7 @@ class FieldAnalysisTab:
         self.data_manager = data_manager
         self.visualizer = CategoryVisualizer()
     
-    def render_tab(self, filter_config: CategoryFilterConfig):
+    def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
         """Render the field analysis tab"""
         st.markdown("### Field of Research Analysis")
         st.markdown("Analyze how categories are distributed across different fields of research.")
@@ -387,7 +434,7 @@ class CategoryExplorerTab:
     def __init__(self, data_manager: CategoryDataManager):
         self.data_manager = data_manager
     
-    def render_tab(self, filter_config: CategoryFilterConfig):
+    def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
         """Render the category explorer tab"""
         st.markdown("### Category Explorer")
         st.markdown("Browse and explore individual categories in detail.")
@@ -480,8 +527,8 @@ class CategoryTrendsTab:
     def __init__(self, data_manager: CategoryDataManager):
         self.data_manager = data_manager
     
-    def render_tab(self, filter_config: CategoryFilterConfig):
-        """Render the category trends tab"""
+    def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
+        """Render the category trends tab with automatic visualization"""
         st.markdown("### Category Trends Over Time")
         st.markdown("Analyze how research categories evolve over time based on their associated grants.")
         
@@ -498,66 +545,60 @@ class CategoryTrendsTab:
             st.error("Unable to load keywords or grants data needed for trends analysis.")
             return
         
-        # Category selection controls
-        self._render_trend_controls(filtered_data, keywords_df, grants_df)
-    
-    def _render_trend_controls(self, filtered_data: pd.DataFrame, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
-        """Render controls for category trends"""
-        col1, col2 = st.columns([1, 1])
+        # Show data info
+        st.info(f"Processing {len(filtered_data)} categories with {len(keywords_df)} keywords. "
+               f"Ranking by: {'Grant Count' if trends_config.popularity_metric == 'grant_count' else 'Total Funding Amount'}")
         
-        with col1:
-            # Select categories to display
-            max_categories = min(15, len(filtered_data))
-            num_categories = st.slider(
-                "Number of categories to display",
-                min_value=1,
-                max_value=max_categories,
-                value=min(5, max_categories),  # Reduced default for performance
-                help="Select how many top categories to show in the trends plot"
-            )
+        # Initialize session state for trends
+        if 'trends_data' not in st.session_state:
+            st.session_state.trends_data = None
+            st.session_state.trends_settings = None
         
-        with col2:
-            # Display options
-            use_cumulative = st.checkbox(
-                "Show cumulative trends",
-                value=True,
-                help="Show cumulative category occurrences over time instead of yearly counts"
-            )
+        # Check if we need to regenerate (settings changed or first time)
+        current_settings = (filter_config, trends_config)
+        need_regenerate = (st.session_state.trends_settings != current_settings or 
+                          st.session_state.trends_data is None)
         
-        # Show data size warning
-        st.info(f"Processing {len(filtered_data)} categories with {len(keywords_df)} keywords. Large datasets may take a moment to process.")
-        
-        # Generate trends visualization
-        if st.button("Generate Category Trends", type="primary"):
+        # Auto-generate or regenerate if needed
+        if need_regenerate:
             with st.spinner("Creating category trends visualization..."):
-                # Add progress tracking
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
                 try:
-                    fig = self._create_category_trends_plot(
-                        filtered_data, keywords_df, grants_df, num_categories, use_cumulative, progress_bar, status_text
+                    fig, category_data = self._create_category_trends_plot(
+                        filtered_data, keywords_df, grants_df, trends_config, progress_bar, status_text
                     )
                     
                     progress_bar.progress(100)
                     status_text.text("Visualization complete!")
                     
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True, key="category_trends_plot")
-                        self._show_trends_statistics(filtered_data, keywords_df, grants_df, num_categories)
-                    else:
-                        st.warning("Unable to create trends visualization. No valid data found.")
-                        
+                    # Store in session state
+                    st.session_state.trends_data = fig
+                    st.session_state.trends_category_data = category_data
+                    st.session_state.trends_settings = current_settings
+                    
                 except Exception as e:
                     st.error(f"Error creating visualization: {str(e)}")
+                    st.session_state.trends_data = None
+                    st.session_state.trends_category_data = None
+                    return
                 finally:
-                    # Clean up progress indicators
                     progress_bar.empty()
                     status_text.empty()
+        
+        # Display the visualization
+        if st.session_state.trends_data:
+            st.plotly_chart(st.session_state.trends_data, use_container_width=True, key="category_trends_plot")
+            # Show statistics if we have category data
+            if hasattr(st.session_state, 'trends_category_data') and st.session_state.trends_category_data:
+                self._show_trends_statistics(trends_config, st.session_state.trends_category_data)
+        else:
+            st.warning("Unable to create trends visualization. No valid data found.")
     
     def _create_category_trends_plot(self, categories_df: pd.DataFrame, keywords_df: pd.DataFrame, 
-                                   grants_df: pd.DataFrame, num_categories: int, use_cumulative: bool,
-                                   progress_bar, status_text) -> Optional[go.Figure]:
+                                   grants_df: pd.DataFrame, trends_config: CategoryTrendsConfig,
+                                   progress_bar, status_text) -> Tuple[Optional[go.Figure], Dict[str, Dict[str, Any]]]:
         """Create the category trends plot with optimized performance"""
         
         # Step 1: Create keyword lookup dictionary for fast access
@@ -571,7 +612,7 @@ class CategoryTrendsTab:
             if isinstance(grants_list, list):
                 keyword_to_grants[keyword_name] = grants_list
         
-        # Step 2: Create grants lookup dictionary for fast temporal access
+        # Step 2: Create grants lookup dictionary for fast temporal and funding access
         status_text.text("Building grants index...")
         progress_bar.progress(20)
         
@@ -579,8 +620,13 @@ class CategoryTrendsTab:
         for _, grant_row in grants_df.iterrows():
             grant_id = grant_row['id']
             start_year = grant_row.get('start_year')
+            funding_amount = grant_row.get('funding_amount', 0)
+            
             if pd.notna(start_year):
-                grants_lookup[grant_id] = int(start_year)
+                grants_lookup[grant_id] = {
+                    'year': int(start_year),
+                    'funding': funding_amount if pd.notna(funding_amount) else 0
+                }
         
         # Step 3: Process categories efficiently
         status_text.text("Processing categories...")
@@ -591,15 +637,22 @@ class CategoryTrendsTab:
         )
         
         if not category_grant_data:
-            return None
+            return None, {}
         
-        # Step 4: Select top categories
+        # Step 4: Select top categories based on popularity metric
         status_text.text("Selecting top categories...")
         progress_bar.progress(70)
         
-        top_categories = sorted(category_grant_data.items(), 
-                              key=lambda x: len(x[1]['grants']), 
-                              reverse=True)[:num_categories]
+        if trends_config.popularity_metric == "grant_count":
+            top_categories = sorted(category_grant_data.items(), 
+                                  key=lambda x: x[1]['grant_count'], 
+                                  reverse=True)[:trends_config.num_categories]
+            metric_label = "grants"
+        else:  # total_funding
+            top_categories = sorted(category_grant_data.items(), 
+                                  key=lambda x: x[1]['total_funding'], 
+                                  reverse=True)[:trends_config.num_categories]
+            metric_label = "funding"
         
         # Step 5: Create time series data
         status_text.text("Creating time series...")
@@ -608,7 +661,7 @@ class CategoryTrendsTab:
         time_series_data = []
         for category_name, category_info in top_categories:
             yearly_data = self._create_yearly_data_for_category_optimized(
-                category_info['grants'], grants_lookup
+                category_info['grant_details'], grants_lookup
             )
             
             for year, count in yearly_data.items():
@@ -642,7 +695,7 @@ class CategoryTrendsTab:
             year_counts = dict(zip(category_data['year'], category_data['count']))
             full_counts = [year_counts.get(year, 0) for year in years]
             
-            if use_cumulative:
+            if trends_config.use_cumulative:
                 full_counts = np.cumsum(full_counts)
             
             fig.add_trace(go.Scatter(
@@ -654,13 +707,14 @@ class CategoryTrendsTab:
                 marker=dict(size=6),
                 hovertemplate=f'<b>{category}</b><br>' +
                             'Year: %{x}<br>' +
-                            ('Cumulative Grants: %{y}' if use_cumulative else 'Yearly Grants: %{y}') +
+                            ('Cumulative Grants: %{y}' if trends_config.use_cumulative else 'Yearly Grants: %{y}') +
                             '<extra></extra>'
             ))
         
         # Update layout
-        y_title = 'Cumulative Grant Count' if use_cumulative else 'Yearly Grant Count'
-        title = f"{'Cumulative' if use_cumulative else 'Yearly'} Category Trends Over Time (Top {num_categories} Categories)"
+        y_title = 'Cumulative Grant Count' if trends_config.use_cumulative else 'Yearly Grant Count'
+        popularity_text = "Grant Count" if trends_config.popularity_metric == "grant_count" else "Total Funding"
+        title = f"{'Cumulative' if trends_config.use_cumulative else 'Yearly'} Category Trends Over Time (Top {trends_config.num_categories} by {popularity_text})"
         
         fig.update_layout(
             title=title,
@@ -672,10 +726,10 @@ class CategoryTrendsTab:
             template='plotly_white'
         )
         
-        return fig
+        return fig, category_grant_data
     
     def _map_categories_to_grants_optimized(self, categories_df: pd.DataFrame, keyword_to_grants: Dict[str, List[str]], 
-                                          grants_lookup: Dict[str, int], progress_bar, status_text) -> Dict[str, Dict[str, Any]]:
+                                          grants_lookup: Dict[str, Dict], progress_bar, status_text) -> Dict[str, Dict[str, Any]]:
         """Optimized mapping of categories to grants through keywords"""
         category_grant_mapping = {}
         total_categories = len(categories_df)
@@ -701,91 +755,65 @@ class CategoryTrendsTab:
                     grants_list = keyword_to_grants[keyword_name]
                     associated_grants.update(grants_list)
             
+            # Calculate grant count and total funding
+            grant_details = []
+            total_funding = 0
+            
+            for grant_id in associated_grants:
+                if grant_id in grants_lookup:
+                    grant_info = grants_lookup[grant_id]
+                    grant_details.append(grant_id)
+                    total_funding += grant_info['funding']
+            
             category_grant_mapping[category_name] = {
-                'grants': list(associated_grants),
+                'grant_details': grant_details,
+                'grant_count': len(grant_details),
+                'total_funding': total_funding,
                 'keywords': category_keywords,
                 'keyword_count': len(category_keywords)
             }
         
         return category_grant_mapping
     
-    def _create_yearly_data_for_category_optimized(self, grant_ids: List[str], grants_lookup: Dict[str, int]) -> Dict[int, int]:
+    def _create_yearly_data_for_category_optimized(self, grant_ids: List[str], grants_lookup: Dict[str, Dict]) -> Dict[int, int]:
         """Optimized creation of yearly occurrence data for a category"""
         yearly_counts = {}
         
         for grant_id in grant_ids:
             if grant_id in grants_lookup:
-                year = grants_lookup[grant_id]
+                year = grants_lookup[grant_id]['year']
                 yearly_counts[year] = yearly_counts.get(year, 0) + 1
         
         return yearly_counts
     
-    def _show_trends_statistics(self, categories_df: pd.DataFrame, keywords_df: pd.DataFrame, 
-                              grants_df: pd.DataFrame, num_categories: int):
+    def _show_trends_statistics(self, config: CategoryTrendsConfig, category_data: Dict[str, Dict[str, Any]]) -> None:
         """Display statistics about the trends data"""
-        st.subheader("Trends Statistics")
-        
-        # For statistics, we'll use a smaller sample to avoid performance issues
-        sample_size = min(100, len(categories_df))
-        sample_categories = categories_df.head(sample_size)
-        
-        # Create optimized lookups for the sample
-        keyword_to_grants = {}
-        for _, keyword_row in keywords_df.iterrows():
-            keyword_name = keyword_row['name']
-            grants_list = keyword_row.get('grants', [])
-            if isinstance(grants_list, list):
-                keyword_to_grants[keyword_name] = grants_list
-        
-        grants_lookup = {}
-        for _, grant_row in grants_df.iterrows():
-            grant_id = grant_row['id']
-            start_year = grant_row.get('start_year')
-            if pd.notna(start_year):
-                grants_lookup[grant_id] = int(start_year)
-        
-        # Calculate statistics for sample
-        category_grant_data = {}
-        for _, category in sample_categories.iterrows():
-            category_name = category['name']
-            category_keywords = category.get('keywords', [])
-            
-            if isinstance(category_keywords, list):
-                associated_grants = set()
-                for keyword_name in category_keywords:
-                    if keyword_name in keyword_to_grants:
-                        associated_grants.update(keyword_to_grants[keyword_name])
-                
-                category_grant_data[category_name] = {
-                    'grants': list(associated_grants),
-                    'keywords': category_keywords
-                }
-        
-        if not category_grant_data:
-            st.warning("No category-grant mappings found in sample.")
+        if not category_data:
+            st.warning("No data available for statistics")
             return
         
-        total_grants_mapped = sum(len(data['grants']) for data in category_grant_data.values())
-        categories_with_grants = sum(1 for data in category_grant_data.values() if data['grants'])
+        st.subheader("Trends Statistics")
         
+        total_categories = len(category_data)
+        total_grants = sum(data['grant_count'] for data in category_data.values())
+        total_funding = sum(data['total_funding'] for data in category_data.values())
+        avg_grants_per_category = total_grants / total_categories if total_categories > 0 else 0
+        avg_funding_per_category = total_funding / total_categories if total_categories > 0 else 0
+        
+        # Create metrics display
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Categories Displayed", num_categories)
-        
+            st.metric("Total Categories", total_categories)
         with col2:
-            st.metric("Sample Categories with Grants", f"{categories_with_grants}/{sample_size}")
-        
+            st.metric("Total Grants", f"{total_grants:,}")
         with col3:
-            st.metric("Sample Grant Mappings", total_grants_mapped)
-        
+            st.metric("Total Funding", f"${total_funding/1e6:.1f}M" if total_funding >= 1e6 else f"${total_funding/1e3:.1f}K")
         with col4:
-            if category_grant_data:
-                top_category = max(category_grant_data.items(), key=lambda x: len(x[1]['grants']))
-                st.metric("Most Active Category", len(top_category[1]['grants']))
-        
-        if sample_size < len(categories_df):
-            st.info(f"Statistics based on sample of {sample_size} categories (out of {len(categories_df)} total)")
+            popularity_label = "Avg Grants/Category" if config.popularity_metric == "grant_count" else "Avg Funding/Category"
+            popularity_value = avg_grants_per_category if config.popularity_metric == "grant_count" else avg_funding_per_category
+            display_value = f"{popularity_value:.1f}" if config.popularity_metric == "grant_count" else f"${popularity_value/1e6:.2f}M" if popularity_value >= 1e6 else f"${popularity_value/1e3:.1f}K"
+            st.metric(popularity_label, display_value)
 
 
 class CategoriesPage:
@@ -825,22 +853,22 @@ class CategoriesPage:
             return
         
         # Render sidebar controls
-        filter_config = self.sidebar_controls.render_sidebar()
+        filter_config, trends_config = self.sidebar_controls.render_sidebar()
         
         # Create tabs
         tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔬 Field Analysis", "🔍 Category Explorer", "📈 Category Trends"])
         
         with tab1:
-            self.overview_tab.render_tab(filter_config)
+            self.overview_tab.render_tab(filter_config, trends_config)
         
         with tab2:
-            self.field_analysis_tab.render_tab(filter_config)
+            self.field_analysis_tab.render_tab(filter_config, trends_config)
         
         with tab3:
-            self.explorer_tab.render_tab(filter_config)
+            self.explorer_tab.render_tab(filter_config, trends_config)
         
         with tab4:
-            self.trends_tab.render_tab(filter_config)
+            self.trends_tab.render_tab(filter_config, trends_config)
 
 
 def main():

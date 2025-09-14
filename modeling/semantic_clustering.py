@@ -330,6 +330,29 @@ class Pipeline:
         self.cluster_manager = SemanticClusterManager()
         self.batch_generator = BatchGenerator()
     
+    def _should_regenerate_clusters(self) -> bool:
+        """Check if clusters should be regenerated based on embeddings modification time."""
+        if not self.clusters_path.exists() or not self.embeddings_path.exists():
+            return True
+        return self.clusters_path.stat().st_mtime <= self.embeddings_path.stat().st_mtime
+    
+    def _should_regenerate_batches(self) -> bool:
+        """Check if batches should be regenerated based on clusters modification time."""
+        if not self.clusters_path.exists():
+            return True
+        
+        # Check if any existing batch files are older than clusters
+        if self.batch_dir.exists():
+            batch_files = list(self.batch_dir.glob(f"{self.batch_prefix}_*.jsonl"))
+            if batch_files:
+                # Check if any batch file is older than clusters
+                clusters_mtime = self.clusters_path.stat().st_mtime
+                for batch_file in batch_files:
+                    if batch_file.stat().st_mtime <= clusters_mtime:
+                        return True
+                return False
+        return True
+    
     def generate_embeddings(self, force_regenerate: bool = False) -> np.ndarray:
         """Generate embeddings for the data."""
         return self.embedding_generator.generate(
@@ -365,6 +388,15 @@ class Pipeline:
     
     def generate_batches(self, batch_size: int = 250) -> List[Path]:
         """Generate balanced batches from clustering results."""
+        # Check if clusters need to be regenerated due to newer embeddings
+        if self._should_regenerate_clusters():
+            logger.info(f"Embeddings are newer than clusters. Regenerating clusters first...")
+            self.cluster_data(batch_size)
+        
+        # Check if batches need to be regenerated due to newer clusters
+        elif self._should_regenerate_batches():
+            logger.info(f"Clusters are newer than existing batches. Regenerating batches...")
+        
         with open(self.clusters_path, 'r') as f:
             cluster_data = json.load(f)
         
@@ -546,7 +578,7 @@ def category_embeddings(
 ):
     """Generate embeddings for category proposals."""
     pipeline = CategoryPipeline(
-         proposal_path=Path( proposal_path) if  proposal_path else None,
+         proposal_path=Path(proposal_path) if  proposal_path else None,
         embeddings_path=Path(output_path) if output_path else None
     )
     embeddings_array = pipeline.generate_embeddings(force)
@@ -577,17 +609,29 @@ def cluster_categories(
 @categories_app.command("generate-batches")
 def generate_category_batches(
     batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
-     proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file"),
+    proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file"),
     clusters_path: str = typer.Option(None, "--clusters-path", help="Path to clustering results JSON file"),
-    output_dir: str = typer.Option(None, "--output-dir", help="Directory to save batch files")
+    output_dir: str = typer.Option(None, "--output-dir", help="Directory to save batch files"),
+    force_embeddings: bool = typer.Option(False, "--force-embeddings", help="Force regeneration of embeddings and clusters")
 ):
     """Generate balanced category batches from semantic clusters."""
     pipeline = CategoryPipeline(
-         proposal_path=Path( proposal_path) if  proposal_path else None,
+        proposal_path=Path(proposal_path) if proposal_path else None,
         clusters_path=Path(clusters_path) if clusters_path else None,
         batch_dir=Path(output_dir) if output_dir else None
     )
-    batch_files = pipeline.generate_batches(batch_size)
+    
+    if force_embeddings:
+        # Run full pipeline to regenerate embeddings, clusters, and batches
+        results = pipeline.run_full_pipeline(batch_size, force_embeddings)
+        batch_files = results.get('batch_files', [])
+        print(f"\n=== Pipeline Summary ===")
+        print(f"  Total categories: {results.get('total_categories', 'N/A')}")
+        print(f"  Semantic clusters: {results.get('semantic_clusters', 'N/A')}")
+        print(f"  Generated batches: {results.get('generated_batches', len(batch_files))}")
+    else:
+        # Only generate batches from existing clusters
+        batch_files = pipeline.generate_batches(batch_size)
     
     print(f"\nGenerated {len(batch_files)} batch files")
     for i, batch_file in enumerate(batch_files):
@@ -596,12 +640,12 @@ def generate_category_batches(
 
 @categories_app.command("full-pipeline")
 def full_category_pipeline(
-    batch_size: int = typer.Option(1000, "--batch-size", "-b", help="Target size for each batch"),
+    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
     force_embeddings: bool = typer.Option(False, "--force-embeddings", help="Force regeneration of embeddings"),
-     proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file")
+    proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file")
 ):
     """Run the complete category clustering pipeline: embeddings -> clustering -> batches."""
-    pipeline = CategoryPipeline( proposal_path=Path( proposal_path) if  proposal_path else None)
+    pipeline = CategoryPipeline(proposal_path=Path(proposal_path) if proposal_path else None)
     results = pipeline.run_full_pipeline(batch_size, force_embeddings)
     
     print(f"\n=== Pipeline Summary ===")

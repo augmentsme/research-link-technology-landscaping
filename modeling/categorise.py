@@ -148,7 +148,7 @@ def _load_batch_dataset_generic(
     mode: str = "keywords"
 ) -> MemoryDataset:
     """
-    Generic function to load batch datasets with resume capability.
+    Generic function to load batch datasets with resume capability using dataset.filter().
     
     Args:
         batch_dir: Directory containing batch files
@@ -171,25 +171,16 @@ def _load_batch_dataset_generic(
         if not batch_files:
             raise FileNotFoundError(f"No batch files found in {batch_dir}")
         
-        # Check which batches have already been processed
-        processed_batch_ids = get_processed_batch_ids(output_file_path, mode)
-        
+        # Create all samples first
         samples = []
         total_batches = 0
-        skipped_batches = 0
         
-        # Create samples from batch files
         for batch_file in batch_files:
             total_batches += 1
             if batch_id_prefix == "merge_batch_":
                 batch_id = f"{batch_id_prefix}{batch_file.stem}"
             else:
                 batch_id = f"{batch_id_prefix}{batch_file.stem.split('_')[-1]}"
-            
-            # Skip if this batch has already been processed
-            if batch_id in processed_batch_ids:
-                skipped_batches += 1
-                continue
             
             # Load data from this batch
             try:
@@ -200,11 +191,20 @@ def _load_batch_dataset_generic(
                 print(f"Warning: Could not load batch file {batch_file}: {e}")
                 continue
 
-        print(f"Total {dataset_type} batches: {total_batches}")
-        print(f"Skipped (already processed): {skipped_batches}")
-        print(f"Created {len(samples)} new batches to process")
+        # Create initial dataset with all samples
+        full_dataset = MemoryDataset(samples)
         
-        return MemoryDataset(samples)
+        # Get processed batch IDs and filter them out
+        processed_batch_ids = get_processed_batch_ids(output_file_path, mode)
+        
+        # Filter out already processed batches
+        filtered_dataset = full_dataset.filter(lambda sample: sample.id not in processed_batch_ids)
+        
+        print(f"Total {dataset_type} batches: {total_batches}")
+        print(f"Already processed: {len(processed_batch_ids)}")
+        print(f"Remaining to process: {len(filtered_dataset)}")
+        
+        return filtered_dataset
         
     except ImportError:
         raise ImportError("Could not import required modules from semantic_clustering")
@@ -253,35 +253,91 @@ def _create_merge_sample(batch_data, batch_id, batch_file):
 
 def get_processed_batch_ids(output_file_path: Path, mode: str = "keywords") -> set:
     """
-    Get set of batch IDs that have already been processed by checking completion tracking files.
+    Dynamically determine which batches have already been processed by examining output files
+    and checking which items from each batch have been processed.
     
     Args:
-        output_file_path: Path to the output file (used to determine category directory)
-        mode: Operating mode to determine which completion file to check
+        output_file_path: Path to the output file containing processed items
+        mode: Operating mode ("keywords" or "merge")
         
     Returns:
         Set of batch IDs that have already been processed
     """
     processed_batch_ids = set()
     
-    # Determine completion tracking file based on mode
-    category_dir = output_file_path.parent
-    if mode == "merge":
-        completion_file = category_dir / "completed_merge_batches.jsonl"
-    else:  # keyword mode
-        completion_file = category_dir / "completed_keyword_batches.jsonl"
+    # Skip if output file doesn't exist yet
+    if not output_file_path.exists():
+        return processed_batch_ids
     
-    if completion_file.exists():
-        try:
-            completed_batches = utils.load_jsonl_file(completion_file, as_dataframe=False)
-            for batch_info in completed_batches:
-                batch_id = batch_info.get('batch_id')
-                if batch_id:
-                    processed_batch_ids.add(batch_id)
-        except Exception as e:
-            print(f"Warning: Could not load completion tracking from {completion_file}: {e}")
-    
-    return processed_batch_ids
+    try:
+        # Load processed items from output file
+        processed_items = utils.load_jsonl_file(output_file_path, as_dataframe=False)
+        if not processed_items:
+            return processed_batch_ids
+        
+        # Extract processed item identifiers
+        if mode == "merge":
+            # For merge mode, get category names
+            processed_names = {item.get('name') for item in processed_items if item.get('name')}
+        else:
+            # For keywords mode, get all keywords from all categories
+            processed_keywords = set()
+            for item in processed_items:
+                if 'keywords' in item:
+                    processed_keywords.update(item['keywords'])
+        
+        # Get the appropriate batch directory
+        if mode == "merge":
+            batch_dir = config.Categories.batch_dir
+            batch_pattern = "*batch_*.jsonl"
+        else:
+            batch_dir = config.Keywords.batch_dir
+            batch_pattern = "*batch_*.jsonl"
+        
+        # Check each batch file to see if its contents have been processed
+        if batch_dir.exists():
+            batch_files = sorted(batch_dir.glob(batch_pattern))
+            
+            for batch_file in batch_files:
+                try:
+                    # Load batch data
+                    batch_data = utils.load_jsonl_file(batch_file, as_dataframe=False)
+                    
+                    # Generate batch ID the same way the loading function does
+                    if mode == "merge":
+                        batch_id = f"merge_batch_{batch_file.stem}"
+                    else:
+                        batch_id = f"semantic_batch_{batch_file.stem.split('_')[-1]}"
+                    
+                    # Check if this batch has been processed
+                    batch_is_processed = False
+                    
+                    if mode == "merge":
+                        # For merge mode, check if any category names from this batch were processed
+                        for item in batch_data:
+                            if item.get('name') in processed_names:
+                                batch_is_processed = True
+                                break
+                    else:
+                        # For keywords mode, check if any keywords from this batch were processed
+                        for item in batch_data:
+                            if item.get('name') in processed_keywords:
+                                batch_is_processed = True
+                                break
+                    
+                    if batch_is_processed:
+                        processed_batch_ids.add(batch_id)
+                        
+                except Exception as e:
+                    print(f"Warning: Could not load batch file {batch_file}: {e}")
+                    continue
+        
+        print(f"Found {len(processed_batch_ids)} already processed batches in {mode} mode")
+        return processed_batch_ids
+        
+    except Exception as e:
+        print(f"Warning: Error determining processed batches from {output_file_path}: {e}")
+        return processed_batch_ids
 
 
 def load_categorise_dataset(batch_dir: Path = config.Keywords.batch_dir):
@@ -293,7 +349,7 @@ def load_categorise_dataset(batch_dir: Path = config.Keywords.batch_dir):
     """
     return _load_batch_dataset_generic(
         batch_dir=batch_dir,
-        output_file_path=config.Categories.category_proposal_path,
+        output_file_path=config.Categories.category_extracted_path,
         batch_id_prefix="semantic_batch_",
         sample_creator_func=_create_keyword_sample,
         dataset_type="keyword",
@@ -304,8 +360,8 @@ def load_categorise_dataset(batch_dir: Path = config.Keywords.batch_dir):
 def load_merge_dataset() -> MemoryDataset:
 
     return _load_batch_dataset_generic(
-        batch_dir=config.Categories.batches_dir,
-        output_file_path=config.Categories.categories_path,
+        batch_dir=config.Categories.batch_dir,
+        output_file_path=config.Categories.merged_categories_path,
         batch_id_prefix="merge_batch_",
         sample_creator_func=_create_merge_sample,
         dataset_type="category",
@@ -348,200 +404,235 @@ def load_string_jsonl(file_path: Path):
     return keywords
 
 
-def validate_keyword_coverage(all_input_keywords: set, categorized_keywords: set, missing_keywords: set, unknown_keywords: set):
-    """Validate that all input keywords are properly accounted for."""
-    total_processed = len(categorized_keywords) + len(missing_keywords)
+def deduplicate_categories(input_path=config.Categories.category_extracted_path):
+    """
+    Deduplicate categories by normalizing names and selecting best variants.
     
-    # Check for keywords that appear in unknown but weren't in input
-    invalid_unknown = unknown_keywords - all_input_keywords
-    if invalid_unknown:
-        print(f"Warning: {len(invalid_unknown)} unknown keywords not found in input: {list(invalid_unknown)[:5]}...")
+    Args:
+        input_path: Path to category proposals file. If None, uses config default.
     
-    # Check coverage
-    if total_processed != len(all_input_keywords):
-        print(f"Warning: Coverage mismatch - Input: {len(all_input_keywords)}, Processed: {total_processed}")
-    
-    return {
-        'total_input': len(all_input_keywords),
-        'categorized': len(categorized_keywords),
-        'missing': len(missing_keywords),
-        'unknown': len(unknown_keywords),
-        'invalid_unknown': len(invalid_unknown)
-    }
+    Returns:
+        list: Deduplicated categories with merged keywords
+    """
 
-
-
-@hooks(name="CategoriseOutputHook", description="Hook to save categorisation results as JSON files")
-class CategoriseOutputHook(Hooks):
-    def __init__(self, mode: str = "keywords"):
-        self.mode = mode  # "keywords" or "merge"
-        
-        # Choose output paths based on mode
-        if mode == "merge":
-            self.categories_path = config.Categories.categories_path
-            self.unknown_path = config.Categories.merge_unknown_path
-            self.missing_path = config.Categories.merge_missing_path
-            self.completion_tracking_path = config.Categories.category_dir / "completed_merge_batches.jsonl"
-        else:
-            self.categories_path = config.Categories.category_proposal_path
-            self.unknown_path = config.Categories.unknown_keywords_path
-            self.missing_path = config.Categories.missing_keywords_path
-            self.completion_tracking_path = config.Categories.category_dir / "completed_keyword_batches.jsonl"
-        
-        # Ensure output directories exist
-        self.categories_path.parent.mkdir(parents=True, exist_ok=True)
-        self.unknown_path.parent.mkdir(parents=True, exist_ok=True)
-        self.missing_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Open jsonlines writers for immediate writing
-        self.categories_writer = jsonlines.open(self.categories_path, 'a')
-        self.unknown_keywords_writer = jsonlines.open(self.unknown_path, 'a')
-        self.missing_keywords_writer = jsonlines.open(self.missing_path, 'a')
-        self.completion_writer = jsonlines.open(self.completion_tracking_path, 'a')
-        
-        # Track counts for coverage validation instead of storing all data
-        self.total_input_keywords = 0
-        self.total_categorized_keywords = 0
-        self.total_unknown_keywords = 0
-        self.total_missing_keywords = 0
-        self.total_categories = 0
-        
-        print(f"Initialized CategoriseOutputHook in {mode} mode - tracking completions in {self.completion_tracking_path.name}")
     
-    async def on_sample_end(self, data: SampleEnd) -> None:
-        """Write categorisation results immediately to disk."""
-        try:
-            # Parse the LLM output
-            _, result_json = utils.parse_results(data.sample.output.completion)
-            
-            # Track input keywords for coverage validation
-            sample_keywords = set(data.sample.metadata.get('keywords', []))
-            self.total_input_keywords += len(sample_keywords)
-            
-            # Get categories
-            categories = result_json.get('categories', [])
-            self.total_categories += len(categories)
-            
-            # Write categories immediately
-            for category in categories:
-                # Add source metadata for merge mode
-                if self.mode == "merge":
-                    batch_id = data.sample.metadata.get('batch_id', data.sample.id)
-                    category['source_batch_id'] = batch_id
-                    category['source_batch_file'] = data.sample.metadata.get('batch_file')
-                
-                self.categories_writer.write(category)
-                
-                # Track categorized keywords and write unknown keywords immediately
-                category_keywords = set(category.get('keywords', []))
-                self.total_categorized_keywords += len(category_keywords)
-                
-                # Write unknown keywords immediately if this is the "Unknown" category
-                if category.get('name') == "Unknown":
-                    for keyword in category_keywords:
-                        self.unknown_keywords_writer.write(keyword)
-                        self.total_unknown_keywords += 1
-            
-            # Write missing keywords from scorer immediately
-            if hasattr(data.sample, 'scores') and 'keywords_confusion_matrix' in data.sample.scores:
-                missing_keywords = data.sample.scores['keywords_confusion_matrix'].metadata.get('fn', [])
-                for keyword in missing_keywords:
-                    self.missing_keywords_writer.write(keyword)
-                    self.total_missing_keywords += 1
-            
-            # Track batch completion for both modes
-            batch_completion_info = {
-                'batch_id': data.sample.metadata.get('batch_id', data.sample.id),
-                'batch_file': data.sample.metadata.get('batch_file'),
-                'categories_produced': len(categories),
-                'keywords_count': len(sample_keywords),
-                'mode': self.mode
+    categories_dict = {}  # normalized_name -> {category_data, variants}
+    all_categories = utils.load_jsonl_file(input_path, as_dataframe=False)
+    
+    for category in all_categories:
+        normalized_name = utils.normalize(category["name"])
+        
+        if normalized_name not in categories_dict:
+            categories_dict[normalized_name] = {
+                "variants": [],
+                "keywords": set()
             }
+        
+        categories_dict[normalized_name]["variants"].append(category)
+        categories_dict[normalized_name]["keywords"].update(category.get("keywords", []))
+    
+    final_categories = []
+    
+    # For each normalized name, choose the variant with the longest description
+    for normalized_name, data in categories_dict.items():
+        # Find variant with longest description
+        best_variant = max(data["variants"], key=lambda c: len(c.get("description", "")))
+        
+        # Create final category with all keywords
+        merged_keywords = list(data["keywords"])
+        final_category = {
+            "name": best_variant["name"],
+            "description": best_variant["description"],
+            "keywords": merged_keywords,
+            "field_of_research": best_variant["field_of_research"]
+        }
+        
+        final_categories.append(final_category)
+    
+    return final_categories
+
+
+def postprocess_categories(input_path=config.Categories.category_extracted_path, output_path=config.Categories.category_proposal_path):
+    
+    deduplicated = deduplicate_categories(input_path)
+    utils.save_jsonl_file(deduplicated, output_path)
+    
+
+
+def hook_factory(mode):
+    @hooks(name="OutputHook", description="Hook to save categorisation results as JSON files")
+    class CategoriseOutputHook(Hooks):
+        def __init__(self):
+            self.mode = mode  # "keywords" or "merge"
+            
+            # Choose output paths based on mode
+            if mode == "merge":
+                self.merged_categories_path = config.Categories.merged_categories_path
+                self.unknown_path = config.Categories.merge_unknown_path
+                self.missing_path = config.Categories.merge_missing_path
+            else:
+                self.merged_categories_path = config.Categories.category_extracted_path
+                self.unknown_path = config.Categories.unknown_keywords_path
+                self.missing_path = config.Categories.missing_keywords_path
+            
+            # Open jsonlines writers for immediate writing
+            self.categories_writer = jsonlines.open(self.merged_categories_path, 'a')
+            
+            if mode == "merge":
+                self.unknown_writer = jsonlines.open(self.unknown_path, 'a')
+                self.missing_writer = jsonlines.open(self.missing_path, 'a')
+            else:
+                self.unknown_keywords_writer = jsonlines.open(self.unknown_path, 'a')
+                self.missing_keywords_writer = jsonlines.open(self.missing_path, 'a')
+            
+            # Initialize counters
+            if mode == "merge":
+                self.total_input_categories = 0
+                self.total_merged_categories = 0
+                self.total_unknown_categories = 0
+                self.total_missing_categories = 0
+            else:
+                self.total_input_keywords = 0
+                self.total_categories = 0
+                self.total_categorized_keywords = 0
+                self.total_unknown_keywords = 0
+                self.total_missing_keywords = 0
+            
+
+        async def on_sample_end(self, data: SampleEnd) -> None:
+            """Write categorisation results immediately to disk."""
+            try:
+                # Parse the LLM output
+                _, result_json = utils.parse_results(data.sample.output.completion)
+                
+                if self.mode == "merge":
+                    # For merge mode, track input categories and merged categories
+                    input_categories = data.sample.metadata.get('category_names', [])
+                    self.total_input_categories += len(input_categories)
+                    
+                    # Get merged categories
+                    merged_categories = result_json.get('categories', [])
+                    self.total_merged_categories += len(merged_categories)
+                    
+                    # Track which input categories are referenced
+                    referenced_categories = set()
+                    
+                    for merged_category in merged_categories:
+                        # Add source metadata
+                        batch_id = data.sample.metadata.get('batch_id', data.sample.id)
+                        merged_category['source_batch_id'] = batch_id
+                        merged_category['source_batch_file'] = data.sample.metadata.get('batch_file')
+                        
+                        # Track referenced source categories
+                        source_categories = merged_category.get('source_categories', [])
+                        referenced_categories.update(source_categories)
+                        
+                        self.categories_writer.write(merged_category)
+                    
+                    # Find missing categories (input categories not referenced in any merged category)
+                    missing_categories = set(input_categories) - referenced_categories
+                    for missing_category in missing_categories:
+                        self.missing_writer.write(missing_category)
+                        self.total_missing_categories += 1
+                    
+                    # Handle missing categories from scorer if available
+                    if hasattr(data.sample, 'scores') and 'category_confusion_matrix' in data.sample.scores:
+                        scorer_missing = data.sample.scores['category_confusion_matrix'].metadata.get('fn', [])
+                        for missing_category in scorer_missing:
+                            if missing_category not in missing_categories:  # Avoid duplicates
+                                self.missing_writer.write(missing_category)
+                                self.total_missing_categories += 1
+                
+                else:
+                    # For keywords mode, use existing logic
+                    sample_keywords = set(data.sample.metadata.get('keywords', []))
+                    self.total_input_keywords += len(sample_keywords)
+                    
+                    # Get categories
+                    categories = result_json.get('categories', [])
+                    self.total_categories += len(categories)
+                    
+                    # Write categories immediately, excluding "Unknown" categories from proposals
+                    for category in categories:
+                        # Track categorized keywords and write unknown keywords immediately
+                        category_keywords = set(category.get('keywords', []))
+                        self.total_categorized_keywords += len(category_keywords)
+                        
+                        # Handle "Unknown" category separately - don't include in proposals
+                        if category.get('name') == "Unknown":
+                            for keyword in category_keywords:
+                                self.unknown_keywords_writer.write(keyword)
+                                self.total_unknown_keywords += 1
+                        else:
+                            self.categories_writer.write(category)
+                    
+                    # Write missing keywords from scorer immediately
+                    if hasattr(data.sample, 'scores') and 'keywords_confusion_matrix' in data.sample.scores:
+                        missing_keywords = data.sample.scores['keywords_confusion_matrix'].metadata.get('fn', [])
+                        for keyword in missing_keywords:
+                            self.missing_keywords_writer.write(keyword)
+                            self.total_missing_keywords += 1
+                    
+            except Exception as e:
+                print(f"Error processing sample {data.sample.id}: {e}")
+
+        async def on_task_end(self, data: TaskEnd) -> None:
+            """Close file writers and print summary statistics."""
+            # Print summary statistics
+            print(f"\n=== Categorization Summary ===")
+            print(f"Mode: {self.mode}")
             
             if self.mode == "merge":
-                batch_completion_info['total_categories_in_batch'] = data.sample.metadata.get('total_categories_in_batch')
+                print(f"Total input categories: {self.total_input_categories}")
+                print(f"Total merged categories: {self.total_merged_categories}")
+                print(f"Missing categories: {self.total_missing_categories}")
+                print(f"Merged categories written to: {self.merged_categories_path}")
+                if self.total_missing_categories > 0:
+                    print(f"Missing categories written to: {self.missing_path}")
+            else:
+                print(f"Total input keywords: {self.total_input_keywords}")
+                print(f"Total categories created: {self.total_categories}")
+                print(f"Total categorized keywords: {self.total_categorized_keywords}")
+                print(f"Unknown keywords (excluded): {self.total_unknown_keywords}")
+                print(f"Missing keywords: {self.total_missing_keywords}")
+                print(f"Categories written to: {self.merged_categories_path}")
+                if self.total_unknown_keywords > 0:
+                    print(f"Unknown keywords written to: {self.unknown_path}")
+                    
+            print("===============================\n")
             
-            self.completion_writer.write(batch_completion_info)
-                
-        except Exception as e:
-            print(f"Error processing sample {data.sample.id}: {e}")
+            if self.mode == "keywords":
+                postprocess_categories()
 
-    async def on_task_end(self, data: TaskEnd) -> None:
-        """Close file writers and provide summary statistics."""
-        try:
-            # Print processing summary using counts instead of full validation
-            print(f"Keyword processing summary ({self.mode} mode):")
-            print(f"  Total input keywords: {self.total_input_keywords}")
-            print(f"  Successfully categorized: {self.total_categorized_keywords}")
-            print(f"  Missing keywords: {self.total_missing_keywords}")
-            print(f"  Unknown keywords: {self.total_unknown_keywords}")
-            print(f"  Total categories created: {self.total_categories}")
-            
-            # Close all file writers
-            try:
-                self.categories_writer.close()
+            # Close writers
+            self.categories_writer.close()
+            if self.mode == "merge":
+                self.unknown_writer.close()
+                self.missing_writer.close()
+            else:
                 self.unknown_keywords_writer.close()
                 self.missing_keywords_writer.close()
-                self.completion_writer.close()
-                print(f"Successfully closed all output files for {self.mode} mode")
-            except Exception as e:
-                print(f"Warning: Error closing files: {e}")
-            
-        except Exception as e:
-            print(f"Error in task end processing: {e}")
-            # Try to close files even if there was an error
-            try:
-                self.categories_writer.close()
-                self.unknown_keywords_writer.close()
-                self.missing_keywords_writer.close()
-                self.completion_writer.close()
-            except:
-                pass
-
 
 
 @task
-def categorise(mode: str = "keywords"):
-    """
-    Categorize keywords or merge duplicate categories.
-    
-    Args:
-        mode: Operating mode - "keywords" for keyword categorization or "merge" for category merging
-              - "keywords": Categorize keywords using semantic clustering batches
-              - "merge": Merge duplicate categories from previous categorization runs
-    """
-    
-    # Choose dataset, prompt, schema, and scorer based on mode
-    if mode == "keywords":
-        dataset = load_categorise_dataset()
-        system_prompt = CATEGORISE_SYSTEM_PROMPT
-        response_schema = ResponseSchema(
-            name="Categories",
-            json_schema=json_schema(CategoryList),
-            strict=True
-        )
-        scorer_func = keywords_confusion_matrix()
-        print("Running in keywords categorization mode")
-    elif mode == "merge":
-        dataset = load_merge_dataset()
-        system_prompt = MERGE_SYSTEM_PROMPT
-        response_schema = ResponseSchema(
-            name="MergedCategories",
-            json_schema=json_schema(MergedCategoryList),
-            strict=True
-        )
-        scorer_func = category_confusion_matrix()
-        print("Running in category merging mode")
-    else:
-        raise ValueError(f"Invalid mode: {mode}. Must be 'keywords' or 'merge'")
+def merge():
+
+    dataset = load_merge_dataset()
+    response_schema = ResponseSchema(
+        name="MergedCategories",
+        json_schema=json_schema(MergedCategoryList),
+        strict=True
+    )
+    scorer_func = category_confusion_matrix()
+    print("Running in category merging mode")
 
     # Create hook instance with mode
-    hook_instance = CategoriseOutputHook(mode=mode)
+    hook_factory(mode="merge")
 
     return Task(
         dataset=dataset,
         solver=[
-            system_message(system_prompt),
+            system_message(MERGE_SYSTEM_PROMPT),
             generate()
         ],
         scorer=[
@@ -550,7 +641,40 @@ def categorise(mode: str = "keywords"):
         config=GenerateConfig(
             response_schema=response_schema,
         ),
-        hooks=[hook_instance]
+        hooks=["OutputHook"]  # Use the dynamically created hook class name
     )
+
+
+
+@task
+def categorise():
+
+    dataset = load_categorise_dataset()
+    response_schema = ResponseSchema(
+        name="Categories",
+        json_schema=json_schema(CategoryList),
+        strict=True
+    )
+    scorer_func = keywords_confusion_matrix()
+    print("Running in keywords categorization mode")
+
+    # Create hook instance with mode
+    hook_factory(mode="keywords")
+
+    return Task(
+        dataset=dataset,
+        solver=[
+            system_message(CATEGORISE_SYSTEM_PROMPT),
+            generate()
+        ],
+        scorer=[
+            scorer_func
+        ],
+        config=GenerateConfig(
+            response_schema=response_schema,
+        ),
+        hooks=["OutputHook"]  # Use the dynamically created hook class name
+    )
+
 
 

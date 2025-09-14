@@ -230,7 +230,7 @@ class KeywordsExtractionHook(Hooks):
         # Deduplicate keywords using normalized terms
 
         self.extracted_keywords_writer.close()
-        from keywords_postprocess import postprocess
+        from postprocess import postprocess
         postprocess()
 
 def load_extract_dataset():

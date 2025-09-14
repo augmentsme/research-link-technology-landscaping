@@ -170,3 +170,6 @@ def to_clipboard_with_max_width(series, max_width=80):
     # Copy to clipboard
     series_copy.to_clipboard()
     return series_copy
+
+def get_keywords_freq_table_with_selector(keywords, grants, selector):
+    return keywords.explode("grants")[keywords.explode("grants").grants.isin(grants[selector].id)].groupby("name").agg({"grants": "count"}).sort_values("grants", ascending=False).reset_index().merge(keywords, how="left", left_on="name", right_on="name").drop("grants_y", axis=1).rename(columns={"grants_x": "grants"})

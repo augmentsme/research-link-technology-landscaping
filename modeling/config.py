@@ -13,7 +13,6 @@ DATA_DIR = ROOT_DIR / "data"
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
 
-PROMPTS_DIR = ROOT_DIR / "PromptTemplates"
 
 CLASSIFICATION_PATH = RESULTS_DIR / "classification.json"
 
@@ -93,7 +92,8 @@ class Grants:
     
     neo4j_uri = "bolt://localhost:7687"
     neo4j_username = "neo4j"
-    neo4j_password = CONFIG["NEO4J_PASSWORD"]
+    neo4j_password = CONFIG.get("NEO4J_PASSWORD", "password")
+    # neo4j_password = CONFIG["NEO4J_PASSWORD"]
     
     
     link_path = grants_dir / "org_researcher_grant_links.jsonl"

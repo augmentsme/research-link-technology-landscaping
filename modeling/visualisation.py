@@ -17,6 +17,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+import streamlit as st
 
 import config
 
@@ -650,6 +651,557 @@ class TreemapVisualizer:
             'Category': '#ff7f0e',        # Orange  
             'Keyword': '#2ca02c',         # Green
         }
+
+
+@dataclass
+class EntityTrendsConfig:
+    """Configuration for entity trends visualization"""
+    # Data structure
+    entity_column: str
+    time_column: str
+    value_column: str
+    
+    # Selection and ranking
+    max_entities: int
+    ranking_metric: str = None  # which metric to use for ranking (if different from value_column)
+    display_metric: str = None  # which metric to display on y-axis (if different from value_column)
+    
+    # Aggregation
+    aggregation_method: str = 'sum'  # 'sum', 'count', 'mean'
+    use_cumulative: bool = True
+    
+    # Visualization
+    chart_type: str = 'line'  # 'line', 'area_stacked'
+    show_others_group: bool = False  # for area charts
+    
+    # Styling
+    title: str = "Entity Trends Over Time"
+    x_axis_label: str = "Year"
+    y_axis_label: str = "Count"
+    height: int = 600
+
+
+class PopularityTrendsVisualizer:
+    """
+    Generalized visualizer for tracking entity popularity/trends over time.
+    
+    This class abstracts the common pattern found across Keywords, Grants, and Categories pages
+    where we track multiple entities (keywords, funders, categories) over time with various metrics.
+    """
+    
+    def __init__(self):
+        self.color_palette = [
+            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+            '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
+            '#c49c94', '#f7b6d3', '#c7c7c7', '#dbdb8d', '#9edae5'
+        ]
+    
+    def create_trends_visualization(self, 
+                                  data: pd.DataFrame, 
+                                  config: EntityTrendsConfig,
+                                  progress_callback=None) -> go.Figure:
+        """
+        Create a trends visualization from generic data.
+        
+        Args:
+            data: DataFrame with entity, time, and value columns
+            config: Configuration specifying how to process and visualize data
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            Plotly Figure object
+        """
+        if progress_callback:
+            progress_callback("Preparing time series data...", 20)
+        
+        # Prepare time series data
+        time_series_df = self._prepare_time_series_data(data, config)
+        
+        if time_series_df.empty:
+            return self._create_empty_figure(config)
+        
+        if progress_callback:
+            progress_callback("Selecting top entities...", 40)
+        
+        # Select top entities
+        top_entities_df = self._select_top_entities(time_series_df, config)
+        
+        if progress_callback:
+            progress_callback("Creating visualization...", 80)
+        
+        # Create visualization based on chart type
+        if config.chart_type == 'line':
+            fig = self._create_line_chart(top_entities_df, config)
+        elif config.chart_type == 'area_stacked':
+            fig = self._create_stacked_area_chart(top_entities_df, config)
+        else:
+            raise ValueError(f"Unsupported chart type: {config.chart_type}")
+        
+        if progress_callback:
+            progress_callback("Visualization complete!", 100)
+        
+        return fig
+    
+    def _prepare_time_series_data(self, data: pd.DataFrame, config: EntityTrendsConfig) -> pd.DataFrame:
+        """Convert input data to standardized time series format"""
+        # Ensure required columns exist
+        required_cols = [config.entity_column, config.time_column, config.value_column]
+        missing_cols = [col for col in required_cols if col not in data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+        
+        # Aggregate data by entity and time
+        if config.aggregation_method == 'sum':
+            time_series = data.groupby([config.entity_column, config.time_column])[config.value_column].sum().reset_index()
+        elif config.aggregation_method == 'count':
+            time_series = data.groupby([config.entity_column, config.time_column]).size().reset_index(name=config.value_column)
+        elif config.aggregation_method == 'mean':
+            time_series = data.groupby([config.entity_column, config.time_column])[config.value_column].mean().reset_index()
+        else:
+            raise ValueError(f"Unsupported aggregation method: {config.aggregation_method}")
+        
+        # Rename columns to standard names for easier processing
+        time_series.columns = ['entity', 'time', 'value']
+        
+        return time_series
+    
+    def _select_top_entities(self, time_series_df: pd.DataFrame, config: EntityTrendsConfig) -> pd.DataFrame:
+        """Select top N entities based on ranking metric"""
+        # Calculate ranking metric for each entity
+        ranking_metric = config.ranking_metric or 'value'
+        
+        if ranking_metric == 'value':
+            entity_rankings = time_series_df.groupby('entity')['value'].sum().sort_values(ascending=False)
+        else:
+            # If using a different ranking metric, assume it's already in the data
+            entity_rankings = time_series_df.groupby('entity')[ranking_metric].sum().sort_values(ascending=False)
+        
+        # Select top entities
+        if config.show_others_group and len(entity_rankings) > config.max_entities:
+            top_entities = entity_rankings.head(config.max_entities - 1).index.tolist()
+            
+            # Group remaining entities as "Others"
+            others_data = time_series_df[~time_series_df['entity'].isin(top_entities)].copy()
+            if not others_data.empty:
+                others_aggregated = others_data.groupby('time')['value'].sum().reset_index()
+                others_aggregated['entity'] = 'Others'
+                
+                # Combine top entities with Others
+                top_data = time_series_df[time_series_df['entity'].isin(top_entities)]
+                return pd.concat([top_data, others_aggregated], ignore_index=True)
+        else:
+            top_entities = entity_rankings.head(config.max_entities).index.tolist()
+        
+        return time_series_df[time_series_df['entity'].isin(top_entities)]
+    
+    def _create_line_chart(self, data: pd.DataFrame, config: EntityTrendsConfig) -> go.Figure:
+        """Create line chart for individual entity tracking - OPTIMIZED VERSION"""
+        fig = go.Figure()
+        
+        # Get time range and entities
+        times = sorted(data['time'].unique())
+        entities = data['entity'].unique()
+        
+        # OPTIMIZATION: Create pivot table once instead of filtering for each entity
+        pivot_data = data.pivot_table(index='time', columns='entity', values='value', aggfunc='sum', fill_value=0)
+        
+        # Ensure all times are present
+        time_index = pd.Index(times)
+        pivot_data = pivot_data.reindex(time_index, fill_value=0)
+        
+        # Create traces for each entity
+        for i, entity in enumerate(entities):
+            if entity not in pivot_data.columns:
+                continue
+                
+            full_values = pivot_data[entity].values
+            
+            # Apply cumulative if requested
+            if config.use_cumulative:
+                full_values = np.cumsum(full_values)
+            
+            # Choose color
+            color = self.color_palette[i % len(self.color_palette)]
+            
+            # Create hover template
+            hover_template = f'<b>{entity}</b><br>' + \
+                           f'{config.x_axis_label}: %{{x}}<br>' + \
+                           f'{config.y_axis_label}: %{{y}}<br>' + \
+                           '<extra></extra>'
+            
+            fig.add_trace(go.Scatter(
+                x=times,
+                y=full_values,
+                mode='lines+markers',
+                name=entity,
+                line=dict(width=2, color=color),
+                marker=dict(size=6),
+                hovertemplate=hover_template
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=config.title,
+            xaxis_title=config.x_axis_label,
+            yaxis_title=config.y_axis_label,
+            height=config.height,
+            hovermode='x unified',
+            legend_title='Entity',
+            template='plotly_white'
+        )
+        
+        return fig
+    
+    def _create_stacked_area_chart(self, data: pd.DataFrame, config: EntityTrendsConfig) -> go.Figure:
+        """Create stacked area chart for aggregate tracking"""
+        # Create pivot table
+        pivot_data = data.pivot(index='time', columns='entity', values='value').fillna(0)
+        
+        # Sort entities by total for better stacking order
+        entity_totals = pivot_data.sum().sort_values(ascending=False)
+        pivot_data = pivot_data[entity_totals.index]
+        
+        fig = go.Figure()
+        
+        # Create traces for each entity
+        for i, entity in enumerate(pivot_data.columns):
+            values = pivot_data[entity].values
+            
+            # Apply cumulative if requested (note: for stacked areas, usually not cumulative per entity)
+            if config.use_cumulative:
+                values = np.cumsum(values)
+            
+            # Choose color, use distinct color for "Others"
+            if entity == 'Others':
+                color = '#cccccc'
+            else:
+                color = self.color_palette[i % len(self.color_palette)]
+            
+            # Create hover template
+            hover_template = f'<b>{entity}</b><br>' + \
+                           f'{config.x_axis_label}: %{{x}}<br>' + \
+                           f'{config.y_axis_label}: %{{y}}<br>' + \
+                           '<extra></extra>'
+            
+            fig.add_trace(go.Scatter(
+                x=pivot_data.index,
+                y=values,
+                mode='lines',
+                stackgroup='one',
+                name=entity,
+                line=dict(width=0),
+                fillcolor=color,
+                hovertemplate=hover_template
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=config.title,
+            xaxis_title=config.x_axis_label,
+            yaxis_title=config.y_axis_label,
+            height=config.height,
+            hovermode='x unified',
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=1,
+                xanchor="left",
+                x=1.02
+            ),
+            template='plotly_white'
+        )
+        
+        return fig
+    
+    def _create_empty_figure(self, config: EntityTrendsConfig) -> go.Figure:
+        """Create empty figure when no data is available"""
+        fig = go.Figure()
+        fig.update_layout(
+            title=f"{config.title} - No Data Available",
+            xaxis_title=config.x_axis_label,
+            yaxis_title=config.y_axis_label,
+            height=config.height,
+            template='plotly_white'
+        )
+        fig.add_annotation(
+            text="No data available for the selected criteria",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16)
+        )
+        return fig
+
+
+@dataclass
+class DataExplorerConfig:
+    """Configuration for data exploration functionality"""
+    # Display settings
+    title: str = "Data Explorer"
+    description: str = "Explore the dataset with search and filtering capabilities"
+    max_display_rows: int = 100
+    
+    # Search settings
+    search_columns: List[str] = None  # Columns to search in (None = all text columns)
+    search_placeholder: str = "Enter search terms..."
+    search_help: str = "Search across multiple columns. Use spaces to separate terms."
+    
+    # Column settings
+    display_columns: List[str] = None  # Columns to display (None = all columns)
+    column_formatters: Dict[str, callable] = None  # Custom formatters for specific columns
+    column_renames: Dict[str, str] = None  # Column name mappings for display
+    
+    # Statistics settings
+    show_statistics: bool = True
+    statistics_columns: List[str] = None  # Columns to include in statistics
+    
+    # Additional features
+    show_data_info: bool = True
+    enable_download: bool = True
+
+
+class DataExplorer:
+    """
+    Generalized data exploration component for displaying searchable DataFrames.
+    
+    This class abstracts the common pattern found across Keywords, Grants, and Categories pages
+    where we display filtered data in tables with search functionality.
+    """
+    
+    def __init__(self):
+        pass
+    
+    def render_explorer(self, data: pd.DataFrame, config: DataExplorerConfig) -> None:
+        """
+        Render the complete data exploration interface.
+        
+        Args:
+            data: DataFrame to explore
+            config: Configuration for display and behavior
+        """
+        if data.empty:
+            st.warning(f"No data available in {config.title}")
+            return
+        
+        # Header
+        st.markdown(f"### {config.title}")
+        if config.description:
+            st.markdown(config.description)
+        
+        # Statistics
+        if config.show_statistics:
+            self._display_summary_statistics(data, config)
+        
+        # Data info
+        if config.show_data_info:
+            self._display_data_info(data)
+        
+        # Search functionality
+        search_term = self._render_search_input(config)
+        
+        # Apply search filter
+        filtered_data = self._apply_search_filter(data, search_term, config)
+        
+        # Display the DataFrame
+        self._display_dataframe(filtered_data, config)
+        
+        # Download option
+        if config.enable_download:
+            self._render_download_option(filtered_data, config.title)
+    
+    def _display_summary_statistics(self, data: pd.DataFrame, config: DataExplorerConfig) -> None:
+        """Display summary statistics"""
+        st.markdown("#### 📊 Summary Statistics")
+        
+        # Select columns for statistics
+        stats_columns = config.statistics_columns or data.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if stats_columns:
+            # Create metrics in columns
+            num_metrics = min(len(stats_columns) + 1, 5)  # +1 for total rows
+            cols = st.columns(num_metrics)
+            
+            # Total rows
+            with cols[0]:
+                st.metric("Total Records", f"{len(data):,}")
+            
+            # Statistics for numeric columns
+            for i, col in enumerate(stats_columns[:4]):  # Max 4 numeric metrics
+                if i + 1 < len(cols):
+                    with cols[i + 1]:
+                        if data[col].dtype in ['int64', 'float64']:
+                            mean_val = data[col].mean()
+                            if mean_val >= 1000:
+                                display_val = f"{mean_val/1000:.1f}K"
+                            elif mean_val >= 1000000:
+                                display_val = f"{mean_val/1000000:.1f}M"
+                            else:
+                                display_val = f"{mean_val:.1f}"
+                            st.metric(f"Avg {col.replace('_', ' ').title()}", display_val)
+                        else:
+                            unique_count = data[col].nunique()
+                            st.metric(f"Unique {col.replace('_', ' ').title()}", f"{unique_count:,}")
+        else:
+            # Basic statistics when no numeric columns
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Records", f"{len(data):,}")
+            with col2:
+                st.metric("Total Columns", len(data.columns))
+            with col3:
+                non_null_pct = ((data.count().sum() / (len(data) * len(data.columns))) * 100)
+                st.metric("Data Completeness", f"{non_null_pct:.1f}%")
+    
+    def _display_data_info(self, data: pd.DataFrame) -> None:
+        """Display basic data information"""
+        with st.expander("ℹ️ Dataset Information", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Basic Info:**")
+                st.write(f"- Shape: {data.shape[0]:,} rows × {data.shape[1]} columns")
+                st.write(f"- Memory usage: ~{data.memory_usage(deep=True).sum() / 1024:.1f} KB")
+                
+            with col2:
+                st.write("**Column Types:**")
+                dtype_counts = data.dtypes.value_counts()
+                for dtype, count in dtype_counts.items():
+                    st.write(f"- {dtype}: {count} columns")
+    
+    def _render_search_input(self, config: DataExplorerConfig) -> str:
+        """Render search input field"""
+        st.markdown("#### 🔍 Search and Filter")
+        
+        search_term = st.text_input(
+            "Search",
+            placeholder=config.search_placeholder,
+            help=config.search_help,
+            key=f"search_{hash(config.title)}"
+        )
+        
+        return search_term.strip()
+    
+    def _apply_search_filter(self, data: pd.DataFrame, search_term: str, config: DataExplorerConfig) -> pd.DataFrame:
+        """Apply search filter to the data"""
+        if not search_term:
+            return data
+        
+        # Determine columns to search
+        search_columns = config.search_columns
+        if search_columns is None:
+            # Default to text/object columns
+            search_columns = data.select_dtypes(include=['object', 'string']).columns.tolist()
+        
+        # Ensure search columns exist in data
+        search_columns = [col for col in search_columns if col in data.columns]
+        
+        if not search_columns:
+            st.warning("No searchable columns found in the data.")
+            return data
+        
+        # Split search terms
+        search_terms = search_term.lower().split()
+        
+        # Create mask for each search term
+        masks = []
+        for term in search_terms:
+            term_masks = []
+            for col in search_columns:
+                # Convert column to string and search
+                col_mask = data[col].astype(str).str.lower().str.contains(term, na=False, regex=False)
+                term_masks.append(col_mask)
+            
+            # Combine masks for this term (OR across columns)
+            if term_masks:
+                term_mask = pd.concat(term_masks, axis=1).any(axis=1)
+                masks.append(term_mask)
+        
+        # Combine all term masks (AND across terms)
+        if masks:
+            final_mask = pd.concat(masks, axis=1).all(axis=1)
+            filtered_data = data[final_mask]
+        else:
+            filtered_data = data
+        
+        # Show search results info
+        if search_term:
+            st.info(f"Found {len(filtered_data):,} records matching '{search_term}' (searched in: {', '.join(search_columns)})")
+        
+        return filtered_data
+    
+    def _display_dataframe(self, data: pd.DataFrame, config: DataExplorerConfig) -> None:
+        """Display the DataFrame with proper formatting"""
+        if data.empty:
+            st.warning("No records match your search criteria.")
+            return
+        
+        # Prepare display data
+        display_data = data.copy()
+        
+        # Apply column selection
+        if config.display_columns:
+            available_columns = [col for col in config.display_columns if col in display_data.columns]
+            if available_columns:
+                display_data = display_data[available_columns]
+        
+        # Apply column formatters
+        if config.column_formatters:
+            for col, formatter in config.column_formatters.items():
+                if col in display_data.columns:
+                    try:
+                        display_data[col] = display_data[col].apply(formatter)
+                    except Exception as e:
+                        st.warning(f"Error formatting column {col}: {e}")
+        
+        # Apply column renames
+        if config.column_renames:
+            rename_dict = {k: v for k, v in config.column_renames.items() if k in display_data.columns}
+            display_data = display_data.rename(columns=rename_dict)
+        
+        # Limit displayed rows
+        if len(display_data) > config.max_display_rows:
+            st.warning(f"Showing first {config.max_display_rows:,} of {len(display_data):,} records. Use search to narrow results.")
+            display_data = display_data.head(config.max_display_rows)
+        
+        # Display the data
+        st.markdown(f"#### 📋 Data Table ({len(display_data):,} records)")
+        st.dataframe(
+            display_data,
+            use_container_width=True,
+            height=400,
+            key=f"dataframe_{hash(config.title)}"
+        )
+    
+    def _render_download_option(self, data: pd.DataFrame, title: str) -> None:
+        """Render download option for the filtered data"""
+        if data.empty:
+            return
+        
+        with st.expander("💾 Download Data", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # CSV download
+                csv_data = data.to_csv(index=False)
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv_data,
+                    file_name=f"{title.lower().replace(' ', '_')}_data.csv",
+                    mime="text/csv",
+                    help="Download the current filtered data as a CSV file"
+                )
+            
+            with col2:
+                # JSON download
+                json_data = data.to_json(orient='records', indent=2)
+                st.download_button(
+                    label="Download as JSON",
+                    data=json_data,
+                    file_name=f"{title.lower().replace(' ', '_')}_data.json",
+                    mime="application/json",
+                    help="Download the current filtered data as a JSON file"
+                )
 
 
 # Convenience functions for backward compatibility

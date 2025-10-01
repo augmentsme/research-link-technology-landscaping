@@ -28,6 +28,7 @@ from shared_utils import (
     create_research_field_options,
     clear_previous_page_state
 )
+from visualisation import PopularityTrendsVisualizer, EntityTrendsConfig, DataExplorer, DataExplorerConfig
 
 
 @dataclass
@@ -313,8 +314,8 @@ class GrantDistributionVisualizer:
             # Group grants by year and funder
             grants_by_year_funder = filtered_grants.groupby(['start_year', 'funder']).size().reset_index(name='count')
             
-            # Create stacked area chart
-            fig = self._create_stacked_area_chart(grants_by_year_funder, filter_config, max_funders)
+            # Create stacked area chart using generalized visualizer
+            fig = self._create_grants_visualization(grants_by_year_funder, filter_config, max_funders)
             
             # Display the chart
             st.plotly_chart(fig, use_container_width=True)
@@ -325,100 +326,39 @@ class GrantDistributionVisualizer:
             # Debug expander showing underlying data
             self._show_debug_data(filtered_grants, grants_by_year_funder)
     
-    def _create_stacked_area_chart(self, grants_by_year_funder: pd.DataFrame, filter_config: FilterConfig, max_funders: int) -> go.Figure:
-        """Create the stacked area chart showing funders by color"""
-        # Create a pivot table with years as index and funders as columns
-        pivot_data = grants_by_year_funder.pivot(index='start_year', columns='funder', values='count').fillna(0)
+    def _create_grants_visualization(self, grants_by_year_funder: pd.DataFrame, filter_config: FilterConfig, max_funders: int) -> go.Figure:
+        """Create the grants visualization using the generalized PopularityTrendsVisualizer"""
         
-        # Sort funders by total grants (descending) for better stacking order
-        funder_totals = pivot_data.sum().sort_values(ascending=False)
-        
-        # Limit the number of funders displayed
-        if len(funder_totals) > max_funders:
-            # Keep top funders
-            top_funders = funder_totals.head(max_funders - 1).index.tolist()
-            
-            # Group remaining funders into "Others"
-            other_funders = funder_totals.tail(len(funder_totals) - max_funders + 1).index.tolist()
-            
-            # Calculate "Others" values by summing remaining funders
-            others_data = pivot_data[other_funders].sum(axis=1)
-            
-            # Create new pivot data with limited funders + Others
-            limited_pivot = pivot_data[top_funders].copy()
-            limited_pivot['Others'] = others_data
-            
-            # Update the list of funders to display
-            sorted_funders = top_funders + ['Others']
-            pivot_data = limited_pivot
-        else:
-            sorted_funders = funder_totals.index.tolist()
-        
-        # Get years range
-        years = pivot_data.index.tolist()
-        
-        # Define a color palette for funders
-        colors = [
-            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
-            '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
-            '#c49c94', '#f7b6d3', '#c7c7c7', '#dbdb8d', '#9edae5'
-        ]
-        
-        # Use a distinct color for "Others" if it exists
-        if 'Others' in sorted_funders:
-            colors = colors[:-1] + ['#cccccc']  # Gray color for Others
-        
-        fig = go.Figure()
-        
-        # Create traces for each funder
-        for i, funder in enumerate(sorted_funders):
-            color = colors[i % len(colors)]
-            
-            # For stacked area chart, use fill='tonexty' except for the first trace
-            fill_mode = 'tozeroy' if i == 0 else 'tonexty'
-            
-            # Special handling for "Others" category
-            if funder == 'Others':
-                hover_template = f'<b>{funder}</b> ({len(other_funders)} funders)<br>Year: %{{x}}<br>Grants: %{{y}}<extra></extra>'
-            else:
-                hover_template = f'<b>{funder}</b><br>Year: %{{x}}<br>Grants: %{{y}}<extra></extra>'
-            
-            fig.add_trace(go.Scatter(
-                x=years,
-                y=pivot_data[funder].values,
-                name=funder,
-                mode='lines',
-                fill=fill_mode,
-                line=dict(width=0.5, color=color),
-                fillcolor=color,
-                hovertemplate=hover_template,
-                stackgroup='one'  # This ensures proper stacking
-            ))
+        # Prepare data for the generalized visualizer
+        # Rename columns to match expected format
+        viz_data = grants_by_year_funder.rename(columns={
+            'start_year': 'year',
+            'funder': 'entity',
+            'count': 'value'
+        })
         
         # Create title with filter information
         title = self._create_chart_title(filter_config)
         
-        # Add information about funders display limit if applicable
-        if len(funder_totals) > max_funders:
-            title += f" (Top {max_funders - 1} funders + Others)"
-        
-        fig.update_layout(
+        # Configure the generalized visualizer for stacked area chart
+        viz_config = EntityTrendsConfig(
+            entity_column='entity',
+            time_column='year',
+            value_column='value',
+            max_entities=max_funders,
+            aggregation_method='sum',
+            use_cumulative=False,  # Grants uses yearly, not cumulative
+            chart_type='area_stacked',
+            show_others_group=True,
             title=title,
-            xaxis_title='Year',
-            yaxis_title='Number of Grants',
-            height=600,
-            hovermode='x unified',
-            legend=dict(
-                orientation="v",
-                yanchor="top",
-                y=1,
-                xanchor="left",
-                x=1.02
-            )
+            x_axis_label='Year',
+            y_axis_label='Number of Grants',
+            height=600
         )
         
-        return fig
+        # Create the visualization
+        visualizer = PopularityTrendsVisualizer()
+        return visualizer.create_trends_visualization(viz_data, viz_config)
     
     def _create_chart_title(self, filter_config: FilterConfig) -> str:
         """Create title with filter information"""
@@ -503,11 +443,12 @@ class GrantDistributionVisualizer:
 
 
 class GrantKeywordViewer:
-    """Manages the grants and keywords viewer"""
+    """Manages the grants and keywords viewer using the generalized DataExplorer"""
     
     def __init__(self, grants_df: pd.DataFrame, keywords_df: pd.DataFrame):
         self.grants_df = grants_df
         self.keywords_df = keywords_df
+        self.data_explorer = DataExplorer()
         # Create lookup table for fast keyword retrieval
         self.grant_keywords_lookup = self._build_grant_keywords_lookup()
     
@@ -517,123 +458,76 @@ class GrantKeywordViewer:
         
         # Check if keywords data is available and has grant information
         if self.keywords_df is not None and 'grants' in self.keywords_df.columns:
-            search_config = self._render_search_controls()
-            self._display_grants_with_keywords(search_config)
+            # Prepare data for DataExplorer
+            display_data = self._prepare_grants_explorer_data()
+            
+            # Configure DataExplorer for grants
+            config = DataExplorerConfig(
+                title="Grants & Keywords Dataset",
+                description="Explore grants with their extracted keywords. Search by grant title or keyword names.",
+                search_columns=['title', 'keyword_names', 'funder'],
+                search_placeholder="Search by grant title, keywords, or funder...",
+                search_help="Enter text to search across grant titles, keywords, and funders",
+                display_columns=['title', 'funder', 'start_year', 'funding_amount', 'keyword_count', 'keyword_names'],
+                column_formatters={
+                    'funding_amount': lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "N/A",
+                    'keyword_names': lambda x: x[:100] + "..." if len(str(x)) > 100 else str(x),
+                    'title': lambda x: x[:80] + "..." if len(str(x)) > 80 else str(x)
+                },
+                column_renames={
+                    'title': 'Grant Title',
+                    'funder': 'Funder',
+                    'start_year': 'Start Year',
+                    'funding_amount': 'Funding Amount',
+                    'keyword_count': 'Keywords Count',
+                    'keyword_names': 'Extracted Keywords'
+                },
+                statistics_columns=['funding_amount', 'start_year', 'keyword_count'],
+                max_display_rows=50,
+                show_statistics=True,
+                show_data_info=True,
+                enable_download=True
+            )
+            
+            # Render the explorer
+            self.data_explorer.render_explorer(display_data, config)
         else:
             st.error("Keywords data not available or missing grant associations. Please ensure the keyword extraction process has been completed.")
     
-    def _render_search_controls(self) -> SearchConfig:
-        """Render search controls and return configuration"""
-        col1, col2 = st.columns([3, 1])
+    def _prepare_grants_explorer_data(self) -> pd.DataFrame:
+        """Prepare grants data with keyword information for the DataExplorer"""
+        if self.grants_df is None:
+            return pd.DataFrame()
         
-        with col1:
-            search_term = st.text_input(
-                "Search grants by title or keyword:", 
-                placeholder="Enter search term...", 
-                key="grants_search_term"
-            )
+        display_df = self.grants_df.copy()
         
-        with col2:
-            max_results = st.selectbox(
-                "Max results:", 
-                [10, 25, 50, 100], 
-                index=1, 
-                key="grants_max_results"
-            )
+        # Add keyword information for each grant
+        keyword_names = []
+        keyword_counts = []
+        keyword_types = []
         
-        return SearchConfig(search_term, max_results)
-    
-    def _display_grants_with_keywords(self, search_config: SearchConfig):
-        """Display grants with their keywords based on search"""
-        # Filter grants based on search
-        display_grants = self._filter_grants_by_search(search_config)
-        
-        if len(display_grants) > 0:
-            st.write(f"Showing {len(display_grants)} grants:")
+        for _, grant in display_df.iterrows():
+            grant_keywords = self._get_keywords_for_grant(grant['id'])
             
-            # Display each grant with its keywords
-            for _, grant in display_grants.iterrows():
-                self._display_single_grant(grant)
-        else:
-            if search_config.search_term:
-                st.info(f"No grants found matching '{search_config.search_term}'")
+            if grant_keywords:
+                names = [kw['name'] for kw in grant_keywords]
+                types = [kw['type'] for kw in grant_keywords]
+                keyword_names.append(', '.join(names))
+                keyword_counts.append(len(names))
+                keyword_types.append(', '.join(set(types)))
             else:
-                st.info("No grants available to display.")
-    
-    def _filter_grants_by_search(self, search_config: SearchConfig) -> pd.DataFrame:
-        """Filter grants based on search term"""
-        if search_config.search_term:
-            # Search in grant titles
-            matching_grants = self.grants_df[
-                self.grants_df['title'].str.contains(search_config.search_term, case=False, na=False)
-            ]
-            
-            # Also search in keywords using vectorized operations
-            matching_keywords = self.keywords_df[
-                self.keywords_df['name'].str.contains(search_config.search_term, case=False, na=False)
-            ]
-            
-            # Get grant IDs from matching keywords more efficiently
-            keyword_grant_ids = set()
-            if not matching_keywords.empty:
-                # Use vectorized operations instead of iterating
-                for grants_list in matching_keywords['grants'].dropna():
-                    if isinstance(grants_list, list):
-                        keyword_grant_ids.update(grants_list)
-            
-            # Combine grants from title search and keyword search
-            title_grant_ids = set(matching_grants['id'].tolist())
-            all_grant_ids = title_grant_ids.union(keyword_grant_ids)
-            
-            # Filter grants to display
-            return self.grants_df[self.grants_df['id'].isin(all_grant_ids)].head(search_config.max_results)
-        else:
-            # Show recent grants if no search term
-            return self.grants_df.head(search_config.max_results)
-    
-    def _display_single_grant(self, grant: pd.Series):
-        """Display a single grant with its keywords"""
-        with st.expander(f"**{grant['title']}** (ID: {grant['id']})"):
-            # Grant information
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.write("**Grant Details:**")
-                st.write(f"**Funder:** {grant.get('funder', 'N/A')}")
-                st.write(f"**Start Year:** {grant.get('start_year', 'N/A')}")
-                funding_amount = grant.get('funding_amount', 'N/A')
-                if pd.notna(funding_amount):
-                    st.write(f"**Funding Amount:** ${funding_amount:,}")
-                else:
-                    st.write("**Funding Amount:** N/A")
-                
-                if pd.notna(grant.get('grant_summary')):
-                    st.write("**Summary:**")
-                    st.write(grant['grant_summary'])
-            
-            with col2:
-                st.write("**Extracted Keywords:**")
-                
-                # Find keywords for this grant
-                grant_keywords = self._get_keywords_for_grant(grant['id'])
-                
-                if grant_keywords:
-                    # Create annotated text for all keywords
-                    annotated_elements = []
-                    
-                    for i, kw in enumerate(grant_keywords):
-                        # Add the keyword with its type as annotation
-                        type_color = self._get_type_color(kw['type'])
-                        annotated_elements.append((kw['name'], kw['type'], type_color))
-                        
-                        # Add separator if not the last keyword
-                        if i < len(grant_keywords) - 1:
-                            annotated_elements.append("  ")
-                    
-                    # Display all keywords with their type annotations
-                    annotated_text(*annotated_elements)
-                else:
-                    st.write("No keywords extracted for this grant.")
+                keyword_names.append("No keywords extracted")
+                keyword_counts.append(0)
+                keyword_types.append("")
+        
+        display_df['keyword_names'] = keyword_names
+        display_df['keyword_count'] = keyword_counts
+        display_df['keyword_types'] = keyword_types
+        
+        # Sort by keyword count and funding amount
+        display_df = display_df.sort_values(['keyword_count', 'funding_amount'], ascending=[False, False])
+        
+        return display_df
     
     def _build_grant_keywords_lookup(self) -> Dict[str, List[Dict[str, str]]]:
         """Build a lookup table mapping grant IDs to their keywords for fast retrieval"""

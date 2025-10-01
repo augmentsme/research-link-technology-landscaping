@@ -23,7 +23,7 @@ from shared_utils import (
     get_unique_values_from_data, create_research_field_options,
     field_to_division_codes, has_research_field_simple, clear_previous_page_state
 )
-from visualisation import KeywordTrendsVisualizer, FilterConfig as VisFilterConfig, VisualizationConfig
+from visualisation import KeywordTrendsVisualizer, FilterConfig as VisFilterConfig, VisualizationConfig, PopularityTrendsVisualizer, EntityTrendsConfig, DataExplorer, DataExplorerConfig
 
 
 @dataclass
@@ -554,42 +554,84 @@ class TrendsVisualization:
     
     def _generate_visualization(self, filter_config: FilterConfig, selection_config: KeywordSelectionConfig, 
                               display_config: DisplayConfig):
-        """Generate and display the visualization"""
+        """Generate and display the visualization using the generalized PopularityTrendsVisualizer"""
         with st.spinner("Creating keyword trends visualization..."):
             selected_keywords, title = self.keyword_selector.select_keywords(filter_config, selection_config, display_config)
             
             title_with_filters = self._add_filter_info_to_title(title, filter_config)
             
-            # Create visualization using the KeywordTrendsVisualizer class
-            visualizer = KeywordTrendsVisualizer(self.keywords_df, self.grants_df)
+            # Prepare data for the generalized visualizer
+            viz_data = self._prepare_keyword_viz_data(filter_config, selected_keywords)
             
-            # Convert our FilterConfig to VisFilterConfig
-            vis_filter_config = VisFilterConfig(
-                funder_filter=filter_config.funder_filter if filter_config.funder_filter else None,
-                source_filter=filter_config.source_filter if filter_config.source_filter else None,
-                keyword_type_filter=filter_config.keyword_type_filter if filter_config.keyword_type_filter else None,
-                field_filter=filter_config.field_filter if filter_config.field_filter else None,
-                min_count=filter_config.min_count,
-                max_count=filter_config.max_count
-            )
+            if viz_data.empty:
+                st.warning("No data available for the selected keywords and filters.")
+                return
             
-            # Create visualization config
-            vis_config = VisualizationConfig(
-                title=title_with_filters,
-                height=600,
-                show_baseline=display_config.show_baseline,
+            # Configure the generalized visualizer
+            viz_config = EntityTrendsConfig(
+                entity_column='keyword',
+                time_column='year',
+                value_column='grant_count',
+                max_entities=len(selected_keywords) if selected_keywords else selection_config.top_n,
+                aggregation_method='sum',
                 use_cumulative=display_config.use_cumulative,
-                top_n=selection_config.top_n if selection_config.method == "Top N keywords" else 0,
-                custom_keywords=selected_keywords if selected_keywords else None
+                chart_type='line',
+                title=title_with_filters,
+                x_axis_label='Year',
+                y_axis_label='Cumulative Grant Count' if display_config.use_cumulative else 'Yearly Grant Count',
+                height=600
             )
             
-            fig_trends = visualizer.create_visualization(vis_filter_config, vis_config)
+            # Create the visualization
+            visualizer = PopularityTrendsVisualizer()
+            fig_trends = visualizer.create_trends_visualization(viz_data, viz_config)
             
             if fig_trends is not None:
                 st.plotly_chart(fig_trends, use_container_width=True)
                 self._show_statistics(filter_config, selection_config, selected_keywords)
             else:
                 st.warning("No data available for the selected parameters.")
+    
+    def _prepare_keyword_viz_data(self, filter_config: FilterConfig, selected_keywords: List[str]) -> pd.DataFrame:
+        """Prepare keyword data for the generalized PopularityTrendsVisualizer - OPTIMIZED VERSION"""
+        # Apply filters to get the filtered data
+        filtered_grants = self.filter_manager.apply_grant_filters(filter_config)
+        filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config, filtered_grants)
+        
+        # Filter to only selected keywords if specified
+        if selected_keywords:
+            filtered_keywords = filtered_keywords[filtered_keywords['name'].isin(selected_keywords)]
+        
+        if filtered_keywords.empty or filtered_grants.empty:
+            return pd.DataFrame()
+        
+        # OPTIMIZATION: Create a lookup table for grant years upfront
+        grant_years_lookup = filtered_grants['start_year'].dropna().to_dict()
+        valid_grant_ids = set(grant_years_lookup.keys())
+        
+        # OPTIMIZATION: Build result more efficiently using list comprehension
+        viz_data = []
+        
+        # OPTIMIZATION: Use itertuples for faster iteration than iterrows
+        for keyword_name, grants_list in zip(filtered_keywords['name'], filtered_keywords['grants']):
+            if not grants_list:
+                continue
+            
+            # OPTIMIZATION: Use list comprehension with set lookup
+            valid_grants = [g for g in grants_list if g in valid_grant_ids]
+            
+            if valid_grants:
+                # OPTIMIZATION: Batch create records for this keyword
+                for grant_id in valid_grants:
+                    year = grant_years_lookup[grant_id]
+                    if pd.notna(year):
+                        viz_data.append((keyword_name, int(year), 1))
+        
+        # OPTIMIZATION: Create DataFrame directly from tuples
+        if viz_data:
+            return pd.DataFrame(viz_data, columns=['keyword', 'year', 'grant_count'])
+        else:
+            return pd.DataFrame(columns=['keyword', 'year', 'grant_count'])
     
     def _add_filter_info_to_title(self, title: str, filter_config: FilterConfig) -> str:
         """Add filter information to the visualization title"""
@@ -644,29 +686,64 @@ class TrendsVisualization:
     
 
 class DataExploration:
-    """Manages the data exploration tab"""
+    """Manages the data exploration tab using the generalized DataExplorer"""
     
     def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
         self.keywords_df = keywords_df
         self.grants_df = grants_df
         self.filter_manager = FilterManager(keywords_df, grants_df)
+        self.data_explorer = DataExplorer()
     
     def render_tab(self, filter_config: FilterConfig):
         """Render the data exploration tab"""
-        st.markdown("### Keywords Dataset")
-        st.markdown("Explore the complete keywords dataset with filtering, search capabilities, and distribution analysis.")
-        
         filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config)
         
         if len(filtered_keywords) == 0:
             st.warning("No keywords found with current filters. Please adjust your filter settings.")
             return
         
-        self._show_summary_statistics(filtered_keywords)
+        # Create histogram visualization first
         self._create_histogram_visualization(filtered_keywords)
-        search_term = self._render_search_input()
-        display_keywords = self._apply_search_filter(filtered_keywords, search_term)
-        self._display_keywords_dataframe(display_keywords)
+        
+        # Prepare data for DataExplorer
+        display_data = self._prepare_explorer_data(filtered_keywords)
+        
+        # Configure DataExplorer
+        config = DataExplorerConfig(
+            title="Keywords Dataset",
+            description="Explore the complete keywords dataset with filtering, search capabilities, and distribution analysis.",
+            search_columns=['name', 'type'],
+            search_placeholder="Search in keyword names or types...",
+            search_help="Enter text to search for specific keywords by name or type",
+            display_columns=['name', 'type', 'grant_count', 'grants'],
+            column_formatters={
+                'grants': lambda x: f"{len(x)} grants: {', '.join(x[:3])}{'...' if len(x) > 3 else ''}"
+            },
+            column_renames={
+                'name': 'Keyword Name',
+                'type': 'Type',
+                'grant_count': 'Grant Count',
+                'grants': 'Associated Grants'
+            },
+            statistics_columns=['grant_count'],
+            max_display_rows=100,
+            show_statistics=True,
+            show_data_info=True,
+            enable_download=True
+        )
+        
+        # Render the explorer
+        self.data_explorer.render_explorer(display_data, config)
+    
+    def _prepare_explorer_data(self, filtered_keywords: pd.DataFrame) -> pd.DataFrame:
+        """Prepare keywords data for the DataExplorer"""
+        display_df = filtered_keywords.copy()
+        display_df['grant_count'] = display_df['grants'].apply(len)
+        
+        # Sort by grant count in descending order (most grants first)
+        display_df = display_df.sort_values('grant_count', ascending=False)
+        
+        return display_df
     
     def _create_histogram_visualization(self, filtered_keywords: pd.DataFrame):
         """Create and display the histogram"""
@@ -702,112 +779,6 @@ class DataExploration:
             fig.update_xaxes(type="log")
         
         st.plotly_chart(fig, use_container_width=True)
-    
-    def _show_summary_statistics(self, filtered_keywords: pd.DataFrame):
-        """Display summary statistics"""
-        grant_counts = filtered_keywords['grants'].apply(len)
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("Total Keywords", len(self.keywords_df))
-        with col2:
-            st.metric("Filtered Keywords", len(filtered_keywords))
-        with col3:
-            st.metric("Mean Occurrences", f"{grant_counts.mean():.1f}")
-        with col4:
-            st.metric("Median Occurrences", f"{grant_counts.median():.0f}")
-        with col5:
-            st.metric("Max Occurrences", f"{grant_counts.max():.0f}")
-    
-    def _render_search_input(self) -> str:
-        """Render search input and return search term"""
-        st.markdown("#### 🔍 Search Keywords")
-        return st.text_input(
-            "Search in keyword names:",
-            help="Enter text to search for specific keywords"
-        )
-    
-    def _apply_search_filter(self, filtered_keywords: pd.DataFrame, search_term: str) -> pd.DataFrame:
-        """Apply search filter to keywords"""
-        if not search_term:
-            return filtered_keywords
-        
-        if 'name' in filtered_keywords.columns:
-            return filtered_keywords[
-                filtered_keywords['name'].str.contains(search_term, case=False, na=False)
-            ]
-        else:
-            return filtered_keywords[
-                filtered_keywords.index.str.contains(search_term, case=False, na=False)
-            ]
-    
-    def _display_keywords_dataframe(self, display_keywords: pd.DataFrame):
-        """Display the keywords dataframe with controls"""
-        st.markdown("#### 📊 Keywords Data")
-        
-        if len(display_keywords) > 0:
-            # Create columns for controls
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                # Add row limit control for download
-                max_rows_available = len(display_keywords)
-                download_limit = st.number_input(
-                    "Download row limit",
-                    min_value=1,
-                    max_value=max_rows_available,
-                    value=min(1000, max_rows_available),
-                    help=f"Limit the number of rows to download (max available: {max_rows_available})"
-                )
-            
-            with col2:
-                # Add download button
-                display_df = self._prepare_display_dataframe(display_keywords, show_grants_detail=True)
-                # Limit the dataframe for download
-                download_df = display_df.head(download_limit)
-                csv_data = download_df.to_csv(index=False)
-                
-                st.download_button(
-                    label="📥 Download Keywords Data",
-                    data=csv_data,
-                    file_name=f"keywords_data_{download_limit}rows_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    help=f"Download the top {download_limit} keywords as CSV file"
-                )
-            
-            st.dataframe(display_df, use_container_width=True, height=400)
-            
-            st.info(f"Showing {len(display_keywords)} keywords" + 
-                    (f" (filtered from {len(self.keywords_df)} total)" if len(display_keywords) < len(self.keywords_df) else ""))
-        else:
-            st.warning("No keywords found matching the current filters and search criteria.")
-            st.info("Try adjusting your filters or search terms to see results.")
-
-    def _prepare_display_dataframe(self, display_keywords: pd.DataFrame, show_grants_detail: bool = True) -> pd.DataFrame:
-        """Prepare dataframe for display, sorted by grant count (descending)"""
-        display_df = display_keywords.copy()
-        display_df['grant_count'] = display_df['grants'].apply(len)
-        
-        # Sort by grant count in descending order (most grants first)
-        display_df = display_df.sort_values('grant_count', ascending=False)
-        
-        column_order = []
-        if 'name' in display_df.columns:
-            column_order.append('name')
-        if 'type' in display_df.columns:
-            column_order.append('type')
-        column_order.append('grant_count')
-        
-        # Add other columns except 'grants' and 'org' (we'll handle these separately)
-        for col in display_df.columns:
-            if col not in column_order and col not in ['grants', 'org']:
-                column_order.append(col)
-        
-        # Always include grants column
-        column_order.append('grants')
-        
-        available_columns = [col for col in column_order if col in display_df.columns]
-        return display_df[available_columns]
 
 
 class KeywordsPage:

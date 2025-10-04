@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 import re
 import pandas as pd
 from pathlib import Path
-
+from postprocess import postprocess_keywords
 # Evaluation schema for the quality scorer
 class OverallScores(BaseModel):
     """Overall quality scores for keyword evaluation"""
@@ -230,7 +230,7 @@ class KeywordsExtractionHook(Hooks):
         # Deduplicate keywords using normalized terms
 
         self.extracted_keywords_writer.close()
-        from postprocess import postprocess_keywords
+        
         postprocess_keywords()
 
 def load_extract_dataset():

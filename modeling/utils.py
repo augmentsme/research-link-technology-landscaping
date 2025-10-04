@@ -140,37 +140,6 @@ def desanitise_grant_id(grant_id: str) -> str:
     return grant_id.replace("_", "/")
 
 
-import textwrap
-
-def to_clipboard_with_max_width(series, max_width=80):
-    """
-    Copy a pandas Series to clipboard with controlled maximum width for each field.
-    Long content will be wrapped with newlines instead of truncated.
-    
-    Args:
-        series: pandas Series to copy
-        max_width: maximum width for each line (default: 80)
-    """
-    # Create a copy to avoid modifying original
-    series_copy = series.copy()
-    
-    # Wrap long strings with newlines
-    for key, value in series_copy.items():
-        if isinstance(value, str) and len(value) > max_width:
-            # Use textwrap to break long strings into multiple lines
-            wrapped = textwrap.fill(value, width=max_width, break_long_words=False, break_on_hyphens=False)
-            series_copy[key] = wrapped
-        elif isinstance(value, list):
-            # Handle lists by converting to string and wrapping if needed
-            str_value = str(value)
-            if len(str_value) > max_width:
-                wrapped = textwrap.fill(str_value, width=max_width, break_long_words=False, break_on_hyphens=False)
-                series_copy[key] = wrapped
-    
-    # Copy to clipboard
-    series_copy.to_clipboard()
-    return series_copy
-
 def get_keywords_freq_table_with_selector(keywords, grants, selector):
     return keywords.explode("grants")[keywords.explode("grants").grants.isin(grants[selector].id)].groupby("name").agg({"grants": "count"}).sort_values("grants", ascending=False).reset_index().merge(keywords, how="left", left_on="name", right_on="name").drop("grants_y", axis=1).rename(columns={"grants_x": "grants"})
 
@@ -215,44 +184,3 @@ def load_batch_dataset(batch_dir: Path, sample_creator_func, dataset_type: str):
     print(f"Total {dataset_type} batches: {len(samples)}")
     return MemoryDataset(samples)
 
-
-# def convert_merged_categories_to_categories(input_path: Path) -> list:
-#     """
-#     Deduplicate categories by normalizing names and selecting best variants.
-    
-#     Args:
-#         input_path: Path to category proposals file
-    
-#     Returns:
-#         Deduplicated categories with merged keywords
-#     """
-#     categories_dict = {}
-#     all_categories = load_jsonl_file(input_path, as_dataframe=False)
-    
-#     for category in all_categories:
-#         normalized_name = normalize(category["name"])
-        
-#         if normalized_name not in categories_dict:
-#             categories_dict[normalized_name] = {
-#                 "variants": [],
-#                 "keywords": set()
-#             }
-        
-#         categories_dict[normalized_name]["variants"].append(category)
-#         categories_dict[normalized_name]["keywords"].update(category.get("keywords", []))
-    
-#     final_categories = []
-    
-#     for normalized_name, data in categories_dict.items():
-#         best_variant = max(data["variants"], key=lambda c: len(c.get("description", "")))
-        
-#         final_category = {
-#             "name": best_variant["name"],
-#             "description": best_variant["description"],
-#             "keywords": list(data["keywords"]),
-#             "field_of_research": best_variant["field_of_research"]
-#         }
-        
-#         final_categories.append(final_category)
-    
-#     return final_categories

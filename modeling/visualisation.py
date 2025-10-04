@@ -1008,21 +1008,8 @@ class DataExplorer:
             config: Configuration for display and behavior
         """
         if data.empty:
-            st.warning(f"No data available in {config.title}")
+            st.warning(f"No data available")
             return
-        
-        # Header
-        st.markdown(f"### {config.title}")
-        if config.description:
-            st.markdown(config.description)
-        
-        # Statistics
-        if config.show_statistics:
-            self._display_summary_statistics(data, config)
-        
-        # Data info
-        if config.show_data_info:
-            self._display_data_info(data)
         
         # Search functionality
         search_term = self._render_search_input(config)
@@ -1037,69 +1024,8 @@ class DataExplorer:
         if config.enable_download:
             self._render_download_option(filtered_data, config.title)
     
-    def _display_summary_statistics(self, data: pd.DataFrame, config: DataExplorerConfig) -> None:
-        """Display summary statistics"""
-        st.markdown("#### 📊 Summary Statistics")
-        
-        # Select columns for statistics
-        stats_columns = config.statistics_columns or data.select_dtypes(include=[np.number]).columns.tolist()
-        
-        if stats_columns:
-            # Create metrics in columns
-            num_metrics = min(len(stats_columns) + 1, 5)  # +1 for total rows
-            cols = st.columns(num_metrics)
-            
-            # Total rows
-            with cols[0]:
-                st.metric("Total Records", f"{len(data):,}")
-            
-            # Statistics for numeric columns
-            for i, col in enumerate(stats_columns[:4]):  # Max 4 numeric metrics
-                if i + 1 < len(cols):
-                    with cols[i + 1]:
-                        if data[col].dtype in ['int64', 'float64']:
-                            mean_val = data[col].mean()
-                            if mean_val >= 1000:
-                                display_val = f"{mean_val/1000:.1f}K"
-                            elif mean_val >= 1000000:
-                                display_val = f"{mean_val/1000000:.1f}M"
-                            else:
-                                display_val = f"{mean_val:.1f}"
-                            st.metric(f"Avg {col.replace('_', ' ').title()}", display_val)
-                        else:
-                            unique_count = data[col].nunique()
-                            st.metric(f"Unique {col.replace('_', ' ').title()}", f"{unique_count:,}")
-        else:
-            # Basic statistics when no numeric columns
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Records", f"{len(data):,}")
-            with col2:
-                st.metric("Total Columns", len(data.columns))
-            with col3:
-                non_null_pct = ((data.count().sum() / (len(data) * len(data.columns))) * 100)
-                st.metric("Data Completeness", f"{non_null_pct:.1f}%")
-    
-    def _display_data_info(self, data: pd.DataFrame) -> None:
-        """Display basic data information"""
-        with st.expander("ℹ️ Dataset Information", expanded=False):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Basic Info:**")
-                st.write(f"- Shape: {data.shape[0]:,} rows × {data.shape[1]} columns")
-                st.write(f"- Memory usage: ~{data.memory_usage(deep=True).sum() / 1024:.1f} KB")
-                
-            with col2:
-                st.write("**Column Types:**")
-                dtype_counts = data.dtypes.value_counts()
-                for dtype, count in dtype_counts.items():
-                    st.write(f"- {dtype}: {count} columns")
-    
     def _render_search_input(self, config: DataExplorerConfig) -> str:
         """Render search input field"""
-        st.markdown("#### 🔍 Search and Filter")
-        
         search_term = st.text_input(
             "Search",
             placeholder=config.search_placeholder,
@@ -1192,7 +1118,6 @@ class DataExplorer:
             display_data = display_data.head(config.max_display_rows)
         
         # Display the data
-        st.markdown(f"#### 📋 Data Table ({len(display_data):,} records)")
         st.dataframe(
             display_data,
             use_container_width=True,
@@ -1205,30 +1130,14 @@ class DataExplorer:
         if data.empty:
             return
         
-        with st.expander("💾 Download Data", expanded=False):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # CSV download
-                csv_data = data.to_csv(index=False)
-                st.download_button(
-                    label="Download as CSV",
-                    data=csv_data,
-                    file_name=f"{title.lower().replace(' ', '_')}_data.csv",
-                    mime="text/csv",
-                    help="Download the current filtered data as a CSV file"
-                )
-            
-            with col2:
-                # JSON download
-                json_data = data.to_json(orient='records', indent=2)
-                st.download_button(
-                    label="Download as JSON",
-                    data=json_data,
-                    file_name=f"{title.lower().replace(' ', '_')}_data.json",
-                    mime="application/json",
-                    help="Download the current filtered data as a JSON file"
-                )
+        csv_data = data.to_csv(index=False)
+        st.download_button(
+            label="Download as CSV",
+            data=csv_data,
+            file_name=f"{title.lower().replace(' ', '_')}_data.csv",
+            mime="text/csv",
+            help="Download the current filtered data as a CSV file"
+        )
 
 
 # Convenience functions for backward compatibility

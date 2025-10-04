@@ -5,7 +5,9 @@ Main entry point for the research landscape analysis tool.
 
 import streamlit as st
 import pandas as pd
-from shared_utils import setup_page_config, load_data, get_unique_values_from_data
+from shared_utils import (setup_page_config, load_data, get_unique_funders, 
+                          get_unique_sources, get_unique_keyword_types, 
+                          get_unique_research_fields_from_categories)
 
 # Configure the main page
 st.set_page_config(
@@ -31,7 +33,10 @@ try:
         num_categories = len(categories) if categories is not None else 0
         
         # Get unique values for additional stats
-        unique_funders, unique_sources, unique_keyword_types, unique_research_fields = get_unique_values_from_data(keywords, grants, categories)
+        unique_funders = get_unique_funders(grants)
+        unique_sources = get_unique_sources(grants)
+        unique_keyword_types = get_unique_keyword_types(keywords)
+        unique_research_fields = get_unique_research_fields_from_categories(categories)
         
         # Calculate date range if available
         date_range = "N/A"

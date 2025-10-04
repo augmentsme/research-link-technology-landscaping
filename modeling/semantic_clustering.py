@@ -1,55 +1,3 @@
-"""
-Semantic clustering system for structured data.
-
-This module provides a generic architecture for generating embeddings and performing
-semantic clustering operations on JSONL data containing name/description dictionaries.
-It supports balanced batch generation for improved categorization workflows.
-
-## Usage Examples:
-
-### Generic Usage:
-
-```python
-from semantic_clustering import Pipeline
-
-# Run complete pipeline with any JSONL data
-pipeline = Pipeline(
-    data_path=Path("data.jsonl"),
-    embeddings_path=Path("embeddings.npy"),
-    clusters_path=Path("clusters.json"),
-    batch_dir=Path("batches/"),
-    template_func=lambda x: f"{x['name']}: {x['description']}"
-)
-results = pipeline.run_full_pipeline(batch_size=50)
-```
-
-### Using Config Templates:
-
-```python
-from semantic_clustering import Pipeline
-import config
-
-# For keywords
-pipeline = Pipeline(
-    data_path=config.Keywords.keywords_path,
-    template_func=config.Keywords.template
-)
-
-# For categories
-pipeline = Pipeline(
-    data_path=config.Categories.category_proposal_path,
-    template_func=config.Categories.template
-)
-```
-
-## Main Classes:
-
-- `Pipeline`: Generic workflow for semantic clustering
-- `EmbeddingGenerator`: Generates embeddings from JSONL data
-- `ClusterManager`: Handles clustering operations
-- `BatchGenerator`: Creates balanced batches from clusters
-- `DatasetBuilder`: Builds datasets for categorization
-"""
 
 import numpy as np
 from pathlib import Path
@@ -82,7 +30,7 @@ class ClusteringResult:
 class EmbeddingGenerator:
     """Generic embedding generator for JSONL data."""
     
-    def __init__(self, template_func: callable, model_name: str = 'all-MiniLM-L6-v2'):
+    def __init__(self, template_func: callable, model_name: str = 'Qwen/Qwen3-Embedding-0.6B'):
         """
         Initialize embedding generator.
         
@@ -292,7 +240,7 @@ class Pipeline:
                  clusters_path: Optional[Path] = None,
                  batch_dir: Optional[Path] = None,
                  template_func: Optional[callable] = None,
-                 model_name: str = 'all-MiniLM-L6-v2'):
+                 model_name: str = 'Qwen/Qwen3-Embedding-0.6B'):
         """
         Initialize pipeline for semantic clustering.
         
@@ -437,7 +385,7 @@ def generate_embeddings_cmd(
     output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory to place all generated files"),
     force: bool = typer.Option(False, "--force", "-f", help="Force regeneration even if cache exists"),
     template: str = typer.Option(None, "--template", "-t", help="Template string (use {name} and {description})"),
-    model: str = typer.Option('all-MiniLM-L6-v2', "--model", "-m", help="Sentence transformer model name")
+    model: str = typer.Option('Qwen/Qwen3-Embedding-0.6B', "--model", "-m", help="Sentence transformer model name")
 ):
     """Generate embeddings for JSONL data."""
     input_p = Path(input_path)
@@ -539,7 +487,7 @@ def pipeline(
     batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
     force_embeddings: bool = typer.Option(False, "--force", "-f", help="Force regeneration of embeddings"),
     template: str = typer.Option(None, "--template", "-t", help="Template string (use {name} and {description})"),
-    model: str = typer.Option('all-MiniLM-L6-v2', "--model", "-m", help="Sentence transformer model name")
+    model: str = typer.Option('Qwen/Qwen3-Embedding-0.6B', "--model", "-m", help="Sentence transformer model name")
 ):
     """Run the complete clustering pipeline: embeddings -> clustering -> batches."""
     input_p = Path(input_path)

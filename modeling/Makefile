@@ -5,24 +5,6 @@ clean-extract:
 	rm -f results/keywords/extracted_keywords.jsonl results/keywords/keywords.jsonl
 
 
-
-# clean-merge:
-# 	rm -f logs/*merge*.eval
-# 	rm -f results/merge/*.jsonl
-
-# clean-categorise:
-# 	rm -f logs/*categorise*.eval
-# 	rm -f results/category/*.jsonl
-
-
-
-
-# generate-keywords-dataset: 
-# 	uv run semantic_clustering.py pipeline results/keywords/keywords.jsonl results/keywords_batches
-
-# generate-category-dataset:
-# 	uv run semantic_clustering.py pipeline results/category/category/category_extracted.jsonl results/categories_batches
-
 generate-keywords:
 	uv run semantic_clustering.py pipeline results/keywords/keywords.jsonl results/keywords-batches
 

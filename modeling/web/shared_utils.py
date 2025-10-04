@@ -112,23 +112,27 @@ def load_field_display_names():
         st.error(f"Error loading FOR codes data: {e}")
         return {}
 
-def get_unique_values_from_data(keywords, grants, categories):
-    """Extract unique values for filters from the data"""
-    try:
-        # Get unique values for filters
-        unique_funders = sorted(grants['funder'].dropna().unique())
-        unique_sources = sorted(grants['source'].dropna().unique())
-        unique_keyword_types = sorted(keywords['type'].dropna().unique())
-        
-        # Get unique research fields from categories
-        unique_research_fields = []
-        if categories is not None and 'field_of_research' in categories.columns:
-            unique_research_fields = sorted(categories['field_of_research'].dropna().unique())
-        
-        return unique_funders, unique_sources, unique_keyword_types, unique_research_fields
-    except Exception as e:
-        st.error(f"Error extracting unique values: {e}")
-        return [], [], [], []
+@st.cache_data
+def get_unique_funders(grants):
+    """Get sorted list of unique funders from grants data"""
+    return sorted(grants['funder'].dropna().unique())
+
+@st.cache_data
+def get_unique_sources(grants):
+    """Get sorted list of unique sources from grants data"""
+    return sorted(grants['source'].dropna().unique())
+
+@st.cache_data
+def get_unique_keyword_types(keywords):
+    """Get sorted list of unique keyword types from keywords data"""
+    return sorted(keywords['type'].dropna().unique())
+
+@st.cache_data
+def get_unique_research_fields_from_categories(categories):
+    """Get sorted list of unique research fields from categories data"""
+    if categories is not None and 'field_of_research' in categories.columns:
+        return sorted(categories['field_of_research'].dropna().unique())
+    return []
 
 @st.cache_data
 def get_unique_research_fields():

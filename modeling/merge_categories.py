@@ -192,9 +192,6 @@ def create_merge_categories_hook(output_dir: Path):
             self.unknown_writer.close()
             self.missing_writer.close()
             
-            # catlist = utils.convert_merged_categories_to_categories(self.output_path)
-            # utils.save_jsonl_file(catlist, self.output_path)
-        
     
     return MergeCategoriesHook
 

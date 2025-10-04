@@ -877,7 +877,7 @@ class CategoriesPage:
         # Check if data is available
         if self.data_manager.categories_df is None or self.data_manager.categories_df.empty:
             st.error("No category data available. Please run the categorization process first.")
-            st.info("Run: `uv run python categorise.py keywords` to generate categories from keywords.")
+            st.info("Run: `make categorise` to generate categories from keywords, or `make merge` to merge similar categories.")
             return
         
         # Render sidebar controls

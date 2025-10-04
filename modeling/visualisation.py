@@ -751,18 +751,38 @@ class PopularityTrendsVisualizer:
         if missing_cols:
             raise ValueError(f"Missing required columns: {missing_cols}")
         
+        # Check if ranking_metric is different from value_column and needs to be preserved
+        ranking_metric = config.ranking_metric or 'value'
+        preserve_ranking = ranking_metric != 'value' and ranking_metric != config.value_column and ranking_metric in data.columns
+        
         # Aggregate data by entity and time
         if config.aggregation_method == 'sum':
-            time_series = data.groupby([config.entity_column, config.time_column])[config.value_column].sum().reset_index()
+            agg_cols = [config.value_column]
+            if preserve_ranking:
+                agg_cols.append(ranking_metric)
+            time_series = data.groupby([config.entity_column, config.time_column])[agg_cols].sum().reset_index()
         elif config.aggregation_method == 'count':
             time_series = data.groupby([config.entity_column, config.time_column]).size().reset_index(name=config.value_column)
+            if preserve_ranking and ranking_metric in data.columns:
+                ranking_agg = data.groupby([config.entity_column, config.time_column])[ranking_metric].sum().reset_index()
+                time_series[ranking_metric] = ranking_agg[ranking_metric]
         elif config.aggregation_method == 'mean':
-            time_series = data.groupby([config.entity_column, config.time_column])[config.value_column].mean().reset_index()
+            agg_cols = [config.value_column]
+            if preserve_ranking:
+                agg_cols.append(ranking_metric)
+            time_series = data.groupby([config.entity_column, config.time_column])[agg_cols].mean().reset_index()
         else:
             raise ValueError(f"Unsupported aggregation method: {config.aggregation_method}")
         
         # Rename columns to standard names for easier processing
-        time_series.columns = ['entity', 'time', 'value']
+        if preserve_ranking:
+            time_series = time_series.rename(columns={
+                config.entity_column: 'entity',
+                config.time_column: 'time',
+                config.value_column: 'value'
+            })
+        else:
+            time_series.columns = ['entity', 'time', 'value']
         
         return time_series
     
@@ -771,11 +791,18 @@ class PopularityTrendsVisualizer:
         # Calculate ranking metric for each entity
         ranking_metric = config.ranking_metric or 'value'
         
-        if ranking_metric == 'value':
-            entity_rankings = time_series_df.groupby('entity')['value'].sum().sort_values(ascending=False)
+        # If ranking_metric is the same as value_column, it was renamed to 'value'
+        if ranking_metric == config.value_column:
+            ranking_column = 'value'
+        elif ranking_metric == 'value':
+            ranking_column = 'value'
         else:
-            # If using a different ranking metric, assume it's already in the data
-            entity_rankings = time_series_df.groupby('entity')[ranking_metric].sum().sort_values(ascending=False)
+            # ranking_metric should still be preserved in the dataframe
+            if ranking_metric not in time_series_df.columns:
+                raise ValueError(f"Column not found: {ranking_metric}. Available columns: {time_series_df.columns.tolist()}")
+            ranking_column = ranking_metric
+        
+        entity_rankings = time_series_df.groupby('entity')[ranking_column].sum().sort_values(ascending=False)
         
         # Select top entities
         if config.show_others_group and len(entity_rankings) > config.max_entities:

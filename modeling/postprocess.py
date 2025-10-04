@@ -48,7 +48,7 @@ def deduplicate_keywords(input_path):
     
     return final_keywords
 
-def postprocess(input_path=config.Keywords.extracted_keywords_path, output_path=config.Keywords.keywords_path):
+def postprocess_keywords(input_path=config.Keywords.extracted_keywords_path, output_path=config.Keywords.keywords_path):
     """
     Postprocess keywords by deduplicating and adding organization information.
     """
@@ -69,5 +69,9 @@ def postprocess(input_path=config.Keywords.extracted_keywords_path, output_path=
     final = final[final['organisation_country'].map(lambda x: "AU" in x if pd.notna(x) else True)]
     utils.save_jsonl_file(final.to_dict(orient="records"), output_path)
 
-if __name__ == "__main__":
-    postprocess()
+
+def postprocess_category(input_path=config.Categories.last_merged(), output_path=config.Categories.CATEGORIY_PATH):
+    cats = utils.load_jsonl_file(input_path, as_dataframe=True)
+    cats = cats.drop(cats[cats.keywords.map(len) == 0].index) # drop categories with no keywords
+    utils.save_jsonl_file(cats.to_dict(orient="records"), output_path)
+    

@@ -230,8 +230,8 @@ class KeywordsExtractionHook(Hooks):
         # Deduplicate keywords using normalized terms
 
         self.extracted_keywords_writer.close()
-        from postprocess import postprocess
-        postprocess()
+        from postprocess import postprocess_keywords
+        postprocess_keywords()
 
 def load_extract_dataset():
     records = config.Grants.load().to_dict(orient="records")

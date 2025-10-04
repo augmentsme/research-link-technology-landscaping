@@ -1,43 +1,52 @@
 """
-Semantic clustering system for category proposals and keywords.
+Semantic clustering system for structured data.
 
-This module provides a class-based architecture for generating embeddings and performing
-semantic clustering operations on both keywords and category proposals. It supports
-balanced batch generation for improved categorization workflows.
+This module provides a generic architecture for generating embeddings and performing
+semantic clustering operations on JSONL data containing name/description dictionaries.
+It supports balanced batch generation for improved categorization workflows.
 
 ## Usage Examples:
 
-### For Keywords (used in categorise.py):
+### Generic Usage:
 
 ```python
-from semantic_clustering import KeywordPipeline
+from semantic_clustering import Pipeline
 
-# Run complete pipeline
-pipeline = KeywordPipeline()
-results = pipeline.run_full_pipeline(batch_size=250)
-
-# Or use individual components
-keyword_generator = KeywordEmbeddingGenerator()
-embeddings = keyword_generator.generate()
+# Run complete pipeline with any JSONL data
+pipeline = Pipeline(
+    data_path=Path("data.jsonl"),
+    embeddings_path=Path("embeddings.npy"),
+    clusters_path=Path("clusters.json"),
+    batch_dir=Path("batches/"),
+    template_func=lambda x: f"{x['name']}: {x['description']}"
+)
+results = pipeline.run_full_pipeline(batch_size=50)
 ```
 
-### For Category Proposals:
+### Using Config Templates:
 
 ```python
-from semantic_clustering import CategoryPipeline
+from semantic_clustering import Pipeline
+import config
 
-pipeline = CategoryPipeline()
-results = pipeline.run_full_pipeline(batch_size=50)
+# For keywords
+pipeline = Pipeline(
+    data_path=config.Keywords.keywords_path,
+    template_func=config.Keywords.template
+)
+
+# For categories
+pipeline = Pipeline(
+    data_path=config.Categories.category_proposal_path,
+    template_func=config.Categories.template
+)
 ```
 
 ## Main Classes:
 
-- `Pipeline`: Generic base class for semantic clustering workflows
-- `KeywordPipeline`: Complete workflow for keyword clustering
-- `CategoryPipeline`: Complete workflow for category proposal clustering
-- `KeywordEmbeddingGenerator`: Generates embeddings for keywords
-- `CategoryEmbeddingGenerator`: Generates embeddings for category proposals
-- `SemanticClusterManager`: Handles clustering operations
+- `Pipeline`: Generic workflow for semantic clustering
+- `EmbeddingGenerator`: Generates embeddings from JSONL data
+- `ClusterManager`: Handles clustering operations
 - `BatchGenerator`: Creates balanced batches from clusters
 - `DatasetBuilder`: Builds datasets for categorization
 """
@@ -70,10 +79,18 @@ class ClusteringResult:
     metadata: Optional[Dict[str, Any]] = None
 
 
-class EmbeddingGenerator(ABC):
-    """Abstract base class for generating embeddings."""
+class EmbeddingGenerator:
+    """Generic embedding generator for JSONL data."""
     
-    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
+    def __init__(self, template_func: callable, model_name: str = 'all-MiniLM-L6-v2'):
+        """
+        Initialize embedding generator.
+        
+        Args:
+            template_func: Function that takes a dict and returns formatted text string
+            model_name: Name of the sentence transformer model to use
+        """
+        self.template_func = template_func
         self.model_name = model_name
         self._model: Optional[SentenceTransformer] = None
     
@@ -88,7 +105,7 @@ class EmbeddingGenerator(ABC):
         """Generate embeddings for the data."""
         if self._should_regenerate(data_path, output_path, force_regenerate):
             logger.info(f"Generating embeddings for {data_path}")
-            data = self._load_data(data_path)
+            data = utils.load_jsonl_file(data_path, as_dataframe=True)
             texts = self._format_text(data)
             embeddings = self.model.encode(texts, show_progress_bar=True)
             
@@ -100,15 +117,13 @@ class EmbeddingGenerator(ABC):
             logger.info(f"Loading cached embeddings from {output_path}")
             return np.load(output_path)
     
-    @abstractmethod
-    def _load_data(self, data_path: Path) -> Any:
-        """Load data from path."""
-        pass
-    
-    @abstractmethod
-    def _format_text(self, data: Any) -> List[str]:
-        """Format data into text for embedding generation."""
-        pass
+    def _format_text(self, data) -> List[str]:
+        """Format data into text for embedding generation using template function."""
+        texts = []
+        for _, record in data.iterrows():
+            text = self.template_func(record.to_dict())
+            texts.append(text)
+        return texts
     
     def _should_regenerate(self, data_path: Path, output_path: Path, force: bool) -> bool:
         """Check if embeddings should be regenerated."""
@@ -117,8 +132,8 @@ class EmbeddingGenerator(ABC):
         return output_path.stat().st_mtime <= data_path.stat().st_mtime
 
 
-class ClusterManager(ABC):
-    """Abstract base class for clustering operations."""
+class ClusterManager:
+    """Generic clustering operations manager."""
     
     def __init__(self, random_state: int = 42):
         self.random_state = random_state
@@ -151,47 +166,6 @@ class ClusterManager(ABC):
             n_clusters += 1
         return n_clusters
     
-    @abstractmethod
-    def _organize_clusters(self, data: Any, labels: np.ndarray) -> Dict[str, List[Dict]]:
-        """Organize data into clusters based on labels."""
-        pass
-
-
-class KeywordEmbeddingGenerator(EmbeddingGenerator):
-    """Generates embeddings for keywords using the Keywords template."""
-    
-    def _load_data(self, data_path: Path) -> List[Dict]:
-        """Load keywords from JSONL file."""
-        return utils.load_jsonl_file(data_path, as_dataframe=True)
-    
-    def _format_text(self, data) -> List[str]:
-        """Format keywords using the Keywords template."""
-        texts = []
-        for _, record in data.iterrows():
-            text = config.Keywords.template(record.to_dict())
-            texts.append(text)
-        return texts
-
-
-class CategoryEmbeddingGenerator(EmbeddingGenerator):
-    """Generates embeddings for category proposals using the Categories template."""
-    
-    def _load_data(self, data_path: Path) -> List[Dict]:
-        """Load category proposals from JSONL file."""
-        return utils.load_jsonl_file(data_path, as_dataframe=True)
-    
-    def _format_text(self, data) -> List[str]:
-        """Format categories using the Categories template."""
-        texts = []
-        for _, record in data.iterrows():
-            text = config.Categories.template(record.to_dict())
-            texts.append(text)
-        return texts
-
-
-class SemanticClusterManager(ClusterManager):
-    """Manages semantic clustering operations for general data."""
-    
     def _organize_clusters(self, data: Any, labels: np.ndarray) -> Dict[str, List[Dict]]:
         """Organize data into clusters based on labels."""
         clusters = {}
@@ -220,6 +194,8 @@ class SemanticClusterManager(ClusterManager):
         return clusters
 
 
+
+
 class BatchGenerator:
     """Generates balanced batches from clustering results."""
     
@@ -227,8 +203,7 @@ class BatchGenerator:
     def generate_batches(
         clustering_result: ClusteringResult,
         output_dir: Path,
-        batch_size: int,
-        file_prefix: str = "batch"
+        batch_size: int
     ) -> List[Path]:
         """Generate balanced batches from clustering results."""
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -244,7 +219,7 @@ class BatchGenerator:
                 current_batch.append(clean_item)
                 
                 if len(current_batch) >= batch_size:
-                    batch_path = output_dir / f"{file_prefix}_{batch_num:03d}.jsonl"
+                    batch_path = output_dir / f"{batch_num:03d}.jsonl"
                     utils.save_jsonl_file(current_batch, batch_path)
                     batch_files.append(batch_path)
                     logger.info(f"Saved batch {batch_num} with {len(current_batch)} items to {batch_path}")
@@ -254,7 +229,7 @@ class BatchGenerator:
         
         # Save remaining items in final batch
         if current_batch:
-            batch_path = output_dir / f"{file_prefix}_{batch_num:03d}.jsonl"
+            batch_path = output_dir / f"{batch_num}.jsonl"
             utils.save_jsonl_file(current_batch, batch_path)
             batch_files.append(batch_path)
             logger.info(f"Saved final batch {batch_num} with {len(current_batch)} items to {batch_path}")
@@ -272,7 +247,7 @@ class DatasetBuilder:
         if not batch_dir.exists():
             raise FileNotFoundError(f"Batch directory does not exist: {batch_dir}")
         
-        batch_files = sorted(batch_dir.glob("*batch_*.jsonl"))
+        batch_files = sorted(batch_dir.glob("*.jsonl"))
         if not batch_files:
             raise FileNotFoundError(f"No batch files found in {batch_dir}")
         
@@ -312,22 +287,34 @@ class Pipeline:
     """Generic pipeline for semantic clustering workflows."""
     
     def __init__(self, 
-                 data_path: Optional[Path] = None,
+                 data_path: Path,
                  embeddings_path: Optional[Path] = None,
                  clusters_path: Optional[Path] = None,
                  batch_dir: Optional[Path] = None,
-                 embedding_generator: Optional[EmbeddingGenerator] = None,
-                 batch_prefix: str = "batch",
-                 data_type: str = "items"):
-        self.data_path = data_path
-        self.embeddings_path = embeddings_path
-        self.clusters_path = clusters_path
-        self.batch_dir = batch_dir
-        self.embedding_generator = embedding_generator
-        self.batch_prefix = batch_prefix
-        self.data_type = data_type
+                 template_func: Optional[callable] = None,
+                 model_name: str = 'all-MiniLM-L6-v2'):
+        """
+        Initialize pipeline for semantic clustering.
         
-        self.cluster_manager = SemanticClusterManager()
+        Args:
+            data_path: Path to input JSONL file
+            embeddings_path: Path to save/load embeddings (defaults to data_path with .npy extension)
+            clusters_path: Path to save/load clusters (defaults to data_path with _clusters.json)
+            batch_dir: Directory to save batches (defaults to data_path parent / 'batches')
+            template_func: Function to format records as text (defaults to "{name}: {description}")
+            model_name: Sentence transformer model name
+        """
+        self.data_path = data_path
+        self.embeddings_path = embeddings_path or data_path.with_suffix('.embeddings.npy')
+        self.clusters_path = clusters_path or data_path.with_name(f"{data_path.stem}_clusters.json")
+        self.batch_dir = batch_dir or (data_path.parent / 'batches')
+        
+        # Default template function if none provided
+        if template_func is None:
+            template_func = lambda x: f"{x.get('name', '')}: {x.get('description', '')}"
+        
+        self.embedding_generator = EmbeddingGenerator(template_func, model_name)
+        self.cluster_manager = ClusterManager()
         self.batch_generator = BatchGenerator()
     
     def _should_regenerate_clusters(self) -> bool:
@@ -343,7 +330,7 @@ class Pipeline:
         
         # Check if any existing batch files are older than clusters
         if self.batch_dir.exists():
-            batch_files = list(self.batch_dir.glob(f"{self.batch_prefix}_*.jsonl"))
+            batch_files = list(self.batch_dir.glob("*.jsonl"))
             if batch_files:
                 # Check if any batch file is older than clusters
                 clusters_mtime = self.clusters_path.stat().st_mtime
@@ -361,14 +348,14 @@ class Pipeline:
             force_regenerate
         )
     
-    def cluster_data(self, batch_size: int = 250) -> ClusteringResult:
+    def cluster_data(self, batch_size: int = 50) -> ClusteringResult:
         """Perform semantic clustering of the data."""
         # Load data and embeddings
         data = utils.load_jsonl_file(self.data_path, as_dataframe=True)
         embeddings = np.load(self.embeddings_path)
         
         if len(data) != embeddings.shape[0]:
-            raise ValueError(f"Mismatch between {self.data_type} ({len(data)}) and embeddings ({embeddings.shape[0]})")
+            raise ValueError(f"Mismatch between data items ({len(data)}) and embeddings ({embeddings.shape[0]})")
         
         # Perform clustering
         result = self.cluster_manager.cluster(embeddings, data, batch_size)
@@ -377,16 +364,16 @@ class Pipeline:
         self.clusters_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.clusters_path, 'w') as f:
             json.dump({
-                f'total_{self.data_type}': result.total_items,
+                'total_items': result.total_items,
                 'n_clusters': result.n_clusters,
                 'target_batch_size': result.target_batch_size,
                 'clusters': result.clusters
             }, f, indent=2, default=str)
         
-        logger.info(f"{self.data_type.title()} clustering results saved to: {self.clusters_path}")
+        logger.info(f"Clustering results saved to: {self.clusters_path}")
         return result
     
-    def generate_batches(self, batch_size: int = 250) -> List[Path]:
+    def generate_batches(self, batch_size: int = 50) -> List[Path]:
         """Generate balanced batches from clustering results."""
         # Check if clusters need to be regenerated due to newer embeddings
         if self._should_regenerate_clusters():
@@ -401,7 +388,7 @@ class Pipeline:
             cluster_data = json.load(f)
         
         clustering_result = ClusteringResult(
-            total_items=cluster_data[f'total_{self.data_type}'],
+            total_items=cluster_data['total_items'],
             n_clusters=cluster_data['n_clusters'],
             target_batch_size=cluster_data['target_batch_size'],
             clusters=cluster_data['clusters']
@@ -410,25 +397,24 @@ class Pipeline:
         return self.batch_generator.generate_batches(
             clustering_result, 
             self.batch_dir, 
-            batch_size, 
-            self.batch_prefix
+            batch_size
         )
     
-    def run_full_pipeline(self, batch_size: int = 250, force_embeddings: bool = False) -> Dict[str, Any]:
+    def run_full_pipeline(self, batch_size: int = 50, force_embeddings: bool = False) -> Dict[str, Any]:
         """Run the complete clustering pipeline."""
-        logger.info(f"=== Step 1: Generating {self.data_type} embeddings ===")
+        logger.info("=== Step 1: Generating embeddings ===")
         embeddings = self.generate_embeddings(force_embeddings)
         
-        logger.info(f"\n=== Step 2: Clustering {self.data_type} semantically ===")
+        logger.info("\n=== Step 2: Clustering semantically ===")
         clustering_result = self.cluster_data(batch_size)
         
         logger.info("\n=== Step 3: Generating balanced batches ===")
         batch_files = self.generate_batches(batch_size)
         
-        logger.info(f"\n=== Pipeline complete ===")
+        logger.info("\n=== Pipeline complete ===")
         return {
             'embeddings_shape': embeddings.shape,
-            f'total_{self.data_type}': clustering_result.total_items,
+            'total_items': clustering_result.total_items,
             'semantic_clusters': clustering_result.n_clusters,
             'generated_batches': len(batch_files),
             'target_batch_size': batch_size,
@@ -440,220 +426,159 @@ class Pipeline:
         return DatasetBuilder.create_categorization_dataset(self.batch_dir)
 
 
-class KeywordPipeline(Pipeline):
-    """Complete workflow for keyword semantic clustering."""
-    
-    def __init__(self, 
-                 keywords_path: Optional[Path] = None,
-                 embeddings_path: Optional[Path] = None,
-                 clusters_path: Optional[Path] = None,
-                 batch_dir: Optional[Path] = None):
-        super().__init__(
-            data_path=keywords_path or config.Keywords.keywords_path,
-            embeddings_path=embeddings_path or config.Keywords.keyword_embeddings_path,
-            clusters_path=clusters_path or config.Keywords.semantic_clusters_path,
-            batch_dir=batch_dir or config.Keywords.batch_dir,
-            embedding_generator=KeywordEmbeddingGenerator(),
-            batch_prefix="keyword_batch",
-            data_type="keywords"
-        )
-    
-    def cluster_keywords(self, batch_size: int = 250) -> ClusteringResult:
-        """Perform semantic clustering of keywords (backward compatibility)."""
-        return self.cluster_data(batch_size)
-
-
-class CategoryPipeline(Pipeline):
-    """Complete workflow for category proposal clustering."""
-    
-    def __init__(self,
-                  proposal_path: Optional[Path] = None,
-                 embeddings_path: Optional[Path] = None,
-                 clusters_path: Optional[Path] = None,
-                 batch_dir: Optional[Path] = None):
-        super().__init__(
-            data_path= proposal_path or config.Categories.category_proposal_path,
-            embeddings_path=embeddings_path or config.Categories.category_embeddings_path,
-            clusters_path=clusters_path or config.Categories.semantic_clusters_path,
-            batch_dir=batch_dir or config.Categories.batch_dir,
-            embedding_generator=CategoryEmbeddingGenerator(),
-            batch_prefix="category_batch",
-            data_type="categories"
-        )
-    
-    def cluster_categories(self, batch_size: int = 50) -> ClusteringResult:
-        """Perform semantic clustering of category proposals (backward compatibility)."""
-        return self.cluster_data(batch_size)
 
 
 # CLI Interface
-app = typer.Typer(help="Semantic clustering utilities for category proposals and keywords")
-keywords_app = typer.Typer(help="Keyword semantic clustering operations")
-categories_app = typer.Typer(help="Category semantic clustering operations")
+app = typer.Typer(help="Semantic clustering utilities for structured JSONL data")
 
-app.add_typer(keywords_app, name="keywords")
-app.add_typer(categories_app, name="categories")
-
-
-# Keywords subcommands
-@keywords_app.command("embeddings")
-def keyword_embeddings(
-    force: bool = typer.Option(False, "--force", help="Force regeneration even if cache exists"),
-    keywords_path: str = typer.Option(None, "--keywords-path", help="Path to keywords JSONL file"),
-    output_path: str = typer.Option(None, "--output-path", help="Path to save embeddings npy file")
+@app.command("embeddings")
+def generate_embeddings_cmd(
+    input_path: str = typer.Argument(..., help="Path to input JSONL file"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory to place all generated files"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force regeneration even if cache exists"),
+    template: str = typer.Option(None, "--template", "-t", help="Template string (use {name} and {description})"),
+    model: str = typer.Option('all-MiniLM-L6-v2', "--model", "-m", help="Sentence transformer model name")
 ):
-    """Generate embeddings for keywords."""
-    pipeline = KeywordPipeline(
-        keywords_path=Path(keywords_path) if keywords_path else None,
-        embeddings_path=Path(output_path) if output_path else None
+    """Generate embeddings for JSONL data."""
+    input_p = Path(input_path)
+    
+    # Handle output_dir to set embeddings_path
+    embeddings_p = None
+    if output_dir:
+        base_dir = Path(output_dir)
+        embeddings_p = base_dir / f"{input_p.stem}.embeddings.npy"
+    
+    # Parse template if provided
+    template_func = None
+    if template:
+        template_func = lambda x: template.format(**x)
+    
+    pipeline = Pipeline(
+        data_path=input_p,
+        embeddings_path=embeddings_p,
+        template_func=template_func,
+        model_name=model
     )
     embeddings_array = pipeline.generate_embeddings(force)
-    print(f"Generated keyword embeddings with shape: {embeddings_array.shape}")
+    print(f"Generated embeddings with shape: {embeddings_array.shape}")
+    print(f"Saved to: {pipeline.embeddings_path}")
 
 
-@keywords_app.command("cluster")
-def cluster_keywords(
-    batch_size: int = typer.Option(250, "--batch-size", "-b", help="Target number of keywords per cluster"),
-    keywords_path: str = typer.Option(None, "--keywords-path", help="Path to keywords JSONL file"),
-    embeddings_path: str = typer.Option(None, "--embeddings-path", help="Path to keyword embeddings npy file"),
-    output_path: str = typer.Option(None, "--output-path", help="Path to save clustering results")
+@app.command("cluster")
+def cluster_cmd(
+    input_path: str = typer.Argument(..., help="Path to input JSONL file"),
+    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target number of items per cluster"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory to place all generated files"),
+    template: str = typer.Option(None, "--template", "-t", help="Template string (use {name} and {description})")
 ):
-    """Perform semantic clustering of keywords for balanced categorization batches."""
-    pipeline = KeywordPipeline(
-        keywords_path=Path(keywords_path) if keywords_path else None,
-        embeddings_path=Path(embeddings_path) if embeddings_path else None,
-        clusters_path=Path(output_path) if output_path else None
-    )
-    result = pipeline.cluster_keywords(batch_size)
+    """Perform semantic clustering of data."""
+    input_p = Path(input_path)
     
-    print(f"\nKeyword clustering summary:")
-    print(f"  Total keywords: {result.total_items}")
+    # Handle output_dir to set paths
+    embeddings_p = None
+    clusters_p = None
+    if output_dir:
+        base_dir = Path(output_dir)
+        embeddings_p = base_dir / f"{input_p.stem}.embeddings.npy"
+        clusters_p = base_dir / f"{input_p.stem}_clusters.json"
+    
+    # Parse template if provided
+    template_func = None
+    if template:
+        template_func = lambda x: template.format(**x)
+    
+    pipeline = Pipeline(
+        data_path=input_p,
+        embeddings_path=embeddings_p,
+        clusters_path=clusters_p,
+        template_func=template_func
+    )
+    result = pipeline.cluster_data(batch_size)
+    
+    print(f"\nClustering summary:")
+    print(f"  Total items: {result.total_items}")
     print(f"  Number of clusters: {result.n_clusters}")
     print(f"  Target batch size: {batch_size}")
+    print(f"  Saved to: {pipeline.clusters_path}")
 
 
-@keywords_app.command("generate-batches")
-def generate_keyword_batches(
-    batch_size: int = typer.Option(250, "--batch-size", "-b", help="Target size for each batch"),
-    keywords_path: str = typer.Option(None, "--keywords-path", help="Path to keywords JSONL file"),
-    clusters_path: str = typer.Option(None, "--clusters-path", help="Path to clustering results JSON file"),
-    output_dir: str = typer.Option(None, "--output-dir", help="Directory to save batch files")
+@app.command("generate-batches")
+def generate_batches_cmd(
+    input_path: str = typer.Argument(..., help="Path to input JSONL file"),
+    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory to place all generated files")
 ):
-    """Generate balanced keyword batches from semantic clusters."""
-    pipeline = KeywordPipeline(
-        keywords_path=Path(keywords_path) if keywords_path else None,
-        clusters_path=Path(clusters_path) if clusters_path else None,
-        batch_dir=Path(output_dir) if output_dir else None
+    """Generate balanced batches from semantic clusters."""
+    input_p = Path(input_path)
+    
+    # Handle output_dir to set paths
+    clusters_p = None
+    batch_dir = None
+    if output_dir:
+        base_dir = Path(output_dir)
+        clusters_p = base_dir / f"{input_p.stem}_clusters.json"
+        batch_dir = base_dir / "batches"
+    
+    pipeline = Pipeline(
+        data_path=input_p,
+        clusters_path=clusters_p,
+        batch_dir=batch_dir
     )
     batch_files = pipeline.generate_batches(batch_size)
     
-    print(f"\nGenerated {len(batch_files)} batch files")
+    print(f"\nGenerated {len(batch_files)} batch files in {pipeline.batch_dir}")
     for i, batch_file in enumerate(batch_files):
-        print(f"  Batch {i}: {batch_file}")
+        print(f"  Batch {i}: {batch_file.name}")
 
 
-@keywords_app.command("full-pipeline")
-def full_keyword_pipeline(
-    batch_size: int = typer.Option(250, "--batch-size", "-b", help="Target size for each batch"),
-    force_embeddings: bool = typer.Option(False, "--force-embeddings", help="Force regeneration of embeddings"),
-    keywords_path: str = typer.Option(None, "--keywords-path", help="Path to keywords JSONL file")
+@app.command("pipeline")
+def pipeline(
+    input_path: str = typer.Argument(..., help="Path to input JSONL file"),
+    output_dir: str = typer.Argument(..., help="Directory to place all generated files (embeddings, clusters, batches)"),
+    # output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory to place all generated files (embeddings, clusters, batches)"),
+    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
+    force_embeddings: bool = typer.Option(False, "--force", "-f", help="Force regeneration of embeddings"),
+    template: str = typer.Option(None, "--template", "-t", help="Template string (use {name} and {description})"),
+    model: str = typer.Option('all-MiniLM-L6-v2', "--model", "-m", help="Sentence transformer model name")
 ):
-    """Run the complete keyword clustering pipeline: embeddings -> clustering -> batches."""
-    pipeline = KeywordPipeline(keywords_path=Path(keywords_path) if keywords_path else None)
+    """Run the complete clustering pipeline: embeddings -> clustering -> batches."""
+    input_p = Path(input_path)
+    
+    # Handle output_dir to set all paths
+    embeddings_p = None
+    clusters_p = None
+    batch_dir = None
+    if output_dir:
+        base_dir = Path(output_dir)
+        embeddings_p = base_dir / f"{input_p.stem}.embeddings.npy"
+        clusters_p = base_dir / f"{input_p.stem}_clusters.json"
+        batch_dir = base_dir / "batches"
+    
+    # Parse template if provided
+    template_func = None
+    if template:
+        template_func = lambda x: template.format(**x)
+    
+    pipeline = Pipeline(
+        data_path=input_p,
+        embeddings_path=embeddings_p,
+        clusters_path=clusters_p,
+        batch_dir=batch_dir,
+        template_func=template_func,
+        model_name=model
+    )
     results = pipeline.run_full_pipeline(batch_size, force_embeddings)
     
     print(f"\n=== Pipeline Summary ===")
-    print(f"  Total keywords: {results['total_keywords']}")
+    print(f"  Total items: {results['total_items']}")
     print(f"  Semantic clusters: {results['semantic_clusters']}")
     print(f"  Generated batches: {results['generated_batches']}")
     print(f"  Target batch size: {results['target_batch_size']}")
-
-
-# Categories subcommands
-@categories_app.command("embeddings")
-def category_embeddings(
-    force: bool = typer.Option(False, "--force", help="Force regeneration even if cache exists"),
-     proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file"),
-    output_path: str = typer.Option(None, "--output-path", help="Path to save embeddings npy file")
-):
-    """Generate embeddings for category proposals."""
-    pipeline = CategoryPipeline(
-         proposal_path=Path(proposal_path) if  proposal_path else None,
-        embeddings_path=Path(output_path) if output_path else None
-    )
-    embeddings_array = pipeline.generate_embeddings(force)
-    print(f"Generated category embeddings with shape: {embeddings_array.shape}")
-
-
-@categories_app.command("cluster")
-def cluster_categories(
-    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target number of categories per cluster"),
-     proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file"),
-    embeddings_path: str = typer.Option(None, "--embeddings-path", help="Path to category embeddings npy file"),
-    output_path: str = typer.Option(None, "--output-path", help="Path to save clustering results")
-):
-    """Perform semantic clustering of category proposals for balanced categorization batches."""
-    pipeline = CategoryPipeline(
-         proposal_path=Path( proposal_path) if  proposal_path else None,
-        embeddings_path=Path(embeddings_path) if embeddings_path else None,
-        clusters_path=Path(output_path) if output_path else None
-    )
-    result = pipeline.cluster_categories(batch_size)
-    
-    print(f"\nCategory clustering summary:")
-    print(f"  Total categories: {result.total_items}")
-    print(f"  Number of clusters: {result.n_clusters}")
-    print(f"  Target batch size: {batch_size}")
-
-
-@categories_app.command("generate-batches")
-def generate_category_batches(
-    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
-    proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file"),
-    clusters_path: str = typer.Option(None, "--clusters-path", help="Path to clustering results JSON file"),
-    output_dir: str = typer.Option(None, "--output-dir", help="Directory to save batch files"),
-    force_embeddings: bool = typer.Option(False, "--force-embeddings", help="Force regeneration of embeddings and clusters")
-):
-    """Generate balanced category batches from semantic clusters."""
-    pipeline = CategoryPipeline(
-        proposal_path=Path(proposal_path) if proposal_path else None,
-        clusters_path=Path(clusters_path) if clusters_path else None,
-        batch_dir=Path(output_dir) if output_dir else None
-    )
-    
-    if force_embeddings:
-        # Run full pipeline to regenerate embeddings, clusters, and batches
-        results = pipeline.run_full_pipeline(batch_size, force_embeddings)
-        batch_files = results.get('batch_files', [])
-        print(f"\n=== Pipeline Summary ===")
-        print(f"  Total categories: {results.get('total_categories', 'N/A')}")
-        print(f"  Semantic clusters: {results.get('semantic_clusters', 'N/A')}")
-        print(f"  Generated batches: {results.get('generated_batches', len(batch_files))}")
-    else:
-        # Only generate batches from existing clusters
-        batch_files = pipeline.generate_batches(batch_size)
-    
-    print(f"\nGenerated {len(batch_files)} batch files")
-    for i, batch_file in enumerate(batch_files):
-        print(f"  Batch {i}: {batch_file}")
-
-
-@categories_app.command("full-pipeline")
-def full_category_pipeline(
-    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Target size for each batch"),
-    force_embeddings: bool = typer.Option(False, "--force-embeddings", help="Force regeneration of embeddings"),
-    proposal_path: str = typer.Option(None, "--proposal-path", help="Path to category proposals JSONL file")
-):
-    """Run the complete category clustering pipeline: embeddings -> clustering -> batches."""
-    pipeline = CategoryPipeline(proposal_path=Path(proposal_path) if proposal_path else None)
-    results = pipeline.run_full_pipeline(batch_size, force_embeddings)
-    
-    print(f"\n=== Pipeline Summary ===")
-    print(f"  Total categories: {results['total_categories']}")
-    print(f"  Semantic clusters: {results['semantic_clusters']}")
-    print(f"  Generated batches: {results['generated_batches']}")
-    print(f"  Target batch size: {results['target_batch_size']}")
+    print(f"  Embeddings: {pipeline.embeddings_path}")
+    print(f"  Clusters: {pipeline.clusters_path}")
+    print(f"  Batches: {pipeline.batch_dir}")
 
 
 if __name__ == "__main__":
     app()
+

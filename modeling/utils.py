@@ -173,3 +173,86 @@ def to_clipboard_with_max_width(series, max_width=80):
 
 def get_keywords_freq_table_with_selector(keywords, grants, selector):
     return keywords.explode("grants")[keywords.explode("grants").grants.isin(grants[selector].id)].groupby("name").agg({"grants": "count"}).sort_values("grants", ascending=False).reset_index().merge(keywords, how="left", left_on="name", right_on="name").drop("grants_y", axis=1).rename(columns={"grants_x": "grants"})
+
+
+# =============================================================================
+# Common Categorization Functions
+# =============================================================================
+
+def load_batch_dataset(batch_dir: Path, sample_creator_func, dataset_type: str):
+    """
+    Load batch datasets from directory.
+    
+    Args:
+        batch_dir: Directory containing batch files
+        sample_creator_func: Function to create Sample from batch data and batch_id
+        dataset_type: Type description for error messages
+    
+    Returns:
+        MemoryDataset with all samples
+    """
+    from inspect_ai.dataset import MemoryDataset
+    
+    if isinstance(batch_dir, str):
+        batch_dir = Path(batch_dir)
+
+    batch_files = sorted(batch_dir.glob("*.jsonl"))
+    if not batch_files:
+        raise FileNotFoundError(f"No batch files found in {batch_dir}")
+    
+    samples = []
+    for batch_file in batch_files:
+        batch_id = batch_file.stem
+        
+        try:
+            batch_data = load_jsonl_file(batch_file, as_dataframe=False)
+            sample = sample_creator_func(batch_data, batch_id, batch_file)
+            samples.append(sample)
+        except Exception as e:
+            print(f"Warning: Could not load batch file {batch_file}: {e}")
+            continue
+
+    print(f"Total {dataset_type} batches: {len(samples)}")
+    return MemoryDataset(samples)
+
+
+# def convert_merged_categories_to_categories(input_path: Path) -> list:
+#     """
+#     Deduplicate categories by normalizing names and selecting best variants.
+    
+#     Args:
+#         input_path: Path to category proposals file
+    
+#     Returns:
+#         Deduplicated categories with merged keywords
+#     """
+#     categories_dict = {}
+#     all_categories = load_jsonl_file(input_path, as_dataframe=False)
+    
+#     for category in all_categories:
+#         normalized_name = normalize(category["name"])
+        
+#         if normalized_name not in categories_dict:
+#             categories_dict[normalized_name] = {
+#                 "variants": [],
+#                 "keywords": set()
+#             }
+        
+#         categories_dict[normalized_name]["variants"].append(category)
+#         categories_dict[normalized_name]["keywords"].update(category.get("keywords", []))
+    
+#     final_categories = []
+    
+#     for normalized_name, data in categories_dict.items():
+#         best_variant = max(data["variants"], key=lambda c: len(c.get("description", "")))
+        
+#         final_category = {
+#             "name": best_variant["name"],
+#             "description": best_variant["description"],
+#             "keywords": list(data["keywords"]),
+#             "field_of_research": best_variant["field_of_research"]
+#         }
+        
+#         final_categories.append(final_category)
+    
+#     return final_categories

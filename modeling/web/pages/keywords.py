@@ -18,23 +18,21 @@ if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
 from shared_utils import (
-    setup_page_config, 
+ 
     load_data,
     field_to_division_codes, 
     has_research_field_simple,
-    has_research_field_all_codes,
-    get_unique_research_fields,
-    get_unique_research_fields_from_categories,
-    create_research_field_options,
-    clear_previous_page_state,
-    get_unique_funders,
-    get_unique_sources,
-    get_unique_keyword_types
 )
+from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 from visualisation import DataExplorer, DataExplorerConfig
 from trends_visualizer import TrendsVisualizer, TrendsConfig, TrendsDataPreparation
-from data_explorer_helper import DataExplorerPreparation
 
+
+st.set_page_config(
+    page_title="Keywords",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 @dataclass
 class KeywordFilterConfig:
@@ -50,13 +48,12 @@ class KeywordFilterConfig:
 @dataclass
 class KeywordSelectionConfig:
     """Configuration for keyword selection"""
-    method: str  # "Top N keywords", "Random sample", "Specify custom keywords", "Fastest growth"
+    method: str  # "Top N keywords", "Random sample", "Specify custom keywords"
     top_n: int
     random_sample_size: int
     custom_keywords: List[str]
     use_random_seed: bool
     random_seed: Optional[int]
-    growth_n: int  # Number of fastest growing keywords to show
 
 
 @dataclass
@@ -146,41 +143,7 @@ class KeywordSelector:
     
     def __init__(self, filter_manager: KeywordFilterManager):
         self.filter_manager = filter_manager
-    
-    def _calculate_growth_rate(self, grants_list: List[str], grant_years_lookup: Dict[str, int]) -> float:
-        """Calculate growth rate for a keyword based on temporal distribution
-        
-        Args:
-            grants_list: List of grant IDs associated with the keyword
-            grant_years_lookup: Pre-built dictionary mapping grant IDs to years
-        """
-        if not grants_list:
-            return 0.0
-        
-        years = [grant_years_lookup[g] for g in grants_list if g in grant_years_lookup and pd.notna(grant_years_lookup.get(g))]
-        
-        if len(years) < 2:
-            return 0.0
-        
-        years_sorted = sorted(years)
-        min_year = years_sorted[0]
-        max_year = years_sorted[-1]
-        year_range = max_year - min_year
-        
-        if year_range == 0:
-            return 0.0
-        
-        split_point = min_year + (year_range / 2)
-        
-        early_count = sum(1 for y in years if y <= split_point)
-        late_count = sum(1 for y in years if y > split_point)
-        
-        if early_count == 0:
-            return float('inf') if late_count > 0 else 0.0
-        
-        growth_rate = (late_count - early_count) / early_count
-        
-        return growth_rate
+
     
     def select_keywords(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> Tuple[List[str], str]:
         """Select keywords based on the configured method"""
@@ -196,9 +159,6 @@ class KeywordSelector:
             count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
             title = f"{count_type} Keyword Trends - Custom Selection ({len(selection_config.custom_keywords)} keywords)"
             return selection_config.custom_keywords, title
-        
-        elif selection_config.method == "Fastest growth":
-            return self._select_fastest_growth_keywords(filter_config, selection_config, display_config)
         
         return [], "Unknown Selection Method"
     
@@ -222,392 +182,11 @@ class KeywordSelector:
         
         return sampled_keywords, title
     
-    def _select_fastest_growth_keywords(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> Tuple[List[str], str]:
-        """Select keywords with fastest growth rates"""
-        filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config)
-        
-        if filtered_keywords.empty or selection_config.growth_n == 0:
-            count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-            return [], f"{count_type} Fastest Growing Keywords (top_n={selection_config.growth_n})"
-        
-        grant_years_lookup = dict(zip(self.filter_manager.grants_df['id'], self.filter_manager.grants_df['start_year']))
-        grant_years_lookup = {k: v for k, v in grant_years_lookup.items() if pd.notna(v)}
-        
-        growth_rates = []
-        for keyword_name, grants_list in zip(filtered_keywords['name'], filtered_keywords['grants']):
-            growth_rate = self._calculate_growth_rate(grants_list, grant_years_lookup)
-            growth_rates.append((keyword_name, growth_rate))
-        
-        growth_rates.sort(key=lambda x: x[1], reverse=True)
-        
-        fastest_growing = [kw for kw, _ in growth_rates[:selection_config.growth_n]]
-        
-        count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        title = f"{count_type} Fastest Growing Keywords (count_range={filter_config.min_count}-{filter_config.max_count}, top_n={selection_config.growth_n})"
-        
-        return fastest_growing, title
     
     def _create_top_n_title(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> str:
         """Create title for top N keyword selection"""
         count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
         return f"{count_type} Keyword Trends (count_range={filter_config.min_count}-{filter_config.max_count}, top_n={selection_config.top_n})"
-
-
-class SidebarControls:
-    """Handles all sidebar UI controls"""
-    
-    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame, categories_df: pd.DataFrame):
-        self.keywords_df = keywords_df
-        self.grants_df = grants_df
-        self.categories_df = categories_df
-        
-        # Get unique values using individual focused functions
-        self.unique_funders = get_unique_funders(grants_df)
-        self.unique_sources = get_unique_sources(grants_df)
-        self.unique_keyword_types = get_unique_keyword_types(keywords_df)
-        unique_research_fields = get_unique_research_fields_from_categories(categories_df)
-        
-        # Get research field options
-        self.field_options, self.field_values = create_research_field_options(unique_research_fields)
-        
-        # Create mapping from options to field values
-        self.option_to_field = dict(zip(self.field_options, self.field_values))
-    
-    def _get_keyword_count_range_from_percentiles(self, filtered_keywords: pd.DataFrame, lower_percentile: float, upper_percentile: float) -> Tuple[int, int]:
-        """Convert percentile range to actual keyword count range based on keyword ranking"""
-        if filtered_keywords.empty:
-            return 1, 50
-        
-        # Calculate grant counts for all keywords and sort by occurrence
-        grant_counts = filtered_keywords['grants'].apply(len)
-        sorted_counts = grant_counts.sort_values(ascending=True)  # Sort ascending (least to most frequent)
-        
-        # Get the total number of keywords
-        total_keywords = len(sorted_counts)
-        
-        # Calculate the indices based on percentiles (rank-based)
-        lower_index = int(lower_percentile * total_keywords)
-        upper_index = int(upper_percentile * total_keywords)
-        
-        # Ensure indices are within bounds
-        lower_index = max(0, min(lower_index, total_keywords - 1))
-        upper_index = max(lower_index, min(upper_index, total_keywords - 1))
-        
-        # Get the actual count thresholds at these positions
-        min_count = max(1, sorted_counts.iloc[lower_index])
-        max_count = sorted_counts.iloc[upper_index]
-        
-        # Ensure max_count is at least min_count
-        if max_count < min_count:
-            max_count = min_count
-        
-        return min_count, max_count
-    
-    def _get_keyword_count_range_from_log_scale(self, filtered_keywords: pd.DataFrame, lower_log: float, upper_log: float) -> Tuple[int, int]:
-        """Convert log scale values to actual keyword count range"""
-        if filtered_keywords.empty:
-            return 1, 50
-        
-        # Calculate grant counts for all keywords
-        grant_counts = filtered_keywords['grants'].apply(len)
-        min_possible = max(1, grant_counts.min())
-        max_possible = grant_counts.max()
-        
-        # Handle edge case where all keywords have the same count
-        if min_possible == max_possible:
-            return min_possible, max_possible
-        
-        # Convert from log scale (0-1) to actual counts
-        log_min = np.log(min_possible)
-        log_max = np.log(max_possible)
-        
-        # Map slider values (0-1) to log space
-        lower_log_val = log_min + lower_log * (log_max - log_min)
-        upper_log_val = log_min + upper_log * (log_max - log_min)
-        
-        # Convert back to actual counts
-        min_count = max(1, int(np.exp(lower_log_val)))
-        max_count = max(min_count, int(np.exp(upper_log_val)))
-        
-        return min_count, max_count
-    
-    def _format_log_scale_value(self, x: float, filtered_keywords: pd.DataFrame) -> str:
-        """Format a single log scale value to show the corresponding occurrence count"""
-        if filtered_keywords.empty:
-            return f"{x:.0%}"
-        
-        grant_counts = filtered_keywords['grants'].apply(len)
-        min_possible = max(1, grant_counts.min())
-        max_possible = grant_counts.max()
-        
-        if min_possible == max_possible:
-            return str(min_possible)
-        
-        log_min = np.log(min_possible)
-        log_max = np.log(max_possible)
-        log_val = log_min + x * (log_max - log_min)
-        count = max(1, int(np.exp(log_val)))
-        
-        return str(count)
-    
-    def _format_percentile_range(self, lower: float, upper: float, filtered_keywords: pd.DataFrame) -> str:
-        """Format the percentile range display based on keyword ranking"""
-        if filtered_keywords.empty:
-            return f"{lower:.0%} - {upper:.0%}"
-        
-        min_count, max_count = self._get_keyword_count_range_from_percentiles(filtered_keywords, lower, upper)
-        
-        # Calculate how many keywords fall in this range
-        grant_counts = filtered_keywords['grants'].apply(len)
-        included_keywords = ((grant_counts >= min_count) & (grant_counts <= max_count)).sum()
-        total_keywords = len(grant_counts)
-        
-        # Calculate the expected number of keywords based on percentile range
-        expected_keywords = int((upper - lower) * total_keywords)
-        
-        return f"{lower:.0%} - {upper:.0%} (rank-based: {min_count}-{max_count} grants, ~{expected_keywords} keywords)"
-    
-    def render_sidebar(self) -> Tuple[KeywordFilterConfig, KeywordSelectionConfig, KeywordDisplayConfig]:
-        """Render all sidebar controls and return configuration objects"""
-        st.sidebar.empty()
-        
-        with st.sidebar:
-            st.subheader("📈 Keyword Trends Settings")
-            
-            filter_config = self._render_filtering_options()
-            selection_config = self._render_keyword_selection(filter_config)
-            display_config = self._render_display_settings()
-            
-            st.markdown("---")
-            
-            return filter_config, selection_config, display_config
-    
-    def _render_filtering_options(self) -> KeywordFilterConfig:
-        """Render filtering options section"""
-        with st.expander("🔍 Filtering Options", expanded=False):
-            st.markdown("**Grant Filters**")
-            
-            funder_filter = st.multiselect(
-                "Filter by Funder",
-                options=self.unique_funders,
-                default=[],
-                help="Select specific funders to filter grants by (leave empty for all funders)"
-            )
-            
-            source_filter = st.multiselect(
-                "Filter by Source",
-                options=self.unique_sources,
-                default=[],
-                help="Select specific sources to filter grants by (leave empty for all sources)"
-            )
-            
-            st.markdown("**Research Fields:**")
-            selected_field_options = st.multiselect(
-                "Select research fields to filter by",
-                options=self.field_options,
-                default=[],
-                help="Select specific research areas to filter by. Leave empty to include all research fields."
-            )
-            field_filter = [self.option_to_field[option] for option in selected_field_options]
-            
-            st.markdown("**Keyword Filters**")
-            keyword_type_filter = st.multiselect(
-                "Filter by Keyword Type",
-                options=self.unique_keyword_types,
-                default=[],
-                help="Select specific keyword types to filter by (leave empty for all types)"
-            )
-            
-            self._show_active_filters(funder_filter, source_filter, field_filter, keyword_type_filter)
-            
-            # Create a temporary config to get filtered keywords for calculating count options
-            temp_config = KeywordFilterConfig(funder_filter, source_filter, field_filter, keyword_type_filter, 1, 999999)
-            filter_manager = KeywordFilterManager(self.keywords_df, self.grants_df)
-            temp_filtered_keywords = filter_manager.apply_keyword_filters(temp_config)
-            
-            # Use select_slider with log scale range (0-1)
-            log_range = st.select_slider(
-                "Keyword occurrence range (log scale)", 
-                options=[i/20 for i in range(21)],  # 0.0, 0.05, 0.10, ..., 1.0
-                value=(0.0, 1.0),  # Default: include all keywords
-                format_func=lambda x: self._format_log_scale_value(x, temp_filtered_keywords) if not temp_filtered_keywords.empty else f"{x:.0%}",
-                help="Select keywords by occurrence count using a logarithmic scale. This provides better distribution across the range, especially for handling keywords with low occurrence counts. 0.0-1.0 includes all keywords."
-            )
-            
-            # Convert log scale range to actual counts
-            min_count, max_count = self._get_keyword_count_range_from_log_scale(
-                temp_filtered_keywords, log_range[0], log_range[1]
-            )
-            
-            # Show summary of current selection
-            if not temp_filtered_keywords.empty:
-                total_keywords = len(temp_filtered_keywords)
-                
-                # Calculate actual keywords in range for verification
-                grant_counts = temp_filtered_keywords['grants'].apply(len)
-                actual_included = ((grant_counts >= min_count) & (grant_counts <= max_count)).sum()
-                
-                # Get the actual occurrence range for display
-                if temp_filtered_keywords.empty:
-                    occurrence_range_text = "No keywords available"
-                else:
-                    all_counts = grant_counts.sort_values()
-                    if len(all_counts) > 0:
-                        min_occurrence = all_counts.min()
-                        max_occurrence = all_counts.max()
-                        occurrence_range_text = f"Available range: {min_occurrence}-{max_occurrence} grants"
-                    else:
-                        occurrence_range_text = "No keywords available"
-                
-                st.caption(f"Selected range: {log_range[0]:.0%}-{log_range[1]:.0%} (log scale) → {min_count}-{max_count} grants → {actual_included} keywords | {occurrence_range_text}")
-        
-        return KeywordFilterConfig(funder_filter, source_filter, field_filter, keyword_type_filter, min_count, max_count)
-    
-    def _render_keyword_selection(self, filter_config: KeywordFilterConfig) -> KeywordSelectionConfig:
-        """Render keyword selection options"""
-        with st.expander("⚙️ Keyword Selection", expanded=True):
-            method = st.radio(
-                "Keyword selection method",
-                options=["Top N keywords", "Fastest growth", "Random sample", "Specify custom keywords"],
-                index=0,
-                help="Choose how to select keywords to display"
-            )
-            
-            if method == "Top N keywords":
-                return self._render_top_n_selection()
-            elif method == "Fastest growth":
-                return self._render_fastest_growth_selection()
-            elif method == "Random sample":
-                return self._render_random_selection(filter_config)
-            else:
-                return self._render_custom_selection(filter_config)
-    
-    def _render_display_settings(self) -> KeywordDisplayConfig:
-        """Render display settings section"""
-        with st.expander("📊 Display Settings", expanded=True):
-            show_baseline = st.checkbox(
-                "Show baseline (avg keywords/grant)", 
-                value=True,
-                help="Show cumulative average keywords per grant per year as baseline"
-            )
-            
-            use_cumulative = st.checkbox(
-                "Use cumulative counts",
-                value=True,
-                help="Show cumulative keyword counts over time (checked) or raw yearly counts (unchecked)"
-            )
-        
-        return KeywordDisplayConfig(show_baseline, use_cumulative)
-    
-    def _render_top_n_selection(self) -> KeywordSelectionConfig:
-        """Render top N keywords selection"""
-        top_n = st.slider(
-            "Number of top keywords to show", 
-            min_value=0, 
-            max_value=50, 
-            value=10,
-            help="Number of individual keyword lines to display (0 = show only averages)"
-        )
-        return KeywordSelectionConfig("Top N keywords", top_n, 0, [], False, None, 0)
-    
-    def _render_fastest_growth_selection(self) -> KeywordSelectionConfig:
-        """Render fastest growth keywords selection"""
-        growth_n = st.slider(
-            "Number of fastest growing keywords to show", 
-            min_value=0, 
-            max_value=50, 
-            value=10,
-            help="Show keywords with the highest growth rate (comparing early vs late period occurrences)"
-        )
-        st.info("💡 Growth rate is calculated by comparing keyword occurrences in the early half vs late half of the time period")
-        return KeywordSelectionConfig("Fastest growth", 0, 0, [], False, None, growth_n)
-    
-    def _render_random_selection(self, filter_config: KeywordFilterConfig) -> KeywordSelectionConfig:
-        """Render random sampling selection"""
-        # Calculate available keywords for the current filters
-        filter_manager = KeywordFilterManager(st.session_state.get('keywords', pd.DataFrame()), 
-                                     st.session_state.get('grants', pd.DataFrame()))
-        available_keywords = filter_manager.get_available_keywords(filter_config)
-        max_available = len(available_keywords)
-        
-        if max_available > 0:
-            random_sample_size = st.slider(
-                "Number of random keywords to sample",
-                min_value=1,
-                max_value=min(50, max_available),
-                value=min(20, max_available),
-                help=f"Randomly select keywords from {max_available} available keywords"
-            )
-        else:
-            st.warning("No keywords available with current filters. Please adjust your filter settings.")
-            random_sample_size = 0
-        
-        use_random_seed = st.checkbox(
-            "Use random seed for reproducible results",
-            value=True,
-            help="Enable to get the same random sample each time"
-        )
-        
-        random_seed = None
-        if use_random_seed:
-            random_seed = st.number_input(
-                "Random seed",
-                min_value=0,
-                max_value=9999,
-                value=42,
-                help="Seed for random number generator"
-            )
-        
-        if st.button("🎲 Generate New Random Sample", help="Click to get a different random selection"):
-            if 'random_sample_counter' not in st.session_state:
-                st.session_state.random_sample_counter = 0
-            st.session_state.random_sample_counter += 1
-        
-        return KeywordSelectionConfig("Random sample", 0, random_sample_size, [], use_random_seed, random_seed, 0)
-    
-    def _render_custom_selection(self, filter_config: KeywordFilterConfig) -> KeywordSelectionConfig:
-        """Render custom keywords selection"""
-        filter_manager = KeywordFilterManager(st.session_state.get('keywords', pd.DataFrame()), 
-                                     st.session_state.get('grants', pd.DataFrame()))
-        available_keywords = filter_manager.get_available_keywords(filter_config)
-        
-        custom_keywords = st.multiselect(
-            "Select specific keywords to track",
-            options=available_keywords,
-            default=[],
-            help=f"Choose from {len(available_keywords)} keywords that meet the minimum count criteria after filtering"
-        )
-        
-        if custom_keywords:
-            st.info(f"Selected {len(custom_keywords)} custom keywords")
-        else:
-            st.warning("Please select at least one keyword to display trends")
-        
-        return KeywordSelectionConfig("Specify custom keywords", 0, 0, custom_keywords, False, None, 0)
-    
-    def _show_active_filters(self, funder_filter: List[str], source_filter: List[str], 
-                           field_filter: List[str], keyword_type_filter: List[str]):
-        """Display active filters information"""
-        active_filters = []
-        if funder_filter:
-            active_filters.append(f"Funders: {', '.join(str(f) for f in funder_filter)}")
-        if source_filter:
-            active_filters.append(f"Sources: {', '.join(str(s) for s in source_filter)}")
-        if field_filter:
-            field_display_parts = []
-            for field in field_filter[:3]:
-                display_name = str(field).replace('_', ' ').title()
-                field_display_parts.append(display_name)
-            
-            field_display = ', '.join(field_display_parts)
-            if len(field_filter) > 3:
-                field_display += f"... and {len(field_filter) - 3} more"
-            active_filters.append(f"Research Fields: {field_display}")
-        if keyword_type_filter:
-            active_filters.append(f"Types: {', '.join(str(k) for k in keyword_type_filter)}")
-            
-        if active_filters:
-            st.info(f"Active filters: {' | '.join(active_filters)}")
 
 
 class KeywordTrendsVisualizer:
@@ -640,7 +219,6 @@ class KeywordTrendsVisualizer:
             
             num_entities = (
                 selection_config.top_n if selection_config.method == "Top N keywords" else
-                selection_config.growth_n if selection_config.method == "Fastest growth" else
                 len(selected_keywords)
             )
             
@@ -710,8 +288,6 @@ class KeywordTrendsVisualizer:
         """Get the count of displayed keywords"""
         if selection_config.method == "Top N keywords" and selection_config.top_n > 0:
             return min(selection_config.top_n, len(filtered_keywords))
-        elif selection_config.method == "Fastest growth" and selection_config.growth_n > 0:
-            return min(selection_config.growth_n, len(filtered_keywords))
         elif selection_config.method == "Random sample":
             return len(selected_keywords)
         elif selection_config.method == "Specify custom keywords":
@@ -728,6 +304,42 @@ class KeywordDataExplorer:
         self.filter_manager = KeywordFilterManager(keywords_df, grants_df)
         self.data_explorer = DataExplorer()
     
+    @staticmethod
+    def prepare_data(filtered_keywords: pd.DataFrame) -> tuple[pd.DataFrame, DataExplorerConfig]:
+        """Prepare keywords data and configuration for DataExplorer"""
+        display_df = filtered_keywords.copy()
+        
+        if 'name' not in display_df.columns and display_df.index.name == 'name':
+            display_df = display_df.reset_index()
+        
+        display_df['grant_count'] = display_df['grants'].apply(len)
+        display_df = display_df.sort_values('grant_count', ascending=False)
+        
+        config = DataExplorerConfig(
+            title="Keywords Dataset",
+            description="Explore the complete keywords dataset with filtering, search capabilities, and distribution analysis.",
+            search_columns=['name', 'type'],
+            search_placeholder="Search in keyword names or types...",
+            search_help="Enter text to search for specific keywords by name or type",
+            display_columns=['name', 'type', 'grant_count', 'grants'],
+            column_formatters={
+                'grants': lambda x: ', '.join(str(g) for g in x[:3]) + ('...' if len(x) > 3 else '')
+            },
+            column_renames={
+                'name': 'Keyword Name',
+                'type': 'Type',
+                'grant_count': 'Grant Count',
+                'grants': 'Associated Grants'
+            },
+            statistics_columns=['grant_count'],
+            max_display_rows=100,
+            show_statistics=True,
+            show_data_info=True,
+            enable_download=True
+        )
+        
+        return display_df, config
+    
     def render_tab(self, filter_config: KeywordFilterConfig):
         """Render the data exploration tab"""
         filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config)
@@ -736,8 +348,8 @@ class KeywordDataExplorer:
             st.warning("No keywords found with current filters. Please adjust your filter settings.")
             return
         
-        # Prepare data and config using helper
-        display_data, config = DataExplorerPreparation.prepare_keywords_data(filtered_keywords)
+        # Prepare data and config
+        display_data, config = self.prepare_data(filtered_keywords)
         
         # Render the explorer
         self.data_explorer.render_explorer(display_data, config)
@@ -753,9 +365,7 @@ class KeywordsPage:
         self.setup_page()
     
     def setup_page(self):
-        """Setup page configuration and load data"""
-        setup_page_config("Keywords", "📈")
-        clear_previous_page_state()
+
         
         st.header("📈 Keywords Analysis")
         st.markdown("Analyze research keywords with trend visualization and data exploration.")
@@ -774,13 +384,51 @@ class KeywordsPage:
         """Load and store data"""
         self.keywords_df, self.grants_df, self.categories_df = load_data()
     
+    def _map_selection_method(self, method: str) -> str:
+        """Map unified selection method to legacy format"""
+        mapping = {
+            "top_n": "Top N keywords",
+            "random": "Random sample",
+            "custom": "Specify custom keywords"
+        }
+        return mapping.get(method, "Top N keywords")
+    
     def run(self):
         """Main execution method"""
-        # Create sidebar controls
-        sidebar_controls = SidebarControls(self.keywords_df, self.grants_df, self.categories_df)
+        # Create unified sidebar controls
+        sidebar = SidebarControl(
+            page_type="keywords",
+            grants_df=self.grants_df,
+            keywords_df=self.keywords_df,
+            categories_df=self.categories_df
+        )
         
-        # Get configurations from sidebar
-        filter_config, selection_config, display_config = sidebar_controls.render_sidebar()
+        # Get unified configurations from sidebar
+        unified_filter, unified_display = sidebar.render_sidebar()
+        
+        # Adapt to legacy format for existing code
+        filter_config = KeywordFilterConfig(
+            funder_filter=unified_filter.funder_filter,
+            source_filter=unified_filter.source_filter,
+            field_filter=unified_filter.field_filter,
+            keyword_type_filter=unified_filter.keyword_type_filter,
+            min_count=unified_filter.min_count,
+            max_count=unified_filter.max_count
+        )
+        
+        selection_config = KeywordSelectionConfig(
+            method=self._map_selection_method(unified_display.selection_method),
+            top_n=unified_display.num_entities,
+            random_sample_size=unified_display.num_entities,
+            custom_keywords=unified_display.custom_entities,
+            use_random_seed=unified_display.use_random_seed,
+            random_seed=unified_display.random_seed
+        )
+        
+        display_config = KeywordDisplayConfig(
+            show_baseline=unified_display.show_baseline,
+            use_cumulative=unified_display.use_cumulative
+        )
         
         # Create tabs
         tab1, tab2 = st.tabs(["📈 Trends Visualization", "📊 Keywords Data"])
@@ -794,54 +442,6 @@ class KeywordsPage:
         with tab2:
             data_exploration = KeywordDataExplorer(self.keywords_df, self.grants_df)
             data_exploration.render_tab(filter_config)
-    
-    @st.cache_data
-    def _get_unique_research_fields_from_grants(_self):
-        """Get unique research fields efficiently - cached computation"""
-        division_to_field = {
-            '30': 'AGRICULTURAL_VETERINARY_FOOD_SCIENCES',
-            '31': 'BIOLOGICAL_SCIENCES',
-            '32': 'BIOMEDICAL_CLINICAL_SCIENCES',
-            '33': 'BUILT_ENVIRONMENT_DESIGN',
-            '34': 'CHEMICAL_SCIENCES',
-            '35': 'COMMERCE_MANAGEMENT_TOURISM_SERVICES',
-            '36': 'CREATIVE_ARTS_WRITING',
-            '37': 'EARTH_SCIENCES',
-            '38': 'ECONOMICS',
-            '39': 'EDUCATION',
-            '40': 'ENGINEERING',
-            '41': 'ENVIRONMENTAL_SCIENCES',
-            '42': 'HEALTH_SCIENCES',
-            '43': 'HISTORY_HERITAGE_ARCHAEOLOGY',
-            '44': 'HUMAN_SOCIETY',
-            '45': 'INDIGENOUS_STUDIES',
-            '46': 'INFORMATION_COMPUTING_SCIENCES',
-            '47': 'LANGUAGE_COMMUNICATION_CULTURE',
-            '48': 'LAW_LEGAL_STUDIES',
-            '49': 'MATHEMATICAL_SCIENCES',
-            '50': 'PHILOSOPHY_RELIGIOUS_STUDIES',
-            '51': 'PHYSICAL_SCIENCES',
-            '52': 'PSYCHOLOGY'
-        }
-        
-        unique_fields = set()
-        
-        # Add fields from primary FOR codes
-        for val in _self.grants_df['for_primary'].dropna():
-            division_code = str(int(val))[:2]
-            if division_code in division_to_field:
-                unique_fields.add(division_to_field[division_code])
-        
-        # Add fields from secondary FOR codes
-        for for_codes_str in _self.grants_df['for'].dropna():
-            for code in str(for_codes_str).split(','):
-                code = code.strip()
-                if code and len(code) >= 2:
-                    division_code = code[:2]
-                    if division_code in division_to_field:
-                        unique_fields.add(division_to_field[division_code])
-        
-        return unique_fields
 
 
 def main():

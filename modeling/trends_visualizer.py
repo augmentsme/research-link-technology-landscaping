@@ -277,6 +277,7 @@ class TrendsVisualizer:
             
             if config.use_cumulative:
                 values = np.cumsum(values)
+
             
             color = config.color_palette[i % len(config.color_palette)]
             

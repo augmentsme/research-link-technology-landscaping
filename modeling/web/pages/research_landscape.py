@@ -18,9 +18,7 @@ if web_dir not in sys.path:
 
 from visualisation import create_research_landscape_treemap
 from shared_utils import (
-    setup_page_config, 
     load_data,
-    clear_previous_page_state
 )
 
 
@@ -184,9 +182,7 @@ class ResearchLandscapePage:
         self.setup_page()
     
     def setup_page(self):
-        """Setup page configuration and load data"""
-        setup_page_config("Research Landscape")
-        clear_previous_page_state()
+
         
         st.header("Research Landscape Treemap")
         st.markdown("Explore the hierarchical structure of research categories and keywords.")

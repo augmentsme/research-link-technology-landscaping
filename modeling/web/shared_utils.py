@@ -232,23 +232,3 @@ def create_research_field_options(unique_fields):
     
     return field_options, field_values
 
-def setup_page_config(page_title: str, page_icon: str = "🔬"):
-    """Setup page configuration for each page"""
-    st.set_page_config(
-        page_title=f"Research Landscape - {page_title}",
-        page_icon=page_icon,
-        layout="wide"
-    )
-
-def clear_previous_page_state():
-    """Clear any lingering state from previous pages to prevent widget conflicts"""
-    # Store current page in session state to detect page changes
-    current_page = st.get_option("client.toolbarMode")  # This helps detect page context
-    
-    # Clear any widget states that shouldn't persist across pages
-    keys_to_clear = [key for key in st.session_state.keys() 
-                     if key.startswith(('filter_', 'search_', 'temp_'))]
-    
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]

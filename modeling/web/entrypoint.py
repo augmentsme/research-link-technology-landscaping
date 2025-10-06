@@ -5,7 +5,7 @@ Main entry point for the research landscape analysis tool.
 
 import streamlit as st
 import pandas as pd
-from shared_utils import (setup_page_config, load_data, get_unique_funders, 
+from shared_utils import (load_data, get_unique_funders, 
                           get_unique_sources, get_unique_keyword_types, 
                           get_unique_research_fields_from_categories)
 
@@ -135,62 +135,3 @@ try:
 except Exception as e:
     st.error(f"Error loading data: {e}")
     st.markdown("---")
-
-st.markdown("""
-## Welcome to the Research Landscape Analysis Tool
-
-This application provides comprehensive analysis and visualization of research data, including:
-
-### 📊 Available Analysis Pages:
-
-- **Keywords** - Analyze how research keywords evolve over time with cumulative occurrence tracking
-- **Research Landscape** - Interactive treemap visualization of research areas and their relationships  
-- **Grants** - Explore grant distribution patterns across time and funding sources, and view grants with their extracted keywords
-
-### 🚀 Getting Started:
-
-1. **Navigate** using the sidebar to select an analysis page
-2. **Filter** your data using the filtering options in each page's sidebar
-3. **Customize** visualizations using the display settings
-4. **Interact** with the plots to explore your data in detail
-
-### 💡 Features:
-
-- **Auto-generation**: Plots generate automatically when you visit each page
-- **Interactive Filtering**: Real-time filtering by funders, sources, research fields, and keyword types
-- **Organized Controls**: All settings are grouped in collapsible sidebar sections
-- **Export Ready**: High-quality visualizations suitable for reports and presentations
-
----
-
-**👈 Select a page from the sidebar to begin your analysis!**
-""")
-
-# Add some useful information in the sidebar
-with st.sidebar:
-    st.markdown("### 📋 Quick Navigation")
-    st.markdown("""
-    - **Keyword Trends**: Time-series analysis
-    - **Research Landscape**: Hierarchical overview  
-    - **Grant Distributions**: Funding patterns
-    """)
-    
-    st.markdown("---")
-    st.markdown("### 🔧 Tips")
-    st.markdown("""
-    - Use filters to focus on specific areas
-    - Plots update automatically on page load
-    - Click 'Update Settings' for manual refresh
-    - Hover over visualizations for details
-    """)
-    
-    # Show data status in sidebar
-    if 'keywords' in locals() and 'grants' in locals():
-        if keywords is not None and grants is not None:
-            st.markdown("---")
-            st.markdown("### ✅ Data Status")
-            st.success("Data loaded successfully")
-        else:
-            st.markdown("---")
-            st.markdown("### ❌ Data Status")
-            st.error("Data loading failed")

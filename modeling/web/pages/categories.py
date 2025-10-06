@@ -17,12 +17,16 @@ if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
 from shared_utils import load_data
+from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 
 import config
 from visualisation import DataExplorer, DataExplorerConfig
 from trends_visualizer import TrendsVisualizer, TrendsConfig, TrendsDataPreparation
-from data_explorer_helper import DataExplorerPreparation
-
+st.set_page_config(
+    page_title="Category",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 @dataclass
 class CategoryFilterConfig:
@@ -212,152 +216,56 @@ class CategoryVisualizer:
         return fig
 
 
-class SidebarControls:
-    """Handles sidebar UI controls for category filtering"""
-    
-    def __init__(self, data_manager: CategoryDataManager):
-        self.data_manager = data_manager
-    
-    def render_sidebar(self) -> Tuple[CategoryFilterConfig, CategoryTrendsConfig]:
-        """Render sidebar controls and return filter and trends configurations"""
-        st.sidebar.empty()
-        
-        with st.sidebar:
-            st.subheader("� Category Analysis Settings")
-            
-            filter_config = self._render_filtering_options()
-            trends_config = self._render_trends_settings()
-            
-            # Show active filters
-            self._show_active_filters(filter_config)
-            
-            st.markdown("---")
-            
-            return filter_config, trends_config
-    
-    def _render_filtering_options(self) -> CategoryFilterConfig:
-        """Render filtering options section"""
-        with st.expander("🔍 Filtering Options", expanded=True):
-            st.markdown("**Category Filters**")
-            
-            # Field of research filter
-            field_filter = st.multiselect(
-                "Filter by Field of Research",
-                options=self.data_manager.field_options,
-                default=[],
-                help="Filter categories by field of research"
-            )
-            
-            # Get keyword count range for sliders
-            if not self.data_manager.categories_df.empty:
-                min_possible = int(self.data_manager.categories_df['keyword_count'].min())
-                max_possible = int(self.data_manager.categories_df['keyword_count'].max())
-            else:
-                min_possible, max_possible = 0, 100
-            
-            st.markdown("**Category Size Filter:**")
-            min_keywords, max_keywords = st.slider(
-                "Number of keywords in category",
-                min_value=min_possible,
-                max_value=max_possible,
-                value=(min_possible, max_possible),
-                help="Filter categories by number of keywords they contain"
-            )
-            
-            # Search filter
-            st.markdown("**Search:**")
-            search_term = st.text_input(
-                "Search categories",
-                placeholder="Search in category names or descriptions...",
-                help="Filter categories by text search in names or descriptions"
-            )
-        
-        return CategoryFilterConfig(
-            field_filter=field_filter,
-            min_keywords=min_keywords,
-            max_keywords=max_keywords,
-            search_term=search_term,
-            category_names=[]
-        )
-    
-    def _render_trends_settings(self) -> CategoryTrendsConfig:
-        """Render trends visualization settings"""
-        with st.expander("📈 Trends Settings", expanded=True):
-            st.markdown("**Display Options:**")
-            
-            # Number of categories to display
-            num_categories = st.slider(
-                "Number of categories to display",
-                min_value=1,
-                max_value=15,
-                value=5,
-                help="Select how many top categories to show in the trends plot"
-            )
-            
-            # Display options
-            use_cumulative = st.checkbox(
-                "Show cumulative trends",
-                value=True,
-                help="Show cumulative category occurrences over time instead of yearly counts"
-            )
-            
-            st.markdown("**Ranking & Display Metrics:**")
-            
-            # Ranking metric selection (which categories to show)
-            ranking_metric = st.radio(
-                "Rank categories by:",
-                options=["grant_count", "total_funding"],
-                format_func=lambda x: "Number of Grants" if x == "grant_count" else "Total Funding Amount",
-                help="Choose how to select the top categories to display"
-            )
-            
-            # Display metric selection (y-axis values)
-            display_metric = st.radio(
-                "Y-axis shows:",
-                options=["grant_count", "total_funding"],
-                format_func=lambda x: "Grant Count" if x == "grant_count" else "Funding Amount",
-                help="Choose what metric to display on the y-axis"
-            )
-        
-        return CategoryTrendsConfig(
-            num_categories=num_categories,
-            use_cumulative=use_cumulative,
-            ranking_metric=ranking_metric,
-            display_metric=display_metric
-        )
-    
-    def _show_active_filters(self, filter_config: CategoryFilterConfig) -> None:
-        """Display active filters summary"""
-        active_filters = []
-        
-        if filter_config.field_filter:
-            active_filters.append(f"🔬 Fields: {len(filter_config.field_filter)}")
-        
-        if filter_config.search_term:
-            active_filters.append(f"🔍 Search: '{filter_config.search_term}'")
-        
-        # Check if keyword range is not at max
-        if not self.data_manager.categories_df.empty:
-            min_possible = int(self.data_manager.categories_df['keyword_count'].min())
-            max_possible = int(self.data_manager.categories_df['keyword_count'].max())
-            if filter_config.min_keywords != min_possible or filter_config.max_keywords != max_possible:
-                active_filters.append(
-                    f"📊 Keywords: {filter_config.min_keywords}-{filter_config.max_keywords}"
-                )
-        
-        if active_filters:
-            for filter_desc in active_filters:
-                st.sidebar.markdown(f"- {filter_desc}")
-        else:
-            st.sidebar.markdown("*No filters active*")
-
-
 class CategoryExplorerTab:
     """Manages the category explorer tab for detailed category browsing"""
     
     def __init__(self, data_manager: CategoryDataManager):
         self.data_manager = data_manager
         self.data_explorer = DataExplorer()
+    
+    @staticmethod
+    def prepare_data(filtered_categories: pd.DataFrame) -> tuple[pd.DataFrame, DataExplorerConfig]:
+        """Prepare categories data and configuration for DataExplorer"""
+        display_df = filtered_categories[['name', 'field_of_research', 'keyword_count', 'description', 'keywords']].copy()
+        display_df = display_df.sort_values('keyword_count', ascending=False)
+        
+        def format_keywords(keywords):
+            if isinstance(keywords, list):
+                keywords_str = ", ".join(keywords)
+                if len(keywords_str) > 100:
+                    return keywords_str[:97] + "..."
+                return keywords_str
+            else:
+                return str(keywords) if keywords else ""
+        
+        display_df['keywords_formatted'] = display_df['keywords'].apply(format_keywords)
+        
+        config = DataExplorerConfig(
+            title="All Categories",
+            description="Search and explore research categories with their keywords and descriptions.",
+            search_columns=['name', 'description', 'field_of_research', 'keywords_formatted'],
+            search_placeholder="Search by category name, description, field of research, or keywords...",
+            search_help="Enter text to search across category names, descriptions, fields, and keywords",
+            display_columns=['name', 'field_of_research', 'keyword_count', 'keywords_formatted', 'description'],
+            column_formatters={
+                'description': lambda x: (x[:150] + "...") if len(str(x)) > 150 else str(x),
+                'keywords_formatted': lambda x: x
+            },
+            column_renames={
+                'name': 'Category Name',
+                'field_of_research': 'Field of Research',
+                'keyword_count': 'Keywords Count',
+                'keywords_formatted': 'Keywords',
+                'description': 'Description'
+            },
+            statistics_columns=['keyword_count'],
+            max_display_rows=50,
+            show_statistics=True,
+            show_data_info=True,
+            enable_download=True
+        )
+        
+        return display_df, config
     
     def render_tab(self, filter_config: CategoryFilterConfig):
         """Render the category explorer tab"""
@@ -416,8 +324,8 @@ class CategoryExplorerTab:
     
     def _show_category_table_with_explorer(self, filtered_data: pd.DataFrame):
         """Show table of all categories using DataExplorer"""
-        # Prepare data and config using helper
-        display_df, config = DataExplorerPreparation.prepare_categories_data(filtered_data)
+        # Prepare data and config
+        display_df, config = self.prepare_data(filtered_data)
         
         # Render the explorer
         self.data_explorer.render_explorer(display_df, config)
@@ -489,9 +397,33 @@ class CategoryTrendsTab:
             
             if fig is not None:
                 st.plotly_chart(fig, use_container_width=True, key="category_trends_plot")
+                self._show_statistics(filtered_data, viz_data)
+                self._show_debug_data(filtered_data, viz_data)
             else:
                 st.warning("Unable to create trends visualization.")
     
+    def _show_statistics(self, filtered_data: pd.DataFrame, viz_data: pd.DataFrame):
+        """Display statistics about the filtered data"""
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Categories", len(filtered_data))
+        with col2:
+            st.metric("Categories in Chart", viz_data['category'].nunique())
+        with col3:
+            year_range = f"{viz_data['year'].min()}-{viz_data['year'].max()}"
+            st.metric("Year Range", year_range)
+    
+    def _show_debug_data(self, filtered_data: pd.DataFrame, viz_data: pd.DataFrame):
+        """Show debug data in an expander"""
+        with st.expander("Debug: View Underlying Data", expanded=False):
+            st.subheader("Filtered Categories DataFrame")
+            st.write(f"**Shape:** {filtered_data.shape}")
+            st.dataframe(filtered_data, use_container_width=True)
+            
+            st.subheader("Category Trends Data (Chart Data)")
+            st.write(f"**Shape:** {viz_data.shape}")
+            st.dataframe(viz_data, use_container_width=True)
 
 
 class CategoriesPage:
@@ -499,28 +431,12 @@ class CategoriesPage:
     
     def __init__(self):
         self.data_manager = CategoryDataManager()
-        self.sidebar_controls = SidebarControls(self.data_manager)
         self.explorer_tab = CategoryExplorerTab(self.data_manager)
         self.trends_tab = CategoryTrendsTab(self.data_manager)
-    
-    def setup_page(self):
-        """Set up page configuration"""
-        st.set_page_config(
-            page_title="Category Analysis",
-            page_icon="📂",
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
-        
-        st.title("📂 Category Analysis")
-        st.markdown("""
-        Explore and analyze research categories generated from keyword clustering and categorization.
-        Use the sidebar to filter categories and the tabs below to explore different aspects of the data.
-        """)
+
     
     def run(self):
-        """Main function to run the categories page"""
-        self.setup_page()
+
         
         # Check if data is available
         if self.data_manager.categories_df is None or self.data_manager.categories_df.empty:
@@ -528,17 +444,45 @@ class CategoriesPage:
             st.info("Run: `make categorise` to generate categories from keywords, or `make merge` to merge similar categories.")
             return
         
-        # Render sidebar controls
-        filter_config, trends_config = self.sidebar_controls.render_sidebar()
+        # Load grants data for unified sidebar
+        _, grants_df, _ = load_data()
+        
+        # Create unified sidebar controls
+        sidebar = SidebarControl(
+            page_type="categories",
+            grants_df=grants_df,
+            categories_df=self.data_manager.categories_df
+        )
+        
+        # Get unified configurations from sidebar
+        unified_filter, unified_display = sidebar.render_sidebar()
+        
+        # Adapt to legacy format for existing code
+        filter_config = CategoryFilterConfig(
+            field_filter=unified_filter.field_filter,
+            min_keywords=unified_filter.min_count,
+            max_keywords=unified_filter.max_count,
+            search_term=unified_filter.search_term,
+            category_names=[]
+        )
+        
+        trends_config = CategoryTrendsConfig(
+            num_categories=unified_display.num_entities,
+            use_cumulative=unified_display.use_cumulative,
+            ranking_metric="grant_count" if unified_display.ranking_metric == "count" else "total_funding",
+            display_metric="grant_count" if unified_display.display_metric == "count" else "total_funding"
+        )
         
         # Create tabs
-        tab1, tab2 = st.tabs([" Category Explorer", "📈 Category Trends"])
+        tab1, tab2 = st.tabs(["📈 Category Trends", "📂 Category Explorer"])
         
         with tab1:
-            self.explorer_tab.render_tab(filter_config)
+            self.trends_tab.render_tab(filter_config, trends_config)
+            
         
         with tab2:
-            self.trends_tab.render_tab(filter_config, trends_config)
+            self.explorer_tab.render_tab(filter_config)
+            
 
 
 def main():

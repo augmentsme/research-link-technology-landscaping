@@ -256,7 +256,6 @@ class TrendsVisualizer:
         fig = go.Figure()
         
         times = sorted(data['time'].unique())
-        entities = data['entity'].unique()
         
         pivot_data = data.pivot_table(
             index='time',
@@ -268,6 +267,10 @@ class TrendsVisualizer:
         
         time_index = pd.Index(times)
         pivot_data = pivot_data.reindex(time_index, fill_value=0)
+        
+        # Sort entities by their total values (descending) to ensure legend order matches ranking
+        entity_totals = pivot_data.sum().sort_values(ascending=False)
+        entities = entity_totals.index.tolist()
         
         for i, entity in enumerate(entities):
             if entity not in pivot_data.columns:
@@ -328,21 +331,26 @@ class TrendsVisualizer:
             values='value'
         ).fillna(0)
         
+        # Sort entities by their total values (descending) to ensure legend order matches ranking
         entity_totals = pivot_data.sum().sort_values(ascending=False)
         pivot_data = pivot_data[entity_totals.index]
         
         fig = go.Figure()
         
-        for i, entity in enumerate(pivot_data.columns):
+        # Reverse the order for stacked charts so the top entity appears at the top of the stack
+        # but the legend still shows them in descending order (top first)
+        for i, entity in enumerate(reversed(pivot_data.columns.tolist())):
             values = pivot_data[entity].values
             
             if config.use_cumulative:
                 values = np.cumsum(values)
             
+            # Use reversed index for color assignment to maintain color consistency
+            color_index = len(pivot_data.columns) - 1 - i
             if entity == 'Others':
                 color = '#cccccc'
             else:
-                color = config.color_palette[i % len(config.color_palette)]
+                color = config.color_palette[color_index % len(config.color_palette)]
             
             hover_template = (
                 f'<b>{entity}</b><br>'

@@ -245,9 +245,13 @@ class TreemapVisualizer:
         )
         
         fig.update_traces(
-            textinfo="label",
+            textinfo="label+value",
             textfont_size=font_size,
-            textposition="middle center"
+            textposition="middle center",
+            marker=dict(
+                line=dict(width=2, color='white'),
+                pad=dict(t=10, l=10, r=10, b=10)
+            )
         )
         
         return fig

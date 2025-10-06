@@ -189,13 +189,27 @@ class SidebarControl:
                 self.max_possible_count = 1000
         else:
             self.max_possible_count = 1000
+        
+        # Cache available entities for custom selection
+        if self.page_type == "keywords" and self.keywords_df is not None:
+            if 'name' in self.keywords_df.columns:
+                self.available_entities = sorted(self.keywords_df['name'].tolist())
+            else:
+                self.available_entities = sorted(self.keywords_df.index.tolist())
+        elif self.page_type == "categories" and self.categories_df is not None:
+            if 'name' in self.categories_df.columns:
+                self.available_entities = sorted(self.categories_df['name'].tolist())
+            else:
+                self.available_entities = sorted(self.categories_df.index.tolist())
+        else:
+            self.available_entities = []
     
     def render_sidebar(self) -> Tuple[FilterConfig, DisplayConfig]:
         """Render the unified sidebar and return configurations"""
         st.sidebar.empty()
         
         with st.sidebar:
-            st.title("⚙️ Settings")
+            st.title("Settings")
             
             # Expander 1: Data Filtering
             filter_config = self._render_data_filters_expander()
@@ -210,7 +224,7 @@ class SidebarControl:
     
     def _render_data_filters_expander(self) -> FilterConfig:
         """Render the data filtering expander"""
-        with st.expander("🔍 Data Filtering", expanded=True):
+        with st.expander("Data Filtering", expanded=True):
             st.markdown("Select which data to include in the analysis")
             
             # Funder filter
@@ -343,7 +357,7 @@ class SidebarControl:
     
     def _render_display_settings_expander(self) -> DisplayConfig:
         """Render the display settings expander"""
-        with st.expander("📊 Display Settings", expanded=True):
+        with st.expander("Display Settings", expanded=True):
             st.markdown("Configure how to visualize the filtered data")
             
             # Selection method
@@ -384,12 +398,30 @@ class SidebarControl:
             
             # Custom selection (only if method is custom)
             if selection_method == "custom":
-                custom_entities_input = st.text_area(
-                    f"Custom {entity_label} (one per line)",
-                    height=100,
-                    help=f"Enter {entity_label.lower()} names, one per line"
-                )
-                custom_entities = [line.strip() for line in custom_entities_input.split('\n') if line.strip()]
+                if hasattr(self, 'available_entities') and self.available_entities:
+                    # Set default categories for categories page
+                    default_selection = []
+                    if self.page_type == "categories":
+                        default_categories = [
+                            "Noise as a Physical Signal in Sensing and Cosmology",
+                            "Nanomechanical Computing and Molecular Machines",
+                            "Vacuum and Classical Re-Imagined Nanosystems",
+                            "PFAS and Fluorinated Pollutant Remediation and Risk Management",
+                            "Emergent Molecular Technologies",
+                            "Cognitive and Neural Processing Mechanisms"
+                        ]
+                        # Only include defaults that exist in available entities
+                        default_selection = [cat for cat in default_categories if cat in self.available_entities]
+                    
+                    custom_entities = st.multiselect(
+                        f"Select Custom {entity_label}",
+                        options=self.available_entities,
+                        default=default_selection,
+                        help=f"Choose specific {entity_label.lower()} to display"
+                    )
+                else:
+                    st.warning(f"No {entity_label.lower()} available for custom selection")
+                    custom_entities = []
             else:
                 custom_entities = []
             

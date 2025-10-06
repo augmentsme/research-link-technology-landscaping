@@ -45,6 +45,7 @@ class CategoryTrendsConfig:
     use_cumulative: bool
     ranking_metric: str  # "grant_count" or "total_funding" - for selecting which categories to show
     display_metric: str  # "grant_count" or "total_funding" - for y-axis values
+    selection_method: str  # "top_n", "random", or "custom"
 
 
 class CategoryDataManager:
@@ -269,8 +270,7 @@ class CategoryExplorerTab:
     
     def render_tab(self, filter_config: CategoryFilterConfig):
         """Render the category explorer tab"""
-        st.markdown("### Category Explorer")
-        st.markdown("Browse and explore individual categories in detail.")
+        st.markdown("# Category Explorer")
         
         filtered_data = self.data_manager.get_filtered_data(filter_config)
         
@@ -303,7 +303,7 @@ class CategoryExplorerTab:
         """Show detailed information for selected category"""
         category_row = filtered_data[filtered_data['name'] == category_name].iloc[0]
         
-        st.subheader(f"📂 {category_row['name']}")
+        st.subheader(f"{category_row['name']}")
         
         col1, col2 = st.columns([2, 1])
         
@@ -339,13 +339,17 @@ class CategoryTrendsTab:
     
     def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
         """Render the category trends tab"""
-        st.markdown("### Category Trends Over Time")
-        st.markdown("Analyze how research categories evolve over time based on their associated grants.")
+        st.markdown("# Category Trends Over Time")
         
         filtered_data = self.data_manager.get_filtered_data(filter_config)
         
         if filtered_data.empty:
             st.warning("No categories found with current filters.")
+            return
+        
+        # Validate custom selection
+        if trends_config.selection_method == "custom" and not filter_config.category_names:
+            st.error("Please select at least one category when using custom category selection.")
             return
         
         # Load additional data needed for trends
@@ -361,10 +365,16 @@ class CategoryTrendsTab:
                f"Displaying: {'Grant Count' if trends_config.display_metric == 'grant_count' else 'Funding Amount'}")
         
         with st.spinner("Creating category trends visualization..."):
+            # Determine selected categories based on selection method
+            selected_categories = None
+            if trends_config.selection_method == "custom" and filter_config.category_names:
+                selected_categories = filter_config.category_names
+            
             # Prepare data using the helper from TrendsDataPreparation
             viz_data = TrendsDataPreparation.from_category_grants(
                 filtered_data,
-                grants_df
+                grants_df,
+                selected_categories
             )
             
             if viz_data.empty:
@@ -376,16 +386,24 @@ class CategoryTrendsTab:
             display_text = "Grant Count" if trends_config.display_metric == "grant_count" else "Funding Amount"
             cumulative_text = "Cumulative" if trends_config.use_cumulative else "Yearly"
             
+            # Create appropriate title based on selection method
+            if trends_config.selection_method == "custom":
+                title = f"{cumulative_text} Category Trends Over Time - Custom Selection ({len(selected_categories)} categories)"
+                max_entities_to_show = len(selected_categories)
+            else:
+                title = f"{cumulative_text} Category Trends Over Time (Top {trends_config.num_categories} by {ranking_text})"
+                max_entities_to_show = trends_config.num_categories
+            
             viz_config = TrendsConfig(
                 entity_col='category',
                 time_col='year',
                 value_col=trends_config.display_metric,
                 ranking_col=trends_config.ranking_metric,
-                max_entities=trends_config.num_categories,
+                max_entities=max_entities_to_show,
                 aggregation='sum',
                 use_cumulative=trends_config.use_cumulative,
                 chart_type='line',
-                title=f"{cumulative_text} Category Trends Over Time (Top {trends_config.num_categories} by {ranking_text})",
+                title=title,
                 x_label='Year',
                 y_label=f'{"Cumulative" if trends_config.use_cumulative else "Yearly"} {display_text}',
                 height=600
@@ -463,18 +481,19 @@ class CategoriesPage:
             min_keywords=unified_filter.min_count,
             max_keywords=unified_filter.max_count,
             search_term=unified_filter.search_term,
-            category_names=[]
+            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else []
         )
         
         trends_config = CategoryTrendsConfig(
             num_categories=unified_display.num_entities,
             use_cumulative=unified_display.use_cumulative,
             ranking_metric="grant_count" if unified_display.ranking_metric == "count" else "total_funding",
-            display_metric="grant_count" if unified_display.display_metric == "count" else "total_funding"
+            display_metric="grant_count" if unified_display.display_metric == "count" else "total_funding",
+            selection_method=unified_display.selection_method
         )
         
         # Create tabs
-        tab1, tab2 = st.tabs(["📈 Category Trends", "📂 Category Explorer"])
+        tab1, tab2 = st.tabs(["Category Trends", "Category Explorer"])
         
         with tab1:
             self.trends_tab.render_tab(filter_config, trends_config)

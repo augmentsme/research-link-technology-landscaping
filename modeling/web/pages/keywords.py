@@ -101,13 +101,13 @@ class KeywordFilterManager:
             if filtered_grants is None:
                 filtered_grants = self.apply_grant_filters(config)
             
-            # Convert all grant IDs to strings to ensure consistent data types
-            filtered_grants_ids = set(str(gid) for gid in filtered_grants['id'])
+            # Get set of filtered grant IDs (preserve original type)
+            filtered_grants_ids = set(filtered_grants['id'])
             
             # Filter keywords and update their grants lists to only include filtered grants
             def filter_keyword_grants(grants_list):
-                # Ensure grants_list items are strings and filter them
-                filtered_grants_for_keyword = [str(g) for g in grants_list if str(g) in filtered_grants_ids]
+                # Filter to only grants that are in the filtered set
+                filtered_grants_for_keyword = [g for g in grants_list if g in filtered_grants_ids]
                 return filtered_grants_for_keyword
             
             # Update grants column to only include grants that match the filter
@@ -201,17 +201,22 @@ class KeywordTrendsVisualizer:
     def render_tab(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, 
                   display_config: KeywordDisplayConfig):
         """Render the trends visualization tab"""
-        st.markdown("### Keyword Trends Over Time")
-        st.markdown("Analyze how research keywords evolve over time with cumulative occurrence tracking.")
+        st.markdown("# Keyword Trends Over Time")
         
         if selection_config.method == "Specify custom keywords" and not selection_config.custom_keywords:
             st.error("Please select at least one keyword when using custom keyword selection.")
             return
         
         with st.spinner("Creating keyword trends visualization..."):
+            # Apply filters to get filtered grants and keywords
+            filtered_grants = self.filter_manager.apply_grant_filters(filter_config)
+            filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config, filtered_grants)
+            
             selected_keywords, title = self.keyword_selector.select_keywords(filter_config, selection_config, display_config)
             title_with_filters = self._add_filter_info_to_title(title, filter_config)
-            viz_data = TrendsDataPreparation.from_keyword_grants(self.keywords_df, self.grants_df, selected_keywords)
+            
+            # Use filtered data for trends visualization
+            viz_data = TrendsDataPreparation.from_keyword_grants(filtered_keywords, filtered_grants, selected_keywords)
             
             if viz_data.empty:
                 st.warning("No data available for the selected keywords and filters.")
@@ -242,6 +247,7 @@ class KeywordTrendsVisualizer:
             if fig_trends is not None:
                 st.plotly_chart(fig_trends, use_container_width=True)
                 self._show_statistics(filter_config, selection_config, selected_keywords)
+                self._show_debug_data(filtered_keywords, viz_data)
             else:
                 st.warning("No data available for the selected parameters.")
     
@@ -293,6 +299,17 @@ class KeywordTrendsVisualizer:
         elif selection_config.method == "Specify custom keywords":
             return len(selection_config.custom_keywords)
         return 0
+    
+    def _show_debug_data(self, filtered_keywords: pd.DataFrame, viz_data: pd.DataFrame):
+        """Show debug data in an expander"""
+        with st.expander("Debug: View Underlying Data", expanded=False):
+            st.subheader("Filtered Keywords DataFrame")
+            st.write(f"**Shape:** {filtered_keywords.shape}")
+            st.dataframe(filtered_keywords, use_container_width=True)
+            
+            st.subheader("Keyword Trends Data (Chart Data)")
+            st.write(f"**Shape:** {viz_data.shape}")
+            st.dataframe(viz_data, use_container_width=True)
     
 
 class KeywordDataExplorer:
@@ -367,8 +384,7 @@ class KeywordsPage:
     def setup_page(self):
 
         
-        st.header("📈 Keywords Analysis")
-        st.markdown("Analyze research keywords with trend visualization and data exploration.")
+        st.header("Keywords Analysis")
         
         self._load_data()
         
@@ -431,7 +447,7 @@ class KeywordsPage:
         )
         
         # Create tabs
-        tab1, tab2 = st.tabs(["📈 Trends Visualization", "📊 Keywords Data"])
+        tab1, tab2 = st.tabs(["Trends Visualization", "Keywords Data"])
         
         # Render trends visualization tab
         with tab1:

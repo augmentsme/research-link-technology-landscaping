@@ -12,13 +12,12 @@ from shared_utils import (load_data, get_unique_funders,
 # Configure the main page
 st.set_page_config(
     page_title="Research Landscape Analysis",
-    page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Main page content
-st.title("🔬 Research Landscape Analysis")
+st.title("Research Landscape Analysis")
 st.markdown("---")
 
 # Load data and display summary statistics
@@ -54,7 +53,7 @@ try:
                 pass
         
         # Display summary statistics
-        st.subheader("📊 Dataset Summary")
+        st.subheader("Dataset Summary")
         
         col1, col2, col3, col4 = st.columns(4)
         

@@ -81,14 +81,13 @@ class GrantDistributionVisualizer:
     
     def render_tab(self, filter_config: FilterConfig, display_config: DisplayConfig):
         """Render the grant distribution visualization tab"""
-        st.markdown("Visualize the distribution of research grants by year with filtering capabilities.")
         
         should_generate = self._should_generate_visualization()
         
         if should_generate:
             self._generate_visualization(filter_config, display_config)
         else:
-            st.info("💡 Adjust settings in the sidebar to customize the visualization.")
+            st.info("Adjust settings in the sidebar to customize the visualization.")
     
     def _should_generate_visualization(self) -> bool:
         """Determine if visualization should be generated"""
@@ -313,6 +312,10 @@ class GrantsPage:
         )
         filter_config, display_config = sidebar_controls.render_sidebar()
         
+        # Apply filters once for use across both tabs
+        filter_manager = GrantFilterManager(self.grants_df)
+        filtered_grants = filter_manager.apply_filters(filter_config)
+        
         tab1, tab2 = st.tabs(["Grant Distributions", "Grants Explorer"])
         
         with tab1:
@@ -320,9 +323,7 @@ class GrantsPage:
             distribution_visualizer.render_tab(filter_config, display_config)
         
         with tab2:
-            st.markdown("Explore grants data in detail.")
-            # Prepare data and config
-            display_df, config = self.prepare_grants_data(self.grants_df)
+            display_df, config = self.prepare_grants_data(filtered_grants)
             data_explorer = DataExplorer()
             data_explorer.render_explorer(display_df, config)
 

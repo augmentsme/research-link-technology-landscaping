@@ -20,8 +20,11 @@ from visualisation import create_research_landscape_treemap
 from shared_utils import (
     load_data,
 )
-
-
+st.set_page_config(
+    page_title="Research Landscape",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 @dataclass
 class TreemapConfig:
     """Configuration for treemap visualization"""
@@ -79,7 +82,7 @@ class TreemapVisualizer:
     
     def _show_debug_data(self):
         """Show debug data in an expander"""
-        with st.expander("🔍 Debug: View Underlying Data", expanded=False):
+        with st.expander("Debug: View Underlying Data", expanded=False):
             st.subheader("Categories DataFrame")
             st.write(f"**Shape:** {self.categories_df.shape}")
             st.dataframe(self.categories_df, use_container_width=True)
@@ -101,7 +104,7 @@ class SidebarControls:
         st.sidebar.empty()
         
         with st.sidebar:
-            st.subheader("🌳 Treemap Settings")
+            st.subheader("Treemap Settings")
             
             config = self._render_treemap_settings()
             update_settings = self._render_update_button()
@@ -111,7 +114,7 @@ class SidebarControls:
     def _render_treemap_settings(self) -> TreemapConfig:
         """Render treemap configuration controls"""
         # Filtering Options in Expander
-        with st.expander("🔍 Filtering Options", expanded=True):
+        with st.expander("Filtering Options", expanded=True):
             max_research_fields = st.selectbox(
                 "Maximum Research Fields",
                 options=[None, 5, 10, 15, 20],
@@ -133,7 +136,7 @@ class SidebarControls:
             max_keywords_per_category = st.selectbox(
                 "Maximum keywords per category",
                 options=[None, 5, 10, 20, 30],
-                index=2,
+                index=1,
                 format_func=lambda x: "All" if x is None else str(x),
                 help="Maximum number of keywords to show per category",
                 key="landscape_max_keywords_per_category"
@@ -152,9 +155,10 @@ class SidebarControls:
             
             font_size = st.slider(
                 "Font size",
-                min_value=6,
-                max_value=16,
-                value=9,
+                min_value=8,
+                max_value=24,
+                value=18,
+                help="Adjust text size in the treemap boxes",
                 key="landscape_font_size"
             )
         
@@ -213,7 +217,7 @@ class ResearchLandscapePage:
             visualizer = TreemapVisualizer(self.categories_df)
             visualizer.render_visualization(treemap_config)
         else:
-            st.info("💡 Adjust settings in the sidebar and click 'Update Settings' to generate a new visualization.")
+            st.info("Adjust settings in the sidebar and click 'Update Settings' to generate a new visualization.")
     
     def _should_generate_visualization(self, update_settings: bool) -> bool:
         """Determine if visualization should be generated"""

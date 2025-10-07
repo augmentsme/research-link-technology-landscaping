@@ -234,20 +234,21 @@ class KeywordsExtractionHook(Hooks):
         postprocess_keywords()
 
 def load_extract_dataset():
-    records = config.Grants.load().to_dict(orient="records")
+    records = config.Grants.load(as_dataframe=False)
     samples = []
     for record in records:
+        grant_id = record.get("id") or record.get("key") or ""
         samples.append(
             Sample(
-                id=record["id"],
+                id=grant_id,
                 input=config.Grants.template(record),
                 metadata={
-                    "title": record["title"],
-                    "summary": record["grant_summary"],
-                    "funding_amount": record["funding_amount"],
-                    "funder": record["funder"],
-                    "start_year": record["start_year"],
-                    "end_year": record["end_year"],
+                    "title": record.get("title", ""),
+                    "summary": record.get("grant_summary", ""),
+                    "funding_amount": record.get("funding_amount"),
+                    "funder": record.get("funder", ""),
+                    "start_year": record.get("start_year"),
+                    "end_year": record.get("end_year"),
                 }
             )
         )

@@ -8,12 +8,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from shared_utils import (
-    get_unique_research_fields,
-    get_unique_research_fields_from_categories,
     create_research_field_options,
     get_unique_funders,
-    get_unique_sources,
-    get_unique_keyword_types
+    get_unique_keyword_types,
+    get_unique_research_fields,
+    get_unique_research_fields_from_categories,
+    get_unique_sources
 )
 
 
@@ -251,23 +251,16 @@ class SidebarControl:
                 source_filter = []
             
             # Research field filter
+            use_all_for_codes = False
             if self.features.show_field_filter:
                 selected_field_options = st.multiselect(
-                    "Filter by Research Field",
+                    "Filter by Subject",
                     options=self.field_options,
                     default=[],
-                    help="Select research fields to focus on"
+                    help="Select subjects to focus on"
                 )
                 field_filter = [self.option_to_field[opt] for opt in selected_field_options]
-                
-                if field_filter:
-                    use_all_for_codes = st.checkbox(
-                        "Match all FOR codes (not just primary)",
-                        value=False,
-                        help="Check to match against all FOR codes, not just the primary one"
-                    )
-                else:
-                    use_all_for_codes = False
+                use_all_for_codes = len(field_filter) == 0
             else:
                 field_filter = []
                 use_all_for_codes = False

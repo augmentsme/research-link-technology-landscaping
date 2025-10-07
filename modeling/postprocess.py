@@ -1,6 +1,8 @@
 import re
-import pandas as pd
 from pathlib import Path
+from typing import Dict, List
+
+import pandas as pd
 
 
 import utils
@@ -54,19 +56,55 @@ def postprocess_keywords(input_path=config.Keywords.extracted_keywords_path, out
     """
 
     deduplicated = pd.DataFrame(deduplicate_keywords(input_path))
-    links = config.Grants.load_links()
-    
-    joined = pd.DataFrame(deduplicated).explode("grants").merge(links, left_on="grants", right_on="grant_key", how="left")
-    joined = joined[~(joined['organisation_country'].isna())]
-    # joined = joined[~(joined['organisation_country'].isna() & joined['organisation_name'].isna() & joined['researcher_orcid'].isna())]
-    linked = joined.groupby("name").agg({"organisation_name": list, "organisation_country": list, "researcher_orcid": list})
-    
+    grants_df = config.Grants.load(as_dataframe=True)
 
-    linked = linked.reset_index().astype("str")
-    final = deduplicated.merge(linked, left_on="name", right_on="name", how="left")
-    # final = final[~final['organisation_country'].isna()]
-    # df_with_valid_country_records = final[~final["organisation_country"].isna()]
-    final = final[final['organisation_country'].map(lambda x: "AU" in x if pd.notna(x) else True)]
+    if not deduplicated.empty:
+        if "organisation_ids" not in grants_df.columns:
+            grants_df = grants_df.assign(organisation_ids=[[]] * len(grants_df))
+        if "countries" not in grants_df.columns:
+            grants_df = grants_df.assign(countries=[[]] * len(grants_df))
+        if "country_codes" not in grants_df.columns:
+            grants_df = grants_df.assign(country_codes=[[]] * len(grants_df))
+        if "researcher_ids" not in grants_df.columns:
+            grants_df = grants_df.assign(researcher_ids=[[]] * len(grants_df))
+
+        grant_lookup = grants_df.set_index("id")[
+            ["organisation_ids", "countries", "country_codes", "researcher_ids"]
+        ]
+
+        def _collect_lists(series: pd.Series) -> List[str]:
+            values: List[str] = []
+            for item in series.dropna():
+                if isinstance(item, list):
+                    values.extend([v for v in item if pd.notna(v)])
+                elif pd.notna(item):
+                    values.append(item)
+            return sorted(set(values))
+
+        def enrich_keyword(grant_ids: List[str]) -> Dict[str, List[str]]:
+            subset = grant_lookup.reindex(grant_ids).dropna(how="all")
+            if subset.empty:
+                return {
+                    "organisation_ids": [],
+                    "countries": [],
+                    "country_codes": [],
+                    "researcher_ids": [],
+                }
+            return {
+                "organisation_ids": _collect_lists(subset["organisation_ids"]),
+                "countries": _collect_lists(subset["countries"]),
+                "country_codes": _collect_lists(subset["country_codes"]),
+                "researcher_ids": _collect_lists(subset["researcher_ids"]),
+            }
+
+        enrichment = deduplicated["grants"].apply(enrich_keyword).apply(pd.Series)
+        final = pd.concat([deduplicated, enrichment], axis=1)
+    else:
+        final = deduplicated.assign(
+            organisation_ids=[], countries=[], country_codes=[], researcher_ids=[]
+        )
+
+    final = final[final["country_codes"].map(lambda x: "AU" in x if isinstance(x, list) else True)]
     utils.save_jsonl_file(final.to_dict(orient="records"), output_path)
 
 

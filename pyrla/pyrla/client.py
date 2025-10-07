@@ -70,7 +70,7 @@ class RLAClient:
         
         Args:
             api_token: Bearer token for API authentication. If not provided, 
-                      will try to get from ARL_API_TOKEN environment variable
+                      will try to get from RLA_API_TOKEN environment variable
             base_url: Base URL for the API (default: https://researchlink.ardc.edu.au)
             debug: Enable debug output for API requests
         """
@@ -78,10 +78,10 @@ class RLAClient:
         self.debug = debug or os.getenv('PYRLA_DEBUG', '').lower() in ('1', 'true', 'yes')
         
         # Get token from parameter or environment
-        self.api_token = api_token or os.getenv('ARL_API_TOKEN')
+        self.api_token = api_token or os.getenv('RLA_API_TOKEN')
         if not self.api_token:
             raise RLAAuthenticationError(
-                "API token is required. Provide it via api_token parameter or ARL_API_TOKEN environment variable"
+                "API token is required. Provide it via api_token parameter or RLA_API_TOKEN environment variable"
             )
         
         self.headers = {

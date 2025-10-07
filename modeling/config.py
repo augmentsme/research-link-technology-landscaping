@@ -9,12 +9,9 @@ import utils
 import pandas as pd
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
-DATA_DIR = ROOT_DIR / "data"
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
 
-
-CLASSIFICATION_PATH = RESULTS_DIR / "classification.json"
 
 @dataclass
 class Keywords:
@@ -51,32 +48,45 @@ class Categories:
 
 @dataclass
 class Grants:
-    grants_dir = RESULTS_DIR / "grants"
-    grants_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = grants_dir / "grants_raw.jsonl"
-    enriched_path = grants_dir / "grants_enriched.jsonl"
-    grants_path = grants_dir / "grants.jsonl"
-    
-    neo4j_uri = "bolt://localhost:7687"
-    neo4j_username = "neo4j"
-    neo4j_password = CONFIG.get("NEO4J_PASSWORD", "password")
-    # neo4j_password = CONFIG["NEO4J_PASSWORD"]
-    
-    
-    link_path = grants_dir / "org_researcher_grant_links.jsonl"
-    
+    grants_path = ROOT_DIR / "grants.json"
 
-    template = lambda record: f"<grant><title>{record['title']}</title><description>{record['grant_summary']}</description></grant>"
+    template = staticmethod(
+        lambda record: (
+            f"<grant><title>{record.get('title') or record.get('grant_title', '')}</title>"
+            f"<description>{record.get('grant_summary') or record.get('summary', '')}</description></grant>"
+        )
+    )
 
-    def load(as_dataframe=True):
-        return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
+    @staticmethod
+    def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
 
-    def load_enriched(as_dataframe=True):
-        return utils.load_jsonl_file(Grants.enriched_path, as_dataframe=as_dataframe)
+        if "funding_amount" in df.columns:
+            df["funding_amount"] = pd.to_numeric(df["funding_amount"], errors="coerce")
 
-    def load_raw(as_dataframe=True):
-        return utils.load_jsonl_file(Grants.raw_path, as_dataframe=as_dataframe)
-    
-    def load_links(as_dataframe=True):
-        return utils.load_jsonl_file(Grants.link_path, as_dataframe=as_dataframe)
+        if "start_date" in df.columns and "start_year" not in df.columns:
+            df["start_year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
+        elif "start_year" in df.columns:
+            df["start_year"] = pd.to_numeric(df["start_year"], errors="coerce").astype("Int64")
+
+        if "end_date" in df.columns and "end_year" not in df.columns:
+            df["end_year"] = pd.to_datetime(df["end_date"], errors="coerce").dt.year.astype("Int64")
+        elif "end_year" in df.columns:
+            df["end_year"] = pd.to_numeric(df["end_year"], errors="coerce").astype("Int64")
+
+        return df
+
+    @staticmethod
+    def _load_source_records() -> List[Dict[str, Any]]:
+        return utils.load_json_file(Grants.grants_path, as_dataframe=False)
+
+    @staticmethod
+    def load(as_dataframe: bool = True):
+        records = Grants._load_source_records()
+        if as_dataframe:
+            df = pd.DataFrame(records)
+            return Grants._normalize_dataframe(df)
+        return records
+
     

@@ -18,14 +18,17 @@ if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
 from shared_utils import (
- 
-    load_data,
-    field_to_division_codes, 
-    has_research_field_simple,
+    format_research_field,
+    load_data
 )
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
-from visualisation import DataExplorer, DataExplorerConfig
-from trends_visualizer import TrendsVisualizer, TrendsConfig, TrendsDataPreparation
+from visualisation import (
+    DataExplorer,
+    DataExplorerConfig,
+    TrendsVisualizer,
+    TrendsConfig,
+    TrendsDataPreparation,
+)
 
 
 st.set_page_config(
@@ -80,12 +83,8 @@ class KeywordFilterManager:
         if config.source_filter:
             filtered_grants = filtered_grants[filtered_grants['source'].isin(config.source_filter)]
         
-        if config.field_filter:
-            division_codes = field_to_division_codes(config.field_filter)
-            mask = filtered_grants['for_primary'].apply(
-                lambda x: has_research_field_simple(x, division_codes)
-            )
-            filtered_grants = filtered_grants[mask]
+        if config.field_filter and 'primary_subject' in filtered_grants.columns:
+            filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
         
         return filtered_grants
     
@@ -259,7 +258,7 @@ class KeywordTrendsVisualizer:
         if filter_config.source_filter:
             filter_parts.append(f"Sources: {', '.join(filter_config.source_filter)}")
         if filter_config.field_filter:
-            field_display_parts = [field.replace('_', ' ').title()[:25] for field in filter_config.field_filter[:2]]
+            field_display_parts = [format_research_field(field)[:25] for field in filter_config.field_filter[:2]]
             field_display = ', '.join(field_display_parts)
             if len(filter_config.field_filter) > 2:
                 field_display += f"... +{len(filter_config.field_filter) - 2} more"

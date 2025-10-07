@@ -39,7 +39,12 @@ try:
         
         # Calculate date range if available
         date_range = "N/A"
-        if 'year' in grants.columns:
+        if 'start_year' in grants.columns:
+            min_year = grants['start_year'].dropna().min()
+            max_year = grants['start_year'].dropna().max()
+            if pd.notna(min_year) and pd.notna(max_year):
+                date_range = f"{int(min_year)} - {int(max_year)}"
+        elif 'year' in grants.columns:
             min_year = grants['year'].min()
             max_year = grants['year'].max()
             date_range = f"{min_year} - {max_year}"

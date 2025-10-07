@@ -8,10 +8,6 @@ import sys
 import os
 import json
 import pandas as pd
-import random
-import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -26,60 +22,11 @@ os.chdir(parent_dir)
 import config
 
 # Utility functions for simplified field filtering
-def field_to_division_codes(field_names):
-    """Convert field names to division codes for filtering"""
-    field_to_division = {
-        'AGRICULTURAL_VETERINARY_FOOD_SCIENCES': '30',
-        'BIOLOGICAL_SCIENCES': '31',
-        'BIOMEDICAL_CLINICAL_SCIENCES': '32',
-        'BUILT_ENVIRONMENT_DESIGN': '33',
-        'CHEMICAL_SCIENCES': '34',
-        'COMMERCE_MANAGEMENT_TOURISM_SERVICES': '35',
-        'CREATIVE_ARTS_WRITING': '36',
-        'EARTH_SCIENCES': '37',
-        'ECONOMICS': '38',
-        'EDUCATION': '39',
-        'ENGINEERING': '40',
-        'ENVIRONMENTAL_SCIENCES': '41',
-        'HEALTH_SCIENCES': '42',
-        'HISTORY_HERITAGE_ARCHAEOLOGY': '43',
-        'HUMAN_SOCIETY': '44',
-        'INDIGENOUS_STUDIES': '45',
-        'INFORMATION_COMPUTING_SCIENCES': '46',
-        'LANGUAGE_COMMUNICATION_CULTURE': '47',
-        'LAW_LEGAL_STUDIES': '48',
-        'MATHEMATICAL_SCIENCES': '49',
-        'PHILOSOPHY_RELIGIOUS_STUDIES': '50',
-        'PHYSICAL_SCIENCES': '51',
-        'PSYCHOLOGY': '52'
-    }
-    return [field_to_division[field] for field in field_names if field in field_to_division]
-
-def has_research_field_simple(for_primary_val, division_codes):
-    """Simplified function to check if primary FOR code matches any division codes"""
-    if pd.isna(for_primary_val):
-        return False
-    
-    # Extract 2-digit division code from primary FOR code
-    primary_str = str(int(for_primary_val))
-    if len(primary_str) >= 2:
-        primary_division = primary_str[:2]
-        return primary_division in division_codes
-    return False
-
-def has_research_field_all_codes(for_codes_str, division_codes):
-    """Check if any FOR code in the 'for' field matches any division codes"""
-    if pd.isna(for_codes_str):
-        return False
-    
-    # Split the FOR codes and check each one
-    for code in str(for_codes_str).split(','):
-        code = code.strip()
-        if code and len(code) >= 2:
-            division_code = code[:2]
-            if division_code in division_codes:
-                return True
-    return False
+def format_research_field(field: Optional[str]) -> str:
+    """Format a research field value for display."""
+    if field is None or pd.isna(field) or str(field).strip() == "":
+        return "Unspecified"
+    return str(field)
 
 # Load data with caching
 @st.cache_data
@@ -136,99 +83,21 @@ def get_unique_research_fields_from_categories(categories):
 
 @st.cache_data
 def get_unique_research_fields():
-    """Get unique research fields from grants data efficiently - cached computation"""
+    """Get unique research subjects from grants data - cached computation"""
     try:
-        # Load grants data
         _, grants, _ = load_data()
-        if grants is None:
+        if grants is None or 'primary_subject' not in grants.columns:
             return set()
-            
-        division_to_field = {
-            '30': 'AGRICULTURAL_VETERINARY_FOOD_SCIENCES',
-            '31': 'BIOLOGICAL_SCIENCES',
-            '32': 'BIOMEDICAL_CLINICAL_SCIENCES',
-            '33': 'BUILT_ENVIRONMENT_DESIGN',
-            '34': 'CHEMICAL_SCIENCES',
-            '35': 'COMMERCE_MANAGEMENT_TOURISM_SERVICES',
-            '36': 'CREATIVE_ARTS_WRITING',
-            '37': 'EARTH_SCIENCES',
-            '38': 'ECONOMICS',
-            '39': 'EDUCATION',
-            '40': 'ENGINEERING',
-            '41': 'ENVIRONMENTAL_SCIENCES',
-            '42': 'HEALTH_SCIENCES',
-            '43': 'HISTORY_HERITAGE_ARCHAEOLOGY',
-            '44': 'HUMAN_SOCIETY',
-            '45': 'INDIGENOUS_STUDIES',
-            '46': 'INFORMATION_COMPUTING_SCIENCES',
-            '47': 'LANGUAGE_COMMUNICATION_CULTURE',
-            '48': 'LAW_LEGAL_STUDIES',
-            '49': 'MATHEMATICAL_SCIENCES',
-            '50': 'PHILOSOPHY_RELIGIOUS_STUDIES',
-            '51': 'PHYSICAL_SCIENCES',
-            '52': 'PSYCHOLOGY'
-        }
-        
-        unique_fields = set()
-        
-        # Add fields from primary FOR codes
-        for val in grants['for_primary'].dropna():
-            division_code = str(int(val))[:2]
-            if division_code in division_to_field:
-                unique_fields.add(division_to_field[division_code])
-        
-        # Add fields from secondary FOR codes
-        for for_codes_str in grants['for'].dropna():
-            for code in str(for_codes_str).split(','):
-                code = code.strip()
-                if code and len(code) >= 2:
-                    division_code = code[:2]
-                    if division_code in division_to_field:
-                        unique_fields.add(division_to_field[division_code])
-        
-        return unique_fields
+        subjects = grants['primary_subject'].dropna().unique()
+        return set(str(subject) for subject in subjects if str(subject).strip())
     except Exception as e:
-        st.error(f"Error getting unique research fields: {e}")
+        st.error(f"Error getting unique research subjects: {e}")
         return set()
 
 def create_research_field_options(unique_fields):
     """Create research field options for dropdowns with display names"""
-    field_display_names = {
-        'AGRICULTURAL_VETERINARY_FOOD_SCIENCES': 'Agricultural, Veterinary & Food Sciences',
-        'BIOLOGICAL_SCIENCES': 'Biological Sciences',
-        'BIOMEDICAL_CLINICAL_SCIENCES': 'Biomedical & Clinical Sciences',
-        'BUILT_ENVIRONMENT_DESIGN': 'Built Environment & Design',
-        'CHEMICAL_SCIENCES': 'Chemical Sciences',
-        'COMMERCE_MANAGEMENT_TOURISM_SERVICES': 'Commerce, Management, Tourism & Services',
-        'CREATIVE_ARTS_WRITING': 'Creative Arts & Writing',
-        'EARTH_SCIENCES': 'Earth Sciences',
-        'ECONOMICS': 'Economics',
-        'EDUCATION': 'Education',
-        'ENGINEERING': 'Engineering',
-        'ENVIRONMENTAL_SCIENCES': 'Environmental Sciences',
-        'HEALTH_SCIENCES': 'Health Sciences',
-        'HISTORY_HERITAGE_ARCHAEOLOGY': 'History, Heritage & Archaeology',
-        'HUMAN_SOCIETY': 'Human Society',
-        'INDIGENOUS_STUDIES': 'Indigenous Studies',
-        'INFORMATION_COMPUTING_SCIENCES': 'Information & Computing Sciences',
-        'LANGUAGE_COMMUNICATION_CULTURE': 'Language, Communication & Culture',
-        'LAW_LEGAL_STUDIES': 'Law & Legal Studies',
-        'MATHEMATICAL_SCIENCES': 'Mathematical Sciences',
-        'PHILOSOPHY_RELIGIOUS_STUDIES': 'Philosophy & Religious Studies',
-        'PHYSICAL_SCIENCES': 'Physical Sciences',
-        'PSYCHOLOGY': 'Psychology'
-    }
-    
-    field_options = []
-    field_values = []
-    
-    # Sort fields alphabetically by display name
-    sorted_fields = sorted(unique_fields, key=lambda x: field_display_names.get(x, x))
-    
-    for field in sorted_fields:
-        display_name = field_display_names.get(field, field.replace('_', ' ').title())
-        field_options.append(display_name)
-        field_values.append(field)
-    
+    sorted_fields = sorted(unique_fields, key=lambda x: format_research_field(x))
+    field_options = [format_research_field(field) for field in sorted_fields]
+    field_values = list(sorted_fields)
     return field_options, field_values
 

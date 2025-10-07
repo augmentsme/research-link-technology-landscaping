@@ -520,8 +520,6 @@ nbformat==5.10.4
     #   jupyter-server
     #   nbclient
     #   nbconvert
-neo4j==6.0.2
-    # via modeling (pyproject.toml)
 nest-asyncio==1.6.0
     # via
     #   inspect-ai

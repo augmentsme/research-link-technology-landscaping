@@ -24,7 +24,7 @@ def basic_researcher_search_example():
     """
     Example: Basic researcher search using synchronous wrapper
     """
-    # Initialize client (will use ARL_API_TOKEN environment variable)
+    # Initialize client (will use RLA_API_TOKEN environment variable)
     client = RLAClient()
     
     # Test connection
@@ -53,7 +53,7 @@ async def async_researcher_search_example():
     """
     Example: Async researcher search for better performance
     """
-    # Initialize client (will use ARL_API_TOKEN environment variable)
+    # Initialize client (will use RLA_API_TOKEN environment variable)
     async with RLAClient() as client:
         print("=== Async Researcher Search Example ===")
         
@@ -312,7 +312,7 @@ def main():
         
     except Exception as e:
         print(f"Error running examples: {e}")
-        print("Make sure you have set the ARL_API_TOKEN environment variable")
+        print("Make sure you have set the RLA_API_TOKEN environment variable")
 
 
 if __name__ == "__main__":

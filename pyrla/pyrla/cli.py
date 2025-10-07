@@ -8,6 +8,7 @@ import traceback
 import json
 import asyncio
 import logging
+from datetime import datetime, date
 from typing import Optional, List
 from dataclasses import asdict
 import typer
@@ -80,7 +81,18 @@ def save_json_to_file(data: List[dict], filename: str) -> None:
         raise typer.Exit(1)
 
 
-async def enrich_grants_with_summaries(client: RLAClient, input_records: List[dict], key: str = "key") -> List[dict]:
+def format_datetime_value(value: Optional[object], default: str = "N/A") -> str:
+    """Format datetime/date objects safely for display"""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if value in (None, ""):
+        return default
+    return str(value)
+
+
+async def enrich_grants_with_summaries(client: RLAClient, input_records: List[dict]) -> List[dict]:
     """Enrich grant records with grant summaries from the RLA API"""
     enriched_records = []
     semaphore = asyncio.Semaphore(APIConfig.DEFAULT_MAX_CONCURRENT)
@@ -88,36 +100,80 @@ async def enrich_grants_with_summaries(client: RLAClient, input_records: List[di
     async def enrich_single_record(record: dict, index: int):
         async with semaphore:
             try:
-                # Only use key-based search strategy
+                # Try different search strategies to find the grant
                 grant = None
+                search_attempts = []
                 
-                # Search by key if it exists
-                if key in record and record[key]:
-                    key_value = record[key]
+                # Strategy 1: Try to search by key if it exists
+                if 'key' in record and record['key']:
+                    key = record['key']
+                    search_attempts.append(f"key:{key}")
+                    
+                    # Try extracting ID from key (e.g., "nhmrc/1047630" -> "1047630")
+                    if '/' in key:
+                        extracted_id = key.split('/')[-1]
+                        search_attempts.append(extracted_id)
+                
+                # Strategy 2: Try local_id
+                if 'local_id' in record and record['local_id']:
+                    search_attempts.append(record['local_id'])
+                
+                # Strategy 3: Try title search
+                if 'title' in record and record['title']:
+                    search_attempts.append(record['title'][:100])  # Truncate long titles
+                
+                # Attempt searches
+                for search_term in search_attempts:
+                    if grant:
+                        break
                     
                     try:
-                        # Search by key filter
-                        response = await client.search_grants(
-                            value="",
-                            filter_query=f"key:{key_value}",
-                            page_size=1
-                        )
-                        
-                        if response.results:
-                            grant = response.results[0]
+                        if search_term.startswith('key:'):
+                            # Search by key filter
+                            response = await client.search_grants(
+                                value="",
+                                filter_query=f"key:{search_term[4:]}",
+                                page_size=1
+                            )
+                        elif len(search_term) < 50 and search_term.replace('/', '').replace('-', '').isalnum():
+                            # Looks like an ID, try get_grant first
+                            try:
+                                grant = await client.get_grant(search_term)
+                                break
+                            except RLAError:
+                                # If get_grant fails, try search
+                                response = await client.search_grants(
+                                    value=search_term,
+                                    page_size=5
+                                )
                         else:
-                            # Try extracting ID from key (e.g., "nhmrc/1047630" -> "1047630") as fallback
-                            if '/' in key_value:
-                                extracted_id = key_value.split('/')[-1]
-                                try:
-                                    grant = await client.get_grant(extracted_id)
-                                except RLAError:
-                                    logger.debug(f"Failed to get grant by extracted ID '{extracted_id}' from key '{key_value}'")
+                            # Search by value
+                            response = await client.search_grants(
+                                value=search_term,
+                                page_size=5
+                            )
+                        
+                        if not grant and response.results:
+                            # Find best match based on title similarity or exact match
+                            best_match = None
+                            if 'title' in record and record['title']:
+                                record_title = record['title'].lower().strip()
+                                for result in response.results:
+                                    result_title = (result.title or result.grant_title or '').lower().strip()
+                                    if record_title == result_title:
+                                        best_match = result
+                                        break
+                                    elif record_title in result_title or result_title in record_title:
+                                        best_match = result
+                            
+                            if not best_match:
+                                best_match = response.results[0]  # Use first result as fallback
+                            
+                            grant = best_match
                             
                     except RLAError as e:
-                        logger.debug(f"Search by key '{key_value}' failed: {e}")
-                else:
-                    logger.warning(f"Record {index + 1}: No '{key}' field found in record")
+                        logger.debug(f"Search attempt '{search_term}' failed: {e}")
+                        continue
                 
                 # Create enriched record
                 enriched_record = record.copy()
@@ -126,7 +182,7 @@ async def enrich_grants_with_summaries(client: RLAClient, input_records: List[di
                     logger.info(f"Enriched record {index + 1}: Found grant summary")
                 else:
                     enriched_record['grant_summary'] = ""
-                    logger.warning(f"Record {index + 1}: No grant summary found for {key} '{record.get(key, f'No {key} found')}'")
+                    logger.warning(f"Record {index + 1}: No grant summary found for '{record.get('title', record.get('key', 'Unknown'))}'")
                 
                 return enriched_record
                 
@@ -168,7 +224,7 @@ def get_client() -> RLAClient:
         except RLAAuthenticationError as e:
             console.print(f"[red]Authentication Error:[/red] {e}")
             console.print("[yellow]Please set your API token using:[/yellow]")
-            console.print("export ARL_API_TOKEN='your_token_here'")
+            console.print("export RLA_API_TOKEN='your_token_here'")
             raise typer.Exit(1)
     return client
 
@@ -226,7 +282,7 @@ def format_grant_table(grants: List[Grant], title: str = "Grants") -> Table:
         funder = grant.funder or "N/A"
         status = grant.status or "N/A"
         amount = f"${grant.funding_amount:,.2f}" if grant.funding_amount is not None else "N/A"
-        start_date = grant.start_date or "N/A"
+        start_date = format_datetime_value(grant.start_date)
         
         table.add_row(title_display, funder, status, amount, start_date)
     
@@ -725,7 +781,6 @@ def search_grants(
 def enrich_grants(
     input_file: str = typer.Argument(..., help="JSON file with grant records to enrich with grant_summary"),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Output file for enriched results (default: input_file_enriched.json)"),
-    key: str = typer.Option("key", "--key", help="Field name to use as the search key (default: 'key')"),
     debug: bool = typer.Option(False, "--debug", help="Show full traceback on errors")
 ):
     """Enrich grant records from a JSON file with grant summaries from the RLA API"""
@@ -755,7 +810,7 @@ def enrich_grants(
         
         async def enrich_records_async():
             async with client:
-                return await enrich_grants_with_summaries(client, input_records, key)
+                return await enrich_grants_with_summaries(client, input_records)
         
         with Progress(
             SpinnerColumn(),

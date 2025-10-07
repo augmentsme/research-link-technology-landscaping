@@ -1,9 +1,0 @@
-|                      | 0                                                                                                                                                           |
-|:---------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| name                 | laser interferometry                                                                                                                                        |
-| type                 | Methodology                                                                                                                                                 |
-| description          | A technique that uses laser beams and interferometers to measure extremely small changes in distance, enabling the detection of gravitational wave signals. |
-| grants               | ['arc/FT100100613', 'arc/LE0989093', 'arc/DP110103347']                                                                                                     |
-| organisation_name    | ['Australian National University', 'University of Otago', 'Australian National University', 'University of Western Australia']                              |
-| organisation_country | ['AU', 'NZ', 'AU', 'AU']                                                                                                                                    |
-| researcher_orcid     | ['0000-0001-6210-5842', '0000-0001-6210-5842', '0000-0001-6210-5842', '0000-0001-6210-5842']                                                                |

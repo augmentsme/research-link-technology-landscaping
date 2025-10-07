@@ -20,8 +20,13 @@ from shared_utils import load_data
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 
 import config
-from visualisation import DataExplorer, DataExplorerConfig
-from trends_visualizer import TrendsVisualizer, TrendsConfig, TrendsDataPreparation
+from visualisation import (
+    DataExplorer,
+    DataExplorerConfig,
+    TrendsVisualizer,
+    TrendsConfig,
+    TrendsDataPreparation,
+)
 st.set_page_config(
     page_title="Category",
     layout="wide",

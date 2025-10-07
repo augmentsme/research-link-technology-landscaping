@@ -16,14 +16,10 @@ if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
 from shared_utils import (
- 
-    load_data,
-    field_to_division_codes, 
-    has_research_field_simple,
-    has_research_field_all_codes
+    format_research_field,
+    load_data
 )
-from visualisation import DataExplorer, DataExplorerConfig
-from trends_visualizer import TrendsVisualizer, TrendsConfig
+from visualisation import DataExplorer, DataExplorerConfig, TrendsVisualizer, TrendsConfig
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 
 st.set_page_config(
@@ -45,22 +41,9 @@ class GrantFilterManager:
         if config.source_filter:
             filtered_grants = filtered_grants[filtered_grants['source'].isin(config.source_filter)]
         
-        # Apply research field filter
-        if config.field_filter:
-            division_codes = field_to_division_codes(config.field_filter)
-            
-            if config.use_all_for_codes:
-                # Apply filtering based on all FOR codes in the 'for' field
-                mask = filtered_grants['for'].apply(
-                    lambda x: has_research_field_all_codes(x, division_codes)
-                )
-            else:
-                # Apply simplified research field filtering (primary FOR code only)
-                mask = filtered_grants['for_primary'].apply(
-                    lambda x: has_research_field_simple(x, division_codes)
-                )
-            
-            filtered_grants = filtered_grants[mask]
+            # Apply research field filter
+            if config.field_filter and 'primary_subject' in filtered_grants.columns:
+                filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
         
         # Apply date range filter
         if config.start_year_min is not None:
@@ -163,38 +146,11 @@ class GrantDistributionVisualizer:
         if filter_config.source_filter:
             title_parts.append(f"Sources: {', '.join(filter_config.source_filter)}")
         if filter_config.field_filter:
-            field_title_parts = []
-            for field in filter_config.field_filter[:2]:  # Show first 2 in title
-                # Convert field name to display name
-                display_name = field.replace('_', ' ').title()
-                if display_name.startswith('Agricultural'):
-                    display_name = 'Agricultural, Veterinary & Food Sciences'
-                elif display_name.startswith('Biomedical'):
-                    display_name = 'Biomedical & Clinical Sciences'
-                elif display_name.startswith('Built'):
-                    display_name = 'Built Environment & Design'
-                elif display_name.startswith('Commerce'):
-                    display_name = 'Commerce, Management, Tourism & Services'
-                elif display_name.startswith('Creative'):
-                    display_name = 'Creative Arts & Writing'
-                elif display_name.startswith('History'):
-                    display_name = 'History, Heritage & Archaeology'
-                elif display_name.startswith('Information'):
-                    display_name = 'Information & Computing Sciences'
-                elif display_name.startswith('Language'):
-                    display_name = 'Language, Communication & Culture'
-                elif display_name.startswith('Law'):
-                    display_name = 'Law & Legal Studies'
-                elif display_name.startswith('Philosophy'):
-                    display_name = 'Philosophy & Religious Studies'
-                
-                short_name = display_name[:25] + "..." if len(display_name) > 25 else display_name
-                field_title_parts.append(short_name)
-            
-            field_display = ', '.join(field_title_parts)
-            if len(filter_config.field_filter) > 2:
-                field_display += f"... +{len(filter_config.field_filter) - 2} more"
-            title_parts.append(f"Research Fields: {field_display}")
+                display_names = [format_research_field(field) for field in filter_config.field_filter[:2]]
+                field_display = ', '.join(display_names)
+                if len(filter_config.field_filter) > 2:
+                    field_display += f"... +{len(filter_config.field_filter) - 2} more"
+                title_parts.append(f"Subjects: {field_display}")
         
         # Add date range to title if filtered
         if filter_config.start_year_min is not None or filter_config.start_year_max is not None:

@@ -1,2 +1,2 @@
-modeling/data/** filter=lfs diff=lfs merge=lfs -text
-modeling/results/** filter=lfs diff=lfs merge=lfs -text
+modeling/data filter=lfs diff=lfs merge=lfs -text
+modeling/results filter=lfs diff=lfs merge=lfs -text

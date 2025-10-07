@@ -32,6 +32,7 @@ st.set_page_config(
 class CategoryFilterConfig:
     """Configuration for category data filtering"""
     field_filter: List[str]
+    source_filter: List[str]
     min_keywords: int
     max_keywords: int
     search_term: str
@@ -54,12 +55,18 @@ class CategoryDataManager:
     def __init__(self):
         self.categories_df = None
         self.field_options = None
+        self.grants_df = None
+        self.keywords_df = None
         self._load_data()
     
     def _load_data(self):
         """Load category data"""
         try:
             self.categories_df = config.Categories.load()
+            # Load grants and keywords for source filtering
+            self.grants_df = config.Grants.load()
+            self.keywords_df = config.Keywords.load()
+            
             if self.categories_df is not None and not self.categories_df.empty:
                 # Process keywords field if it's stored as string
                 if 'keywords' in self.categories_df.columns:
@@ -87,6 +94,32 @@ class CategoryDataManager:
             return pd.DataFrame()
         
         filtered_df = self.categories_df.copy()
+        
+        # Apply source filtering through grants if source filter is active
+        if filter_config.source_filter and self.grants_df is not None and self.keywords_df is not None:
+            # Filter grants by source
+            filtered_grants = self.grants_df[self.grants_df['source'].isin(filter_config.source_filter)]
+            filtered_grant_ids = set(filtered_grants['id'])
+            
+            # Build keyword-to-grants lookup
+            keyword_grants_lookup = {}
+            for _, kw_row in self.keywords_df.iterrows():
+                if 'grants' in kw_row and kw_row['grants']:
+                    # Filter keyword grants to only those matching source filter
+                    filtered_kw_grants = [g for g in kw_row['grants'] if g in filtered_grant_ids]
+                    if filtered_kw_grants:
+                        keyword_grants_lookup[kw_row['name']] = filtered_kw_grants
+            
+            # Filter categories based on whether their keywords have any filtered grants
+            def category_has_valid_grants(keywords_list):
+                if not keywords_list:
+                    return False
+                for keyword in keywords_list:
+                    if keyword in keyword_grants_lookup:
+                        return True
+                return False
+            
+            filtered_df = filtered_df[filtered_df['keywords'].apply(category_has_valid_grants)]
         
         # Field filter
         if filter_config.field_filter:
@@ -478,6 +511,7 @@ class CategoriesPage:
         # Adapt to legacy format for existing code
         filter_config = CategoryFilterConfig(
             field_filter=unified_filter.field_filter,
+            source_filter=unified_filter.source_filter,
             min_keywords=unified_filter.min_count,
             max_keywords=unified_filter.max_count,
             search_term=unified_filter.search_term,

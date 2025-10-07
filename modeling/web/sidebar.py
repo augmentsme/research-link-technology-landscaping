@@ -125,6 +125,7 @@ class SidebarControl:
             )
         elif page_type == "categories":
             return SidebarFeatures(
+                show_source_filter=True,
                 show_field_filter=True,
                 show_count_range=True,
                 show_search=True,

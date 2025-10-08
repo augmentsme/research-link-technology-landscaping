@@ -48,7 +48,7 @@ class Categories:
 
 @dataclass
 class Grants:
-    grants_path = ROOT_DIR / "grants.json"
+    grants_path = RESULTS_DIR / "grants.json"
 
     template = staticmethod(
         lambda record: (

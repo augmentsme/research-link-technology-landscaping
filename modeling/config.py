@@ -37,7 +37,11 @@ class Categories:
     template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{','.join(record.get('keywords', []))}</keywords></category>"
     
     def last_merged():
-        return max([int(i.stem) for i in RESULTS_DIR.iterdir() if i.stem.isdigit()])
+        list_of_digits_dirs = [i for i in RESULTS_DIR.iterdir() if i.stem.isdigit() and i.is_dir()]
+        if len(list_of_digits_dirs) == 0:
+            return None
+        else:
+            return max([int(i.stem) for i in list_of_digits_dirs])
     def last_merged_path():
         return RESULTS_DIR / str(Categories.last_merged()) / "output.jsonl"
     def load_last_merged():
@@ -48,45 +52,30 @@ class Categories:
 
 @dataclass
 class Grants:
-    grants_path = RESULTS_DIR / "grants.json"
+    source_path = RESULTS_DIR / "grants.json"
+    grants_path = RESULTS_DIR / "grants.jsonl"
 
     template = staticmethod(
         lambda record: (
-            f"<grant><title>{record.get('title') or record.get('grant_title', '')}</title>"
-            f"<description>{record.get('grant_summary') or record.get('summary', '')}</description></grant>"
+            f"<grant><title>{record.get('title')}</title>"
+            f"<description>{record.get('grant_summary')}</description></grant>"
         )
     )
-
     @staticmethod
-    def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return df
-
-        if "funding_amount" in df.columns:
-            df["funding_amount"] = pd.to_numeric(df["funding_amount"], errors="coerce")
-
-        if "start_date" in df.columns and "start_year" not in df.columns:
-            df["start_year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
-        elif "start_year" in df.columns:
-            df["start_year"] = pd.to_numeric(df["start_year"], errors="coerce").astype("Int64")
-
-        if "end_date" in df.columns and "end_year" not in df.columns:
-            df["end_year"] = pd.to_datetime(df["end_date"], errors="coerce").dt.year.astype("Int64")
-        elif "end_year" in df.columns:
-            df["end_year"] = pd.to_numeric(df["end_year"], errors="coerce").astype("Int64")
-
+    def preprocess():
+        df = utils.load_json_file(Grants.source_path, as_dataframe=True)
+        df = df[~df.title.isna()] 
+        df = df[~df.title.str.contains("equipment grant", case=False) & ~df.title.str.contains("travel grant", case=False)]
+        df["funding_amount"] = pd.to_numeric(df["funding_amount"], errors="coerce")
+        df["start_year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
+        df["end_year"] = pd.to_datetime(df["end_date"], errors="coerce").dt.year.astype("Int64")
+        utils.save_jsonl_file(df.to_dict(orient="records"), Grants.grants_path)
         return df
 
     @staticmethod
-    def _load_source_records() -> List[Dict[str, Any]]:
-        return utils.load_json_file(Grants.grants_path, as_dataframe=False)
-
-    @staticmethod
     def load(as_dataframe: bool = True):
-        records = Grants._load_source_records()
-        if as_dataframe:
-            df = pd.DataFrame(records)
-            return Grants._normalize_dataframe(df)
-        return records
-
+        if not Grants.grants_path.exists():
+            Grants.preprocess()
+        return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
+    
     

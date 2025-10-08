@@ -8,6 +8,11 @@ import pandas as pd
 import utils
 import config
 
+# def preprocess_grants(grants_df):
+#     df = grants_df[~grants_df.title.isna()] 
+#     df = df[~df.title.str.contains("equipment grant", case=False) & ~df.title.str.contains("travel grant", case=False)]
+#     return df
+
 def deduplicate_keywords(input_path):
     """
     Deduplicate keywords by normalizing terms and selecting best variants.
@@ -113,5 +118,5 @@ def postprocess_category(input_path=config.Categories.last_merged_path(), output
     cats = cats.drop(cats[cats.keywords.map(len) == 0].index) # drop categories with no keywords
     utils.save_jsonl_file(cats.to_dict(orient="records"), output_path)
 
-# postprocess_category()
+
     

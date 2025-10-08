@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 import re
 import pandas as pd
 from pathlib import Path
-from postprocess import postprocess_keywords
+from process import postprocess_keywords
 # Evaluation schema for the quality scorer
 class OverallScores(BaseModel):
     """Overall quality scores for keyword evaluation"""
@@ -318,11 +318,11 @@ Provide accurate, specific keywords that capture the innovative and emerging asp
 """
 
 @task
-def extract(filter_finished=True) -> Task:
-    finished_grants_list = finished_grants()
+def extract() -> Task:
+    # finished_grants_list = finished_grants()
     dataset = load_extract_dataset()
-    if filter_finished:
-        dataset = dataset.filter(lambda sample: sample.id not in finished_grants_list)
+    # if filter_finished:
+        # dataset = dataset.filter(lambda sample: sample.id not in finished_grants_list)
     return Task(
         dataset=dataset,
         solver=[

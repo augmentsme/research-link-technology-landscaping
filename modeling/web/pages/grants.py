@@ -27,6 +27,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+col1, col2, col3, col4 = st.columns(4, width=820)
+
+col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
+col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
+col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
+col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
+
 class GrantFilterManager:
     """Manages all data filtering operations"""
     

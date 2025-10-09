@@ -13,9 +13,11 @@ from shared_utils import (
     get_unique_keyword_types,
     get_unique_research_fields,
     get_unique_research_fields_from_categories,
-    get_unique_sources
+    get_unique_sources,
+    load_css
 )
 
+load_css()
 
 @dataclass
 class FilterConfig:
@@ -208,6 +210,7 @@ class SidebarControl:
     def render_sidebar(self) -> Tuple[FilterConfig, DisplayConfig]:
         """Render the unified sidebar and return configurations"""
         st.sidebar.empty()
+        st.logo("web/static/media/logo.png", size="large", icon_image="web/static/media/favicon.png")
         
         with st.sidebar:
             st.title("Settings")

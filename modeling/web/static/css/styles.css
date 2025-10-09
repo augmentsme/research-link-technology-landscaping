@@ -16,3 +16,7 @@ div[data-testid="stMetric"] {
       0 4px 6px rgba(0, 0, 0, 0.08);
     background-image: linear-gradient(to right, #f8fafc, #f1f5f9);
 }
+
+div[data-testid="stSidebarNav"] {
+    display: none;
+}

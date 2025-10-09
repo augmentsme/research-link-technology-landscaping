@@ -177,9 +177,13 @@ class KeywordsExtractionHook(Hooks):
         """Collect keywords and filter out rejected ones using evaluation results from scorer."""
 
         output_text = data.sample.output.completion
-        result_json = json.loads(output_text)
+
+        try:
+            result_json = json.loads(output_text)
+        except json.JSONDecodeError:
+            return
         grant_id = data.sample.id
-        keywords = result_json["keywords"]
+        keywords = result_json.get("keywords", None)
         
         if not keywords:
             return
@@ -254,7 +258,7 @@ def load_extract_dataset():
         )
 
     return MemoryDataset(samples)
-SYSTEM_PROMPT = f"""
+SYSTEM_PROMPT = """
 
 You are an expert research analyst with deep knowledge across multiple academic disciplines and a keen eye for emerging research trends.
 

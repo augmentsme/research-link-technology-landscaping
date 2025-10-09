@@ -16,7 +16,7 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data
+from shared_utils import load_data, load_css
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 
 import config
@@ -32,6 +32,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 @dataclass
 class CategoryFilterConfig:

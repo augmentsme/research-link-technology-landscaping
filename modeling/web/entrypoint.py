@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 from shared_utils import (load_data, get_unique_funders, 
                           get_unique_sources, get_unique_keyword_types, 
-                          get_unique_research_fields_from_categories)
+                          get_unique_research_fields_from_categories, load_css)
 
 # Configure the main page
 st.set_page_config(
@@ -15,6 +15,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 # Main page content
 st.title("Research Landscape Analysis")

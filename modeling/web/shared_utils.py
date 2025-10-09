@@ -10,6 +10,7 @@ import json
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+import pathlib
 
 # Add the parent directory to the Python path to import from the modeling package
 parent_dir = str(Path(__file__).parent.parent)
@@ -101,3 +102,8 @@ def create_research_field_options(unique_fields):
     field_values = list(sorted_fields)
     return field_options, field_values
 
+# Function to load CSS from the 'static' folder
+def load_css():
+    css_path = pathlib.Path("web/static/css/styles.css")
+    with open(css_path) as f:
+        st.html(f"<style>{f.read()}</style>")

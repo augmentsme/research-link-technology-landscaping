@@ -17,7 +17,8 @@ if web_dir not in sys.path:
 
 from shared_utils import (
     format_research_field,
-    load_data
+    load_data,
+    load_css
 )
 from visualisation import DataExplorer, DataExplorerConfig, TrendsVisualizer, TrendsConfig
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
@@ -27,6 +28,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 col1, col2, col3, col4 = st.columns(4, width=820)
 
@@ -104,7 +107,7 @@ class GrantDistributionVisualizer:
             fig = self._create_grants_visualization(grants_by_year_funder, filter_config, display_config)
             
             # Display the chart
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="grant_distribution_plot")
             
             # Show statistics
             self._show_statistics(filtered_grants, grants_by_year_funder)

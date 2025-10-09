@@ -19,7 +19,8 @@ if web_dir not in sys.path:
 
 from shared_utils import (
     format_research_field,
-    load_data
+    load_data,
+    load_css
 )
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
 from visualisation import (
@@ -36,6 +37,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 col1, col2, col3, col4 = st.columns(4, width=820)
 
@@ -251,7 +254,7 @@ class KeywordTrendsVisualizer:
             fig_trends = visualizer.create_plot(viz_data, viz_config)
             
             if fig_trends is not None:
-                st.plotly_chart(fig_trends, use_container_width=True)
+                st.plotly_chart(fig_trends, use_container_width=True, key="keywords_trends_plot")
                 self._show_statistics(filter_config, selection_config, selected_keywords)
                 self._show_debug_data(filtered_keywords, viz_data)
             else:

@@ -1,4 +1,4 @@
-.st-key-category_trends_plot {
+.st-key-category_trends_plot, .st-key-grant_distribution_plot, .st-key-keywords_trends_plot {
     border: solid 1px rgba(49, 51, 63, 0.25);
     padding: 1rem;
     border-radius: 0.5rem;

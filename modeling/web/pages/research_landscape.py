@@ -19,12 +19,15 @@ if web_dir not in sys.path:
 from visualisation import create_research_landscape_treemap
 from shared_utils import (
     load_data,
+    load_css
 )
 st.set_page_config(
     page_title="Research Landscape",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 col1, col2, col3, col4 = st.columns(4, width=820)
 
@@ -65,7 +68,7 @@ class TreemapVisualizer:
             )
             
             if fig_treemap is not None:
-                st.plotly_chart(fig_treemap, use_container_width=True)
+                st.plotly_chart(fig_treemap, use_container_width=True, key="research_landscape_plot")
                 
                 # Show statistics
                 self._show_statistics()

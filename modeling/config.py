@@ -12,6 +12,14 @@ ROOT_DIR = Path(CONFIG["ROOT_DIR"])
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
 
+OPENAI_BASE_URL = CONFIG.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
+OPENAI_MODEL = CONFIG.get("OPENAI_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
+EMBEDDING_MODEL = CONFIG.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
+OPENAI_TIMEOUT_SECONDS = 300
+OPENAI_MAX_RETRIES = 3
+CONCURRENCY = 512
+
+
 
 @dataclass
 class Keywords:
@@ -20,7 +28,7 @@ class Keywords:
     extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
     keywords_path: Path = keywords_dir / "keywords.jsonl"
     
-    template = lambda record: f"<keyword><name>{record['name']}</name><type>{record['type']}</type><description>{record['description']}</description></keyword>"
+    template = lambda record: f"<keyword><name>{record['name']}</name><description>{record['description']}</description></keyword>"
     
     def load(as_dataframe=True):
         return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=as_dataframe)

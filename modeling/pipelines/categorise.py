@@ -1,26 +1,27 @@
-from inspect_ai import Task, task
+from __future__ import annotations
+
+import asyncio
 from pathlib import Path
-from typing import List
-import jsonlines
+from typing import Iterable, List, Sequence
 
 import config
-import utils
-from pydantic import BaseModel, Field
 from models import FieldOfResearch
-from inspect_ai.hooks import Hooks, SampleEnd, TaskEnd, hooks
-from inspect_ai.dataset import Sample
-from inspect_ai.solver import system_message, generate
-from inspect_ai.model import GenerateConfig, ResponseSchema
-from inspect_ai.util import json_schema
-from scorer import keywords_confusion_matrix
 
+from openai import AsyncOpenAI
 
-# =============================================================================
-# Data Models
-# =============================================================================
+from . import llm_client
+from .batching import (
+    iter_jsonl_batches,
+    stream_jsonl,
+    prepare_category_outputs,
+    write_categorisation_result,
+    JsonlBatch,
+)
+from .concurrency import run_with_concurrency
+from pydantic import BaseModel, Field
+
 
 class Category(BaseModel):
-    """A flexible research category linked to FOR codes."""
     model_config = {"extra": "forbid"}
     name: str = Field(description="Name of the category")
     description: str = Field(description="A few sentences describing what this category is about, including its scope, focus areas, and the types of research or technologies it encompasses")
@@ -29,16 +30,11 @@ class Category(BaseModel):
 
 
 class CategoryList(BaseModel):
-    """A list of research categories."""
     model_config = {"extra": "forbid"}
     categories: List[Category] = Field(description="List of research categories")
 
 
-# =============================================================================
-# System Prompt
-# =============================================================================
-
-CATEGORISE_SYSTEM_PROMPT = f"""
+CATEGORISE_SYSTEM_PROMPT = """
 You are an expert Technology Analyst and Innovation Forecaster, specializing in synthesizing information to identify and map emerging technological domains for strategic planning.
 
 Your task is to analyze a list of user-provided keywords and generate a comprehensive set of research and technology categories in a specific JSON format. Each category must be linked to an appropriate FOR (Fields of Research) division.
@@ -80,112 +76,52 @@ Your primary goal is to organize the provided keywords into meaningful, emergent
 """
 
 
-# =============================================================================
-# Dataset Loading
-# =============================================================================
+def _format_keywords(records: Sequence[dict]) -> str:
+    entries: Iterable[str] = (config.Keywords.template(record) for record in records)
+    return "\n".join(entries)
 
-def _create_keyword_sample(batch_data, batch_id, batch_file):
-    """Create sample for keyword categorization."""
-    entries = [config.Keywords.template(kw) for kw in batch_data]
-    
-    return Sample(
-        id=batch_id,
-        input="\n".join(entries),
-        metadata={"keywords": [kw['name'] for kw in batch_data]}
+
+async def _request_categories(client: AsyncOpenAI, batch_text: str) -> CategoryList:
+    output_text = await llm_client.call_json_schema(
+        client,
+        model=config.OPENAI_MODEL,
+        system_prompt=CATEGORISE_SYSTEM_PROMPT,
+        user_content=batch_text,
+        schema_name="keyword_categories",
+        schema=CategoryList.model_json_schema(),
     )
+    return CategoryList.model_validate_json(output_text)
 
 
-def load_categorise_dataset(batch_dir: Path):
-    """Load dataset from semantic clustering batches for keyword categorization."""
-    return utils.load_batch_dataset(
-        batch_dir=batch_dir,
-        sample_creator_func=_create_keyword_sample,
-        dataset_type="keyword"
-    )
+async def categorise_async(input_dir: Path, output_dir: Path, concurrency: int = config.CONCURRENCY) -> List[str]:
+    batches = list(iter_jsonl_batches(input_dir))
+    if not batches:
+        return []
+
+    outputs = prepare_category_outputs(output_dir)
+    try:
+        async with llm_client.async_client() as client:
+
+            async def handler(batch: JsonlBatch) -> tuple[int, str]:
+                records = list(stream_jsonl(batch.path))
+                batch_text = _format_keywords(records)
+                categories = await _request_categories(client, batch_text)
+                write_categorisation_result(records, categories, outputs)
+                return batch.index, batch.batch_id
+
+            processed = await run_with_concurrency(
+                batches,
+                handler,
+                concurrency=concurrency,
+                progress_description="Categorising keywords",
+                progress_unit="batch",
+            )
+    finally:
+        outputs.close()
+
+    processed.sort(key=lambda item: item[0])
+    return [batch_id for _, batch_id in processed]
 
 
-# =============================================================================
-# Output Hook Factory
-# =============================================================================
-
-def create_keyword_categorise_hook(output_dir: Path):
-    """Factory function to create a KeywordCategoriseHook with output_dir closure."""
-    
-    @hooks(name="KeywordCategoriseHook", description="Hook to save keyword categorization results")
-    class KeywordCategoriseHook(Hooks):
-        """Hook for handling keyword categorization output."""
-        
-        def __init__(self):
-            self.output_dir = Path(output_dir)
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            
-            self.output_path = self.output_dir / "output.jsonl"
-            self.unknown_path = self.output_dir / "unknown.jsonl"
-            self.missing_path = self.output_dir / "missing.jsonl"
-            
-            self.categories_writer = jsonlines.open(self.output_path, 'a')
-            self.unknown_writer = jsonlines.open(self.unknown_path, 'a')
-            self.missing_writer = jsonlines.open(self.missing_path, 'a')
-
-        async def on_sample_end(self, data: SampleEnd) -> None:
-            """Process and write keyword categorization results."""
-            _, result_json = utils.parse_results(data.sample.output.completion)
-            
-            categories = result_json.get('categories', [])
-            
-            for category in categories:
-                category_keywords = set(category.get('keywords', []))
-                
-                if category.get('name') == "Unknown":
-                    for keyword in category_keywords:
-                        self.unknown_writer.write(keyword)
-                else:
-                    self.categories_writer.write(category)
-            
-            if hasattr(data.sample, 'scores') and 'keywords_confusion_matrix' in data.sample.scores:
-                missing_keywords = data.sample.scores['keywords_confusion_matrix'].metadata.get('fn', [])
-                for keyword in missing_keywords:
-                    self.missing_writer.write(keyword)
-
-        async def on_task_end(self, data: TaskEnd) -> None:
-
-            self.categories_writer.close()
-            self.unknown_writer.close()
-            self.missing_writer.close()
-        
-
-    return KeywordCategoriseHook
-
-
-# =============================================================================
-# Task Definition
-# =============================================================================
-
-@task
-def categorise(input_dir, output_dir):
-    """
-    Task for categorizing keywords into research categories.
-    
-    Args:
-        input_dir: Directory containing keyword batch files
-        output_dir: Directory to write categorization results
-    """
-    create_keyword_categorise_hook(output_dir)
-    dataset = load_categorise_dataset(batch_dir=input_dir)
-    
-    response_schema = ResponseSchema(
-        name="Categories",
-        json_schema=json_schema(CategoryList),
-        strict=True
-    )
-    
-    return Task(
-        dataset=dataset,
-        solver=[
-            system_message(CATEGORISE_SYSTEM_PROMPT),
-            generate()
-        ],
-        scorer=[keywords_confusion_matrix()],
-        config=GenerateConfig(response_schema=response_schema),
-        hooks=["KeywordCategoriseHook"]
-    )
+def categorise(input_dir: Path | str, output_dir: Path | str, concurrency: int = config.CONCURRENCY) -> List[str]:
+    return asyncio.run(categorise_async(Path(input_dir), Path(output_dir), concurrency=concurrency))

@@ -12,19 +12,12 @@ from pipelines import extract as extract_pipeline
 from pipelines import merge as merge_pipeline
 import numpy as np
 from pipelines.semantic import Pipeline, DEFAULT_EMBEDDING_MODEL
-
-try:  # prefer local vLLM when available
-    from vllm import LLM
-except ImportError:  # fall back to sentence transformers at runtime
-    LLM = None  # type: ignore
+from sentence_transformers import SentenceTransformer
 
 
 app = typer.Typer(help="Unified interface for keyword extraction and categorisation workflows")
 semantic_app = typer.Typer(help="Semantic clustering utilities")
 app.add_typer(semantic_app, name="semantic")
-
-
-SENTENCE_TRANSFORMER_FALLBACK = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 @app.command()
@@ -89,29 +82,14 @@ def embed(
         typer.echo(f"Embeddings already exist at {embeddings_path}; use --force to overwrite")
         return
 
-    if LLM is None:
-        from sentence_transformers import SentenceTransformer
-
-        target_model = model
-        if target_model == DEFAULT_EMBEDDING_MODEL:
-            target_model = SENTENCE_TRANSFORMER_FALLBACK
-
-        encoder = SentenceTransformer(target_model)
-        array = encoder.encode(
-            texts,
-            batch_size=batch_size,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-            normalize_embeddings=False,
-        ).astype(np.float32)
-    else:
-        llm = LLM(model=model, task="embed")
-        embeddings: list[np.ndarray] = []
-        for start in range(0, len(texts), batch_size):
-            outputs = llm.embed(texts[start : start + batch_size])
-            embeddings.extend(np.asarray(result.outputs.embedding, dtype=np.float32) for result in outputs)
-
-        array = np.vstack(embeddings)
+    encoder = SentenceTransformer(model)
+    array = encoder.encode(
+        texts,
+        batch_size=batch_size,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+        normalize_embeddings=False,
+    ).astype(np.float32)
     embeddings_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(embeddings_path, array)
     typer.echo(f"Saved {array.shape[0]} embeddings with dimension {array.shape[1]} to {embeddings_path}")

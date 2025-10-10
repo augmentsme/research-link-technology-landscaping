@@ -15,13 +15,10 @@ aiohttp==3.12.15
     #   aiobotocore
     #   inspect-ai
     #   s3fs
-    #   vllm
 aioitertools==0.12.0
     # via aiobotocore
 aiosignal==1.4.0
     # via aiohttp
-airportsdata==20250909
-    # via outlines
 altair==5.5.0
     # via streamlit
 annotated-types==0.7.0
@@ -51,9 +48,7 @@ arrow==1.3.0
     #   isoduration
     #   pygwalker
 astor==0.8.1
-    # via
-    #   depyf
-    #   pygwalker
+    # via pygwalker
 asttokens==3.0.0
     # via stack-data
 async-lru==2.0.5
@@ -81,8 +76,6 @@ beautifulsoup4==4.14.2
     # via
     #   inspect-ai
     #   nbconvert
-blake3==1.0.7
-    # via vllm
 bleach==6.2.0
     # via nbconvert
 blinker==1.9.0
@@ -103,14 +96,12 @@ cachetools==6.2.0
     #   google-auth
     #   pygwalker
     #   streamlit
-    #   vllm
 certifi==2025.10.5
     # via
     #   httpcore
     #   httpx
     #   kubernetes
     #   requests
-    #   sentry-sdk
 cffi==2.0.0
     # via
     #   argon2-cffi-bindings
@@ -125,8 +116,6 @@ click==8.3.0
     #   distributed
     #   inspect-ai
     #   nltk
-    #   ray
-    #   rich-toolkit
     #   streamlit
     #   typer
     #   uvicorn
@@ -134,8 +123,6 @@ cloudpickle==3.1.1
     # via
     #   dask
     #   distributed
-    #   outlines
-    #   vllm
 colorcet==3.1.0
     # via
     #   datamapplot
@@ -148,8 +135,6 @@ comm==0.2.3
     # via
     #   ipykernel
     #   ipywidgets
-compressed-tensors==0.9.2
-    # via vllm
 contourpy==1.3.3
     # via
     #   bokeh
@@ -183,12 +168,6 @@ decorator==5.2.1
     # via ipython
 defusedxml==0.7.1
     # via nbconvert
-depyf==0.18.0
-    # via vllm
-dill==0.4.0
-    # via depyf
-diskcache==5.6.3
-    # via outlines
 distributed==2024.12.1
     # via dask
 distro==1.9.0
@@ -207,24 +186,14 @@ duckdb==1.4.0
     # via pygwalker
 durationpy==0.10
     # via kubernetes
-einops==0.8.1
-    # via vllm
 email-validator==2.3.0
-    # via
-    #   fastapi
-    #   pydantic
+    # via pydantic
 et-xmlfile==2.0.0
     # via openpyxl
 exceptiongroup==1.3.0
     # via fastmcp
 executing==2.2.1
     # via stack-data
-fastapi==0.118.2
-    # via vllm
-fastapi-cli==0.0.13
-    # via fastapi
-fastapi-cloud-cli==0.3.1
-    # via fastapi-cli
 fastjsonschema==2.21.2
     # via nbformat
 fastmcp==2.12.4
@@ -232,10 +201,8 @@ fastmcp==2.12.4
 filelock==3.19.1
     # via
     #   huggingface-hub
-    #   ray
     #   torch
     #   transformers
-    #   vllm
 filetype==1.2.0
     # via ydata-profiling
 flatbuffers==25.9.23
@@ -257,8 +224,6 @@ fsspec==2025.3.0
     #   torch
 gensim==4.3.2
     # via modeling (pyproject.toml)
-gguf==0.10.0
-    # via vllm
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.45
@@ -288,8 +253,6 @@ httptools==0.6.4
 httpx==0.28.1
     # via
     #   chromadb
-    #   fastapi
-    #   fastapi-cloud-cli
     #   fastmcp
     #   inspect-ai
     #   jupyterlab
@@ -302,7 +265,6 @@ huggingface-hub==0.35.3
     #   sentence-transformers
     #   tokenizers
     #   transformers
-    #   vllm
 humanfriendly==10.0
     # via coloredlogs
 idna==3.10
@@ -322,9 +284,7 @@ imagehash==4.3.1
 imageio==2.37.0
     # via scikit-image
 importlib-metadata==8.7.0
-    # via
-    #   opentelemetry-api
-    #   vllm
+    # via opentelemetry-api
 importlib-resources==6.5.2
     # via
     #   chromadb
@@ -332,11 +292,6 @@ importlib-resources==6.5.2
     #   wasmtime
 inspect-ai==0.3.136
     # via modeling (pyproject.toml)
-interegular==0.3.3
-    # via
-    #   lm-format-enforcer
-    #   outlines
-    #   outlines-core
 ipykernel==6.30.1
     # via
     #   jupyter
@@ -371,12 +326,10 @@ jinja2==3.1.6
     #   dask
     #   datamapplot
     #   distributed
-    #   fastapi
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-    #   outlines
     #   pydeck
     #   pygwalker
     #   torch
@@ -417,14 +370,10 @@ jsonschema==4.25.1
     #   jupyter-events
     #   jupyterlab-server
     #   mcp
-    #   mistral-common
     #   nbformat
     #   openapi-core
     #   openapi-schema-validator
     #   openapi-spec-validator
-    #   outlines
-    #   outlines-core
-    #   ray
 jsonschema-path==0.3.4
     # via
     #   openapi-core
@@ -485,22 +434,15 @@ kiwisolver==1.4.9
 kubernetes==34.1.0
     # via chromadb
 lark==1.2.2
-    # via
-    #   outlines
-    #   rfc3987-syntax
-    #   vllm
+    # via rfc3987-syntax
 lazy-loader==0.4
     # via scikit-image
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
 linkify-it-py==2.0.3
     # via markdown-it-py
-llguidance==0.7.30
-    # via vllm
 llvmlite==0.44.0
     # via numba
-lm-format-enforcer==0.10.12
-    # via vllm
 locket==1.0.0
     # via
     #   distributed
@@ -537,8 +479,6 @@ mdurl==0.1.2
     # via markdown-it-py
 minify-html==0.16.4
     # via ydata-profiling
-mistral-common==1.8.5
-    # via vllm
 mistune==3.1.4
     # via nbconvert
 mmh3==5.2.0
@@ -552,11 +492,7 @@ more-itertools==10.8.0
 mpmath==1.3.0
     # via sympy
 msgpack==1.1.1
-    # via
-    #   distributed
-    #   ray
-msgspec==0.19.0
-    # via vllm
+    # via distributed
 multidict==6.6.4
     # via
     #   aiobotocore
@@ -588,14 +524,11 @@ nest-asyncio==1.6.0
     # via
     #   inspect-ai
     #   ipykernel
-    #   outlines
 networkx==3.5
     # via
     #   scikit-image
     #   torch
     #   visions
-ninja==1.13.0
-    # via vllm
 nltk==3.9.2
     # via modeling (pyproject.toml)
 notebook==7.4.7
@@ -608,7 +541,6 @@ numba==0.61.0
     # via
     #   datamapplot
     #   datashader
-    #   vllm
     #   ydata-profiling
 numpy==2.1.3
     # via
@@ -621,16 +553,12 @@ numpy==2.1.3
     #   datamapplot
     #   datashader
     #   gensim
-    #   gguf
     #   imagehash
     #   imageio
     #   inspect-ai
     #   matplotlib
-    #   mistral-common
     #   numba
     #   onnxruntime
-    #   opencv-python-headless
-    #   outlines
     #   pandas
     #   patsy
     #   phik
@@ -645,10 +573,8 @@ numpy==2.1.3
     #   statsmodels
     #   streamlit
     #   tifffile
-    #   torchvision
     #   transformers
     #   visions
-    #   vllm
     #   wordcloud
     #   xarray
     #   ydata-profiling
@@ -657,9 +583,7 @@ oauthlib==3.3.1
 onnxruntime==1.23.0
     # via chromadb
 openai==2.1.0
-    # via
-    #   modeling (pyproject.toml)
-    #   vllm
+    # via modeling (pyproject.toml)
 openapi-core==0.19.5
     # via fastmcp
 openapi-pydantic==0.5.1
@@ -670,10 +594,6 @@ openapi-schema-validator==0.6.3
     #   openapi-spec-validator
 openapi-spec-validator==0.7.2
     # via openapi-core
-opencv-python-headless==4.12.0.88
-    # via
-    #   mistral-common
-    #   vllm
 openpyxl==3.1.5
     # via modeling (pyproject.toml)
 opentelemetry-api==1.37.0
@@ -698,10 +618,6 @@ opentelemetry-semantic-conventions==0.58b0
     # via opentelemetry-sdk
 orjson==3.11.3
     # via chromadb
-outlines==0.1.11
-    # via vllm
-outlines-core==0.1.26
-    # via outlines
 overrides==7.7.0
     # via chromadb
 packaging==25.0
@@ -719,13 +635,11 @@ packaging==25.0
     #   jupyterlab
     #   jupyterlab-server
     #   lazy-loader
-    #   lm-format-enforcer
     #   matplotlib
     #   nbconvert
     #   onnxruntime
     #   plotly
     #   pygwalker
-    #   ray
     #   scikit-image
     #   statsmodels
     #   streamlit
@@ -761,8 +675,6 @@ parso==0.8.5
     # via jedi
 partd==1.4.2
     # via dask
-partial-json-parser==0.2.1.1.post6
-    # via vllm
 pathable==0.4.4
     # via jsonschema-path
 patsy==1.0.1
@@ -779,13 +691,10 @@ pillow==11.3.0
     #   imagehash
     #   imageio
     #   matplotlib
-    #   mistral-common
     #   scikit-image
     #   sentence-transformers
     #   streamlit
-    #   torchvision
     #   visions
-    #   vllm
     #   wordcloud
 platformdirs==4.4.0
     # via
@@ -802,12 +711,7 @@ ply==3.11
 posthog==5.4.0
     # via chromadb
 prometheus-client==0.23.1
-    # via
-    #   jupyter-server
-    #   prometheus-fastapi-instrumentator
-    #   vllm
-prometheus-fastapi-instrumentator==7.1.0
-    # via vllm
+    # via jupyter-server
 prompt-toolkit==3.0.52
     # via
     #   ipython
@@ -821,16 +725,13 @@ protobuf==6.32.1
     #   googleapis-common-protos
     #   onnxruntime
     #   opentelemetry-proto
-    #   ray
     #   streamlit
-    #   vllm
 psutil==7.1.0
     # via
     #   distributed
     #   inspect-ai
     #   ipykernel
     #   pygwalker
-    #   vllm
 psygnal==0.14.2
     # via anywidget
 ptyprocess==0.7.0
@@ -841,8 +742,6 @@ pure-eval==0.2.3
     # via stack-data
 puremagic==1.30
     # via visions
-py-cpuinfo==9.0.0
-    # via vllm
 pyarrow==21.0.0
     # via
     #   modeling (pyproject.toml)
@@ -859,10 +758,6 @@ pyasn1-modules==0.4.2
     # via google-auth
 pybase64==1.4.2
     # via chromadb
-pycountry==24.6.1
-    # via
-    #   outlines
-    #   pydantic-extra-types
 pycparser==2.23
     # via cffi
 pyct==0.6.0
@@ -870,26 +765,16 @@ pyct==0.6.0
 pydantic==2.11.10
     # via
     #   chromadb
-    #   compressed-tensors
-    #   fastapi
-    #   fastapi-cloud-cli
     #   fastmcp
     #   inspect-ai
-    #   lm-format-enforcer
     #   mcp
-    #   mistral-common
     #   openai
     #   openapi-pydantic
-    #   outlines
-    #   pydantic-extra-types
     #   pydantic-settings
     #   pygwalker
-    #   vllm
     #   ydata-profiling
 pydantic-core==2.33.2
     # via pydantic
-pydantic-extra-types==2.10.6
-    # via mistral-common
 pydantic-settings==2.11.0
     # via mcp
 pydeck==0.9.1
@@ -934,13 +819,9 @@ python-dotenv==1.1.1
     #   pydantic-settings
     #   uvicorn
 python-json-logger==3.3.0
-    # via
-    #   jupyter-events
-    #   vllm
+    # via jupyter-events
 python-multipart==0.0.20
-    # via
-    #   fastapi
-    #   mcp
+    # via mcp
 pytz==2025.2
     # via
     #   dateutils
@@ -954,17 +835,13 @@ pyyaml==6.0.3
     #   chromadb
     #   dask
     #   distributed
-    #   gguf
     #   huggingface-hub
     #   inspect-ai
     #   jsonschema-path
     #   jupyter-events
     #   kubernetes
-    #   lm-format-enforcer
-    #   ray
     #   transformers
     #   uvicorn
-    #   vllm
     #   ydata-profiling
 pyzmq==27.1.0
     # via
@@ -972,11 +849,8 @@ pyzmq==27.1.0
     #   jupyter-client
     #   jupyter-console
     #   jupyter-server
-    #   vllm
 quickjs==1.19.4
     # via pygwalker
-ray==2.49.2
-    # via vllm
 rcssmin==1.2.1
     # via datamapplot
 referencing==0.36.2
@@ -985,7 +859,6 @@ referencing==0.36.2
     #   jsonschema-path
     #   jsonschema-specifications
     #   jupyter-events
-    #   outlines
 regex==2025.9.18
     # via
     #   nltk
@@ -1000,17 +873,13 @@ requests==2.32.5
     #   jupyterlab-server
     #   kanaries-track
     #   kubernetes
-    #   mistral-common
-    #   outlines
     #   posthog
     #   pygwalker
-    #   ray
     #   requests-oauthlib
     #   segment-analytics-python
     #   streamlit
     #   tiktoken
     #   transformers
-    #   vllm
     #   ydata-profiling
 requests-oauthlib==2.0.0
     # via kubernetes
@@ -1032,17 +901,10 @@ rich==13.9.4
     #   fastmcp
     #   inspect-ai
     #   rich-rst
-    #   rich-toolkit
     #   textual
     #   typer
 rich-rst==1.3.1
     # via cyclopts
-rich-toolkit==0.15.1
-    # via
-    #   fastapi-cli
-    #   fastapi-cloud-cli
-rignore==0.7.0
-    # via fastapi-cloud-cli
 rjsmin==1.2.4
     # via datamapplot
 rpds-py==0.27.1
@@ -1076,7 +938,6 @@ scipy==1.15.3
     #   scikit-learn
     #   sentence-transformers
     #   statsmodels
-    #   vllm
     #   ydata-profiling
 seaborn==0.13.2
     # via
@@ -1090,15 +951,10 @@ send2trash==1.8.3
     # via jupyter-server
 sentence-transformers==5.1.1
     # via modeling (pyproject.toml)
-sentencepiece==0.2.1
-    # via vllm
-sentry-sdk==2.41.0
-    # via fastapi-cloud-cli
 setuptools==80.9.0
     # via
     #   jupyterlab
     #   torch
-    #   vllm
 shellingham==1.5.4
     # via typer
 shortuuid==1.0.13
@@ -1109,7 +965,6 @@ six==1.17.0
     #   posthog
     #   python-dateutil
     #   rfc3339-validator
-    #   vllm
 smart-open==7.3.1
     # via gensim
 smmap==5.0.2
@@ -1134,10 +989,7 @@ st-annotated-text==4.0.2
 stack-data==0.6.3
     # via ipython
 starlette==0.48.0
-    # via
-    #   fastapi
-    #   mcp
-    #   prometheus-fastapi-instrumentator
+    # via mcp
 statsmodels==0.14.5
     # via
     #   plotly-express
@@ -1169,17 +1021,13 @@ threadpoolctl==3.6.0
 tifffile==2025.10.4
     # via scikit-image
 tiktoken==0.11.0
-    # via
-    #   modeling (pyproject.toml)
-    #   mistral-common
-    #   vllm
+    # via modeling (pyproject.toml)
 tinycss2==1.4.0
     # via bleach
 tokenizers==0.22.1
     # via
     #   chromadb
     #   transformers
-    #   vllm
 toml==0.10.2
     # via streamlit
 toolz==1.0.0
@@ -1189,17 +1037,7 @@ toolz==1.0.0
     #   distributed
     #   partd
 torch==2.6.0
-    # via
-    #   compressed-tensors
-    #   outlines
-    #   sentence-transformers
-    #   torchaudio
-    #   torchvision
-    #   vllm
-torchaudio==2.6.0
-    # via vllm
-torchvision==0.21.0
-    # via vllm
+    # via sentence-transformers
 tornado==6.5.2
     # via
     #   bokeh
@@ -1214,15 +1052,12 @@ tornado==6.5.2
 tqdm==4.67.1
     # via
     #   chromadb
-    #   gguf
     #   huggingface-hub
     #   nltk
     #   openai
-    #   outlines
     #   pylabeladjust
     #   sentence-transformers
     #   transformers
-    #   vllm
     #   ydata-profiling
 traitlets==5.14.3
     # via
@@ -1243,17 +1078,13 @@ traitlets==5.14.3
 transformers==4.57.0
     # via
     #   modeling (pyproject.toml)
-    #   compressed-tensors
     #   sentence-transformers
-    #   vllm
 typeguard==4.4.4
     # via ydata-profiling
 typer==0.19.2
     # via
     #   modeling (pyproject.toml)
     #   chromadb
-    #   fastapi-cli
-    #   fastapi-cloud-cli
 types-python-dateutil==2.9.0.20250822
     # via arrow
 typing-extensions==4.15.0
@@ -1266,24 +1097,19 @@ typing-extensions==4.15.0
     #   chromadb
     #   datamapplot
     #   exceptiongroup
-    #   fastapi
     #   grpcio
     #   huggingface-hub
     #   inspect-ai
-    #   mistral-common
     #   openai
     #   openapi-core
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-    #   outlines
     #   pydantic
     #   pydantic-core
-    #   pydantic-extra-types
     #   pygwalker
     #   referencing
-    #   rich-toolkit
     #   sentence-transformers
     #   sqlalchemy
     #   starlette
@@ -1293,7 +1119,6 @@ typing-extensions==4.15.0
     #   typeguard
     #   typer
     #   typing-inspection
-    #   vllm
 typing-inspection==0.4.2
     # via
     #   pydantic
@@ -1310,26 +1135,18 @@ urllib3==2.3.0
     #   distributed
     #   kubernetes
     #   requests
-    #   sentry-sdk
 uvicorn==0.37.0
     # via
     #   chromadb
-    #   fastapi
-    #   fastapi-cli
-    #   fastapi-cloud-cli
     #   mcp
 uvloop==0.21.0
     # via uvicorn
 visions==0.8.1
     # via ydata-profiling
-vllm==0.8.3
-    # via modeling (pyproject.toml)
 wasmtime==36.0.0
     # via gw-dsl-parser
 watchfiles==1.1.0
-    # via
-    #   uvicorn
-    #   vllm
+    # via uvicorn
 wcwidth==0.2.14
     # via prompt-toolkit
 webcolors==24.11.1

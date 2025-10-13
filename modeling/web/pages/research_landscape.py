@@ -27,6 +27,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.logo("web/static/media/logo.png", size="large", icon_image="web/static/media/favicon.png")
+
 load_css()
 
 col1, col2, col3, col4 = st.columns(4, width=820)

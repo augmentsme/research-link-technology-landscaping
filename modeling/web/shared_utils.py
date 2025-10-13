@@ -104,7 +104,6 @@ def create_research_field_options(unique_fields):
 
 # Function to load CSS from the 'static' folder
 def load_css():
-    # Load Tailwind-enhanced CSS
-    css_path = pathlib.Path("web/static/css/tailwind-enhanced.css")
+    css_path = pathlib.Path("web/static/css/styles.css")
     with open(css_path) as f:
         st.html(f"<style>{f.read()}</style>")

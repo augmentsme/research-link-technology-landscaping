@@ -43,8 +43,7 @@ class DisplayConfig:
     random_seed: Optional[int] = None
     use_cumulative: bool = True
     show_baseline: bool = False
-    ranking_metric: str = "funding"  # count, funding
-    display_metric: str = "funding"  # count, funding
+    metric: str = "funding"  # count, funding
     smooth_trends: bool = True
     smoothing_window: int = 5
 
@@ -294,11 +293,12 @@ class SidebarControl:
                 st.markdown("**Date Range**")
                 col1, col2 = st.columns(2)
                 with col1:
+                    default_start_year = min(max(2000, self.min_year), self.max_year)
                     start_year_min = st.number_input(
                         "From Year",
                         min_value=self.min_year,
                         max_value=self.max_year,
-                        value=self.min_year,
+                        value=default_start_year,
                         step=1
                     )
                 with col2:
@@ -483,26 +483,15 @@ class SidebarControl:
             # Metrics options (categories only)
             if self.features.show_metrics:
                 st.markdown("**Metrics Configuration**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    ranking_metric = st.selectbox(
-                        "Rank By",
-                        options=["count", "funding"],
-                        format_func=lambda x: "Grant Count" if x == "count" else "Total Funding",
-                        index=["count", "funding"].index("funding"),
-                        help="Which metric to use when selecting the top entities"
-                    )
-                with col2:
-                    display_metric = st.selectbox(
-                        "Display",
-                        options=["count", "funding"],
-                        format_func=lambda x: "Grant Count" if x == "count" else "Funding Amount",
-                        index=["count", "funding"].index("funding"),
-                        help="Which metric to display on the Y-axis"
-                    )
+                metric = st.selectbox(
+                    "Y-axis metric",
+                    options=["count", "funding"],
+                    format_func=lambda x: "Grant Count" if x == "count" else "Funding Amount",
+                    index=["count", "funding"].index("funding"),
+                    help="Determines both the displayed values and how entities are ranked"
+                )
             else:
-                ranking_metric = "funding"
-                display_metric = "funding"
+                metric = "funding"
             # Smoothing options
             if self.features.show_smoothing:
                 smooth_trends = st.toggle(
@@ -533,8 +522,7 @@ class SidebarControl:
             random_seed=random_seed,
             use_cumulative=use_cumulative,
             show_baseline=show_baseline,
-            ranking_metric=ranking_metric,
-            display_metric=display_metric,
+            metric=metric,
             smooth_trends=smooth_trends,
             smoothing_window=int(smoothing_window) if smooth_trends else 1
         )

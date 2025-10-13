@@ -29,7 +29,7 @@ def format_research_field(field: Optional[str]) -> str:
     return str(field)
 
 # Load data with caching
-@st.cache_data
+@st.cache_resource
 def load_data():
     """Load and cache the data"""
     try:

@@ -17,10 +17,10 @@ from shared_utils import (  # noqa: E402
     format_research_field,
     load_data
 )
+from precomputed import get_grant_years_table  # noqa: E402
 from visualisation import (  # noqa: E402
     TrendsVisualizer,
     TrendsConfig,
-    compute_active_years,
 )
 from web.sidebar import SidebarControl, FilterConfig, DisplayConfig  # noqa: E402
 
@@ -73,6 +73,8 @@ class GrantDistributionVisualizer:
     def __init__(self, grants_df: pd.DataFrame):
         self.grants_df = grants_df
         self.filter_manager = GrantFilterManager(grants_df)
+        self._start_year_records = get_grant_years_table(active=False)
+        self._active_year_records = get_grant_years_table(active=True)
     
     def render_tab(self, filter_config: FilterConfig, display_config: DisplayConfig):
         """Render the grant distribution visualization tab"""
@@ -121,44 +123,34 @@ class GrantDistributionVisualizer:
     
     def _prepare_aggregated_trends(self, filtered_grants: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
         """Create aggregated metrics for grant trends"""
-        if 'funding_amount' in filtered_grants.columns:
-            funding_series = filtered_grants['funding_amount'].fillna(0)
-        else:
-            funding_series = pd.Series(0, index=filtered_grants.index)
+        if filtered_grants.empty:
+            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
 
-        if filter_config.use_active_grant_period:
-            expanded_records = []
-            for _, row in filtered_grants.iterrows():
-                years = compute_active_years(
-                    row.get('start_year'),
-                    row.get('end_year'),
-                    use_active_period=True,
-                    min_year=filter_config.start_year_min,
-                    max_year=filter_config.start_year_max,
-                )
-                if not years or pd.isna(row.get('funder')):
-                    continue
-                funding = row.get('funding_amount', 0) or 0
-                for index, year in enumerate(years):
-                    expanded_records.append({
-                        'start_year': year,
-                        'funder': row['funder'],
-                        'grant_count': 1,
-                        'total_funding': funding if index == 0 else 0,
-                    })
-            if not expanded_records:
-                return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
-            grouped = pd.DataFrame(expanded_records)
-        else:
-            grouped = filtered_grants.copy()
-            grouped = grouped.assign(
-                grant_count=1,
-                total_funding=funding_series
-            )
+        grant_ids = pd.Index(filtered_grants['id']).unique()
+        if grant_ids.empty:
+            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
 
-        aggregated = grouped.groupby(['start_year', 'funder'], as_index=False).agg({
-            'grant_count': 'sum',
-            'total_funding': 'sum'
+        records_source = self._active_year_records if filter_config.use_active_grant_period else self._start_year_records
+        filtered_records = records_source[records_source['grant_id'].isin(grant_ids)]
+
+        filtered_records = filtered_records.dropna(subset=['funder'])
+        if filtered_records.empty:
+            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
+
+        if filter_config.start_year_min is not None:
+            filtered_records = filtered_records[filtered_records['year'] >= filter_config.start_year_min]
+        if filter_config.start_year_max is not None:
+            filtered_records = filtered_records[filtered_records['year'] <= filter_config.start_year_max]
+
+        aggregated = filtered_records.groupby(['year', 'funder'], as_index=False).agg({
+            'grant_id': 'count',
+            'funding_credit': 'sum'
+        })
+
+        aggregated = aggregated.rename(columns={
+            'year': 'start_year',
+            'grant_id': 'grant_count',
+            'funding_credit': 'total_funding'
         })
         return aggregated
 
@@ -177,11 +169,11 @@ class GrantDistributionVisualizer:
         # Create title with filter information
         title = self._create_chart_title(filter_config, display_config)
 
-        value_column = 'total_funding' if display_config.display_metric == "funding" else 'grant_count'
-        ranking_column = 'total_funding' if display_config.ranking_metric == "funding" else 'grant_count'
+        value_column = 'total_funding' if display_config.metric == "funding" else 'grant_count'
+        ranking_column = value_column
         y_label = (
-            'Cumulative Funding Amount' if display_config.display_metric == "funding" and display_config.use_cumulative
-            else 'Funding Amount' if display_config.display_metric == "funding"
+            'Cumulative Funding Amount' if display_config.metric == "funding" and display_config.use_cumulative
+            else 'Funding Amount' if display_config.metric == "funding"
             else 'Cumulative Grant Count' if display_config.use_cumulative
             else 'Yearly Grant Count'
         )
@@ -200,7 +192,9 @@ class GrantDistributionVisualizer:
             title=title,
             x_label='Year',
             y_label=y_label,
-            height=600
+            height=600,
+            smooth_trends=display_config.smooth_trends,
+            smoothing_window=display_config.smoothing_window,
         )
         
         # Create the visualization

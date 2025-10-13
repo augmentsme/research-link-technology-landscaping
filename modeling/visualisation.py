@@ -21,6 +21,19 @@ import streamlit as st
 import config
 
 
+@st.cache_data(show_spinner=False)
+def _load_grant_lookup() -> Dict[str, Dict[str, str]]:
+    grants_df = config.Grants.load(as_dataframe=True)
+    if grants_df is None or grants_df.empty:
+        return {}
+    required_columns = [col for col in ['id', 'title', 'grant_summary'] if col in grants_df.columns]
+    if 'id' not in required_columns:
+        return {}
+    lookup_df = grants_df[required_columns].copy()
+    lookup_df['id'] = lookup_df['id'].astype(str)
+    return lookup_df.set_index('id').to_dict('index')
+
+
 class TreemapDataProcessor:
     """Processes data for treemap visualizations"""
     
@@ -312,7 +325,7 @@ class DataExplorer:
             config: Configuration for display and behavior
         """
         if data.empty:
-            st.warning(f"No data available")
+            st.warning("No data available")
             return
         
         # Search functionality
@@ -388,46 +401,60 @@ class DataExplorer:
         return filtered_data
     
     def _display_dataframe(self, data: pd.DataFrame, config: DataExplorerConfig) -> None:
-        """Display the DataFrame with proper formatting"""
+        """Display the DataFrame with grant titles and detail viewer."""
         if data.empty:
             st.warning("No records match your search criteria.")
             return
-        
-        # Prepare display data
+
         display_data = data.copy()
-        
-        # Apply column selection
+        grant_lookup = _load_grant_lookup()
+
+        def _summarise_grants(grants: Any) -> str:
+            if not isinstance(grants, list):
+                return ""
+            titles: List[str] = []
+            for grant_id in grants:
+                info = grant_lookup.get(str(grant_id))
+                title = info.get('title') if info else str(grant_id)
+                titles.append(title)
+            if not titles:
+                return ""
+            preview = titles[:3]
+            remaining = len(titles) - len(preview)
+            suffix = f" (+{remaining} more)" if remaining > 0 else ""
+            return "; ".join(preview) + suffix
+
+        if 'grants' in display_data.columns:
+            display_data['grants'] = display_data['grants'].apply(_summarise_grants)
+
         if config.display_columns:
             available_columns = [col for col in config.display_columns if col in display_data.columns]
             if available_columns:
                 display_data = display_data[available_columns]
-        
-        # Apply column formatters
+
         if config.column_formatters:
             for col, formatter in config.column_formatters.items():
+                if col == 'grants':
+                    continue
                 if col in display_data.columns:
-                    try:
-                        display_data[col] = display_data[col].apply(formatter)
-                    except Exception as e:
-                        st.warning(f"Error formatting column {col}: {e}")
-        
-        # Apply column renames
+                    display_data[col] = display_data[col].apply(formatter)
+
         if config.column_renames:
             rename_dict = {k: v for k, v in config.column_renames.items() if k in display_data.columns}
             display_data = display_data.rename(columns=rename_dict)
-        
-        # Limit displayed rows
+
         if len(display_data) > config.max_display_rows:
             st.warning(f"Showing first {config.max_display_rows:,} of {len(display_data):,} records. Use search to narrow results.")
             display_data = display_data.head(config.max_display_rows)
-        
-        # Display the data
+
         st.dataframe(
             display_data,
             use_container_width=True,
             height=400,
             key=f"dataframe_{hash(config.title)}"
         )
+
+        self._render_grant_details(data, grant_lookup, config)
     
     def _render_download_option(self, data: pd.DataFrame, title: str) -> None:
         """Render download option for the filtered data"""
@@ -442,6 +469,52 @@ class DataExplorer:
             mime="text/csv",
             help="Download the current filtered data as a CSV file"
         )
+
+    def _render_grant_details(self, data: pd.DataFrame, grant_lookup: Dict[str, Dict[str, str]], config: DataExplorerConfig) -> None:
+        if not grant_lookup:
+            return
+        if 'grants' not in data.columns:
+            return
+
+        state_key = f"selected_grant_{hash(config.title)}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = None
+
+        row_limit = min(len(data), config.max_display_rows)
+        subset = data.head(row_limit)
+        ordered_ids: List[str] = []
+        seen: set[str] = set()
+        for grants in subset['grants']:
+            if not isinstance(grants, list):
+                continue
+            for grant_id in grants:
+                gid = str(grant_id)
+                if gid in grant_lookup and gid not in seen:
+                    seen.add(gid)
+                    ordered_ids.append(gid)
+
+        if not ordered_ids:
+            return
+
+        max_buttons = min(len(ordered_ids), 60)
+        ordered_ids = ordered_ids[:max_buttons]
+
+        st.caption("Grant details")
+        columns = st.columns(3)
+        for index, gid in enumerate(ordered_ids):
+            info = grant_lookup[gid]
+            target_column = columns[index % len(columns)]
+            if target_column.button(info.get('title', gid), key=f"grant_btn_{hash(config.title)}_{gid}"):
+                st.session_state[state_key] = gid
+
+        selected = st.session_state[state_key]
+        if not selected or selected not in grant_lookup:
+            return
+
+        detail = grant_lookup[selected]
+        st.markdown(f"**{detail.get('title', selected)}**")
+        summary = detail.get('grant_summary') or "No summary available."
+        st.write(summary)
 
 
 @dataclass
@@ -461,6 +534,8 @@ class TrendsConfig:
     use_cumulative: bool = True
     chart_type: str = 'line'
     show_others: bool = False
+    smooth_trends: bool = False
+    smoothing_window: int = 3
     title: str = "Trends Over Time"
     x_label: str = "Time"
     y_label: str = "Value"
@@ -569,6 +644,10 @@ class TrendsVisualizer:
         )
         time_index = pd.Index(times)
         pivot_data = pivot_data.reindex(time_index, fill_value=0)
+        if config.smooth_trends and config.smoothing_window and config.smoothing_window > 1:
+            window = max(1, int(config.smoothing_window))
+            pivot_data = pivot_data.rolling(window=window, min_periods=1).mean()
+        times = pivot_data.index.tolist()
         entity_totals = pivot_data.sum().sort_values(ascending=False)
         entities = entity_totals.index.tolist()
         for i, entity in enumerate(entities):
@@ -619,6 +698,9 @@ class TrendsVisualizer:
         ).fillna(0)
         entity_totals = pivot_data.sum().sort_values(ascending=False)
         pivot_data = pivot_data[entity_totals.index]
+        if config.smooth_trends and config.smoothing_window and config.smoothing_window > 1:
+            window = max(1, int(config.smoothing_window))
+            pivot_data = pivot_data.rolling(window=window, min_periods=1).mean()
         fig = go.Figure()
         for i, entity in enumerate(reversed(pivot_data.columns.tolist())):
             values = pivot_data[entity].values
@@ -727,7 +809,7 @@ class TrendsDataPreparation:
         year_max: Optional[int] = None,
     ) -> pd.DataFrame:
         if grants_df is None or grants_df.empty:
-            return pd.DataFrame(columns=['keyword', 'year', 'grant_count'])
+            return pd.DataFrame(columns=['keyword', 'year', 'grant_count', 'total_funding'])
         end_year_series = grants_df['end_year'] if 'end_year' in grants_df.columns else pd.Series([None] * len(grants_df))
         grant_years_lookup: Dict[Any, List[int]] = {}
         for grant_id, start_year, end_year in zip(grants_df['id'], grants_df['start_year'], end_year_series):
@@ -743,6 +825,7 @@ class TrendsDataPreparation:
         valid_grant_ids = set(grant_years_lookup.keys())
         if selected_keywords:
             keywords_df = keywords_df[keywords_df['name'].isin(selected_keywords)]
+        grant_funding = dict(zip(grants_df['id'], grants_df.get('funding_amount', [0] * len(grants_df))))
         viz_data = []
         for keyword_name, grants_list in zip(keywords_df['name'], keywords_df['grants']):
             if not grants_list:
@@ -750,11 +833,16 @@ class TrendsDataPreparation:
             valid_grants = [g for g in grants_list if g in valid_grant_ids]
             if valid_grants:
                 for grant_id in valid_grants:
-                    for year in grant_years_lookup[grant_id]:
-                        viz_data.append((keyword_name, year, 1))
+                    years = grant_years_lookup[grant_id]
+                    if not years:
+                        continue
+                    funding = grant_funding.get(grant_id, 0) or 0
+                    for index, year in enumerate(years):
+                        yearly_funding = funding if index == 0 else 0
+                        viz_data.append((keyword_name, year, 1, yearly_funding))
         if viz_data:
-            return pd.DataFrame(viz_data, columns=['keyword', 'year', 'grant_count'])
-        return pd.DataFrame(columns=['keyword', 'year', 'grant_count'])
+            return pd.DataFrame(viz_data, columns=['keyword', 'year', 'grant_count', 'total_funding'])
+        return pd.DataFrame(columns=['keyword', 'year', 'grant_count', 'total_funding'])
 
     @staticmethod
     def from_category_grants(

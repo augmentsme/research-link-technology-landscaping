@@ -493,7 +493,6 @@ class CategoriesPage:
     
     def __init__(self):
         self.data_manager = CategoryDataManager()
-        self.explorer_tab = CategoryExplorerTab(self.data_manager)
         self.trends_tab = CategoryTrendsTab(self.data_manager)
 
     
@@ -540,15 +539,7 @@ class CategoriesPage:
             selection_method=unified_display.selection_method
         )
         
-        # Create tabs
-        tab1, tab2 = st.tabs(["Category Trends", "Category Explorer"])
-        
-        with tab1:
-            self.trends_tab.render_tab(filter_config, trends_config)
-            
-        
-        with tab2:
-            self.explorer_tab.render_tab(filter_config)
+        self.trends_tab.render_tab(filter_config, trends_config)
             
 
 

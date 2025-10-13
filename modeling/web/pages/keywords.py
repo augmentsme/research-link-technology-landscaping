@@ -67,6 +67,8 @@ class KeywordDisplayConfig:
     """Configuration for display settings"""
     show_baseline: bool
     use_cumulative: bool
+    ranking_metric: str  # "count" or "funding"
+    display_metric: str  # "count" or "funding"
 
 
 class KeywordFilterManager:
@@ -131,14 +133,24 @@ class KeywordFilterManager:
 
         return filtered_keywords
     
-    def get_available_keywords(self, config: KeywordFilterConfig) -> List[str]:
+    def get_available_keywords(self, config: KeywordFilterConfig, ranking_metric: str) -> List[str]:
         """Get list of available keyword names after filtering, sorted by number of grants (descending)"""
         filtered_keywords = self.apply_keyword_filters(config)
         
-        # Sort by number of grants (descending order)
+        # Sort keywords using the requested metric
         filtered_keywords = filtered_keywords.copy()
         filtered_keywords['grant_count'] = filtered_keywords['grants'].apply(len)
-        filtered_keywords = filtered_keywords.sort_values('grant_count', ascending=False)
+        if ranking_metric == "funding":
+            funding_lookup = self.grants_df.set_index('id')['funding_amount'].fillna(0) if 'funding_amount' in self.grants_df.columns else None
+            if funding_lookup is not None:
+                filtered_keywords['total_funding'] = filtered_keywords['grants'].apply(
+                    lambda grant_ids: sum(funding_lookup.get(gid, 0) for gid in grant_ids)
+                )
+            else:
+                filtered_keywords['total_funding'] = 0
+            filtered_keywords = filtered_keywords.sort_values('total_funding', ascending=False)
+        else:
+            filtered_keywords = filtered_keywords.sort_values('grant_count', ascending=False)
         
         if 'name' in filtered_keywords.columns:
             return [str(name) for name in filtered_keywords['name'].tolist()]
@@ -155,7 +167,7 @@ class KeywordSelector:
     
     def select_keywords(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> Tuple[List[str], str]:
         """Select keywords based on the configured method"""
-        available_keywords = self.filter_manager.get_available_keywords(filter_config)
+        available_keywords = self.filter_manager.get_available_keywords(filter_config, display_config.ranking_metric)
         
         if selection_config.method == "Top N keywords":
             return [], self._create_top_n_title(filter_config, selection_config, display_config)
@@ -194,7 +206,12 @@ class KeywordSelector:
     def _create_top_n_title(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> str:
         """Create title for top N keyword selection"""
         count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        return f"{count_type} Keyword Trends (count_range={filter_config.min_count}-{filter_config.max_count}, top_n={selection_config.top_n})"
+        ranking_text = "Funding" if display_config.ranking_metric == "funding" else "Grant Count"
+        display_text = "Funding" if display_config.display_metric == "funding" else "Grant Count"
+        return (
+            f"{count_type} Keyword Trends (count_range={filter_config.min_count}-{filter_config.max_count}, "
+            f"top_n={selection_config.top_n}, rank_by={ranking_text}, display={display_text})"
+        )
 
 
 class KeywordTrendsVisualizer:
@@ -242,17 +259,27 @@ class KeywordTrendsVisualizer:
                 len(selected_keywords)
             )
             
+            value_column = 'total_funding' if display_config.display_metric == "funding" else 'grant_count'
+            ranking_column = 'total_funding' if display_config.ranking_metric == "funding" else 'grant_count'
+            y_label = (
+                'Cumulative Funding Amount' if display_config.display_metric == "funding" and display_config.use_cumulative
+                else 'Funding Amount' if display_config.display_metric == "funding"
+                else 'Cumulative Grant Count' if display_config.use_cumulative
+                else 'Yearly Grant Count'
+            )
+
             viz_config = TrendsConfig(
                 entity_col='keyword',
                 time_col='year',
-                value_col='grant_count',
+                value_col=value_column,
+                ranking_col=ranking_column,
                 max_entities=num_entities,
                 aggregation='sum',
                 use_cumulative=display_config.use_cumulative,
                 chart_type='line',
                 title=title_with_filters,
                 x_label='Year',
-                y_label='Cumulative Grant Count' if display_config.use_cumulative else 'Yearly Grant Count',
+                y_label=y_label,
                 height=600
             )
             
@@ -467,21 +494,13 @@ class KeywordsPage:
         
         display_config = KeywordDisplayConfig(
             show_baseline=unified_display.show_baseline,
-            use_cumulative=unified_display.use_cumulative
+            use_cumulative=unified_display.use_cumulative,
+            ranking_metric=unified_display.ranking_metric,
+            display_metric=unified_display.display_metric
         )
         
-        # Create tabs
-        tab1, tab2 = st.tabs(["Trends Visualization", "Keywords Data"])
-        
-        # Render trends visualization tab
-        with tab1:
-            trends_viz = KeywordTrendsVisualizer(self.keywords_df, self.grants_df)
-            trends_viz.render_tab(filter_config, selection_config, display_config)
-        
-        # Render data exploration tab
-        with tab2:
-            data_exploration = KeywordDataExplorer(self.keywords_df, self.grants_df)
-            data_exploration.render_tab(filter_config)
+        trends_viz = KeywordTrendsVisualizer(self.keywords_df, self.grants_df)
+        trends_viz.render_tab(filter_config, selection_config, display_config)
 
 
 def main():

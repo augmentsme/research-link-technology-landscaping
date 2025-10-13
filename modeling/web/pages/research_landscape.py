@@ -2,24 +2,21 @@
 Research Landscape Page
 Explore the hierarchical structure of research categories and keywords through interactive treemap visualization.
 """
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
 import sys
-import os
-from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+import streamlit as st
 
 # Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from visualisation import create_research_landscape_treemap
-from shared_utils import (
-    load_data,
-)
+from shared_utils import load_data  # noqa: E402
+from visualisation import create_research_landscape_treemap  # noqa: E402
 st.set_page_config(
     page_title="Research Landscape",
     layout="wide",
@@ -37,10 +34,11 @@ class TreemapConfig:
 
 class TreemapVisualizer:
     """Manages the research landscape treemap visualization"""
-    
+
     def __init__(self, categories_df: pd.DataFrame):
-        self.categories_df = categories_df
-        self.categories_list = categories_df.to_dict('records')
+        cleaned = categories_df.fillna(0)
+        self.categories_df = cleaned.reset_index(drop=True)
+        self.categories_list = self.categories_df.to_dict('records')
     
     def render_visualization(self, config: TreemapConfig):
         """Render the treemap visualization with given configuration"""
@@ -66,31 +64,34 @@ class TreemapVisualizer:
                 self._show_debug_data()
             else:
                 st.warning("No data available for the selected parameters.")
-    
+
     def _show_statistics(self):
         """Display statistics about the research landscape"""
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
             st.metric("Total Categories", len(self.categories_df))
         with col2:
             total_keywords = sum(len(cat.get('keywords', [])) for cat in self.categories_list)
             st.metric("Total Keywords", total_keywords)
         with col3:
-            unique_fields = len(set(cat.get('field_of_research', cat.get('for_code', 'Unknown')) for cat in self.categories_list))
+            unique_fields = len(
+                set(
+                    cat.get('field_of_research', cat.get('for_code', 'Unknown'))
+                    for cat in self.categories_list
+                )
+            )
             st.metric("Unique Research Fields", unique_fields)
-    
+
     def _show_debug_data(self):
         """Show debug data in an expander"""
         with st.expander("Debug: View Underlying Data", expanded=False):
             st.subheader("Categories DataFrame")
             st.write(f"**Shape:** {self.categories_df.shape}")
             st.dataframe(self.categories_df, use_container_width=True)
-            
+
             st.subheader("Categories List (Dict Format)")
             st.write(f"**Length:** {len(self.categories_list)} categories")
-            # Show first few categories as example
-            st.json(self.categories_list[:3] if len(self.categories_list) >= 3 else self.categories_list)
 
 
 class SidebarControls:
@@ -209,11 +210,9 @@ class ResearchLandscapePage:
         # Get configuration from sidebar
         treemap_config, update_settings = sidebar_controls.render_sidebar()
         
-        # Check if visualization should be generated
         should_generate = self._should_generate_visualization(update_settings)
-        
+
         if should_generate:
-            # Create and render treemap visualization
             visualizer = TreemapVisualizer(self.categories_df)
             visualizer.render_visualization(treemap_config)
         else:

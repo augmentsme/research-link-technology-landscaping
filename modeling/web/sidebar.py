@@ -43,8 +43,10 @@ class DisplayConfig:
     random_seed: Optional[int] = None
     use_cumulative: bool = True
     show_baseline: bool = False
-    ranking_metric: str = "count"  # count, funding
-    display_metric: str = "count"  # count, funding
+    ranking_metric: str = "funding"  # count, funding
+    display_metric: str = "funding"  # count, funding
+    smooth_trends: bool = True
+    smoothing_window: int = 5
 
 
 @dataclass
@@ -64,6 +66,7 @@ class SidebarFeatures:
     show_selection_methods: List[str] = field(default_factory=lambda: ["top_n"])
     show_baseline: bool = False
     show_metrics: bool = False
+    show_smoothing: bool = False
     
     # Default values
     default_num_entities: int = 10
@@ -109,6 +112,8 @@ class SidebarControl:
                 show_field_filter=True,
                 show_date_filter=True,
                 show_active_period_toggle=True,
+                show_smoothing=True,
+                show_metrics=True,
                 show_selection_methods=["top_n"],
                 default_num_entities=10
             )
@@ -121,8 +126,10 @@ class SidebarControl:
                 show_date_filter=True,
                 show_count_range=True,
                 show_active_period_toggle=True,
+                show_smoothing=True,
                 show_selection_methods=["top_n", "random", "custom"],
                 show_baseline=True,
+                show_metrics=True,
                 default_num_entities=10,
                 default_min_count=10,
                 default_max_count=999999
@@ -134,6 +141,7 @@ class SidebarControl:
                 show_count_range=True,
                 show_search=True,
                 show_active_period_toggle=True,
+                show_smoothing=True,
                 show_selection_methods=["top_n", "random", "custom"],
                 show_metrics=True,
                 default_num_entities=10,
@@ -249,7 +257,7 @@ class SidebarControl:
                 source_filter = st.multiselect(
                     "Filter by Source",
                     options=self.unique_sources,
-                    default=[],
+                    default=["arc.gov.au"],
                     help="Select specific data sources"
                 )
             else:
@@ -481,18 +489,41 @@ class SidebarControl:
                         "Rank By",
                         options=["count", "funding"],
                         format_func=lambda x: "Grant Count" if x == "count" else "Total Funding",
-                        help="Which metric to use for selecting top categories"
+                        index=["count", "funding"].index("funding"),
+                        help="Which metric to use when selecting the top entities"
                     )
                 with col2:
                     display_metric = st.selectbox(
                         "Display",
                         options=["count", "funding"],
                         format_func=lambda x: "Grant Count" if x == "count" else "Funding Amount",
+                        index=["count", "funding"].index("funding"),
                         help="Which metric to display on the Y-axis"
                     )
             else:
-                ranking_metric = "count"
-                display_metric = "count"
+                ranking_metric = "funding"
+                display_metric = "funding"
+            # Smoothing options
+            if self.features.show_smoothing:
+                smooth_trends = st.toggle(
+                    "Smooth trend lines",
+                    value=True,
+                    help="Apply a rolling average to the trend data"
+                )
+                if smooth_trends:
+                    smoothing_window = st.slider(
+                        "Rolling window (years)",
+                        min_value=2,
+                        max_value=10,
+                        value=5,
+                        step=1,
+                        help="Number of years included in the rolling average"
+                    )
+                else:
+                    smoothing_window = 1
+            else:
+                smooth_trends = True
+                smoothing_window = 5
         
         return DisplayConfig(
             selection_method=selection_method,
@@ -503,7 +534,9 @@ class SidebarControl:
             use_cumulative=use_cumulative,
             show_baseline=show_baseline,
             ranking_metric=ranking_metric,
-            display_metric=display_metric
+            display_metric=display_metric,
+            smooth_trends=smooth_trends,
+            smoothing_window=int(smoothing_window) if smooth_trends else 1
         )
     
     def _show_active_filters(self, filter_config: FilterConfig):

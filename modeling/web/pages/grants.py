@@ -7,8 +7,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import sys
 from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple
 
 # Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
@@ -20,8 +18,6 @@ from shared_utils import (  # noqa: E402
     load_data
 )
 from visualisation import (  # noqa: E402
-    DataExplorer,
-    DataExplorerConfig,
     TrendsVisualizer,
     TrendsConfig,
     compute_active_years,
@@ -100,33 +96,17 @@ class GrantDistributionVisualizer:
         with st.spinner("Creating grant distribution visualization..."):
             # Apply filters to grants
             filtered_grants = self.filter_manager.apply_filters(filter_config)
-            
+
             if len(filtered_grants) == 0:
                 st.error("No grants found with the current filters. Please adjust your filter settings.")
                 return
-            
-            if filter_config.use_active_grant_period:
-                expanded_records = []
-                for _, row in filtered_grants.iterrows():
-                    years = compute_active_years(
-                        row.get('start_year'),
-                        row.get('end_year'),
-                        use_active_period=True,
-                        min_year=filter_config.start_year_min,
-                        max_year=filter_config.start_year_max,
-                    )
-                    if not years or pd.isna(row.get('funder')):
-                        continue
-                    expanded_records.extend({'start_year': year, 'funder': row['funder']} for year in years)
-                if not expanded_records:
-                    st.warning("No active grants within the selected period.")
-                    return
-                expanded_df = pd.DataFrame(expanded_records)
-                grants_by_year_funder = expanded_df.groupby(['start_year', 'funder']).size().reset_index(name='count')
-            else:
-                # Group grants by year and funder
-                grants_by_year_funder = filtered_grants.groupby(['start_year', 'funder']).size().reset_index(name='count')
-            
+
+            grants_by_year_funder = self._prepare_aggregated_trends(filtered_grants, filter_config)
+
+            if grants_by_year_funder.empty:
+                st.warning("No grant activity within the selected period.")
+                return
+
             # Create stacked area chart using generalized visualizer
             fig = self._create_grants_visualization(grants_by_year_funder, filter_config, display_config)
             
@@ -139,6 +119,49 @@ class GrantDistributionVisualizer:
             # Debug expander showing underlying data
             self._show_debug_data(filtered_grants, grants_by_year_funder)
     
+    def _prepare_aggregated_trends(self, filtered_grants: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
+        """Create aggregated metrics for grant trends"""
+        if 'funding_amount' in filtered_grants.columns:
+            funding_series = filtered_grants['funding_amount'].fillna(0)
+        else:
+            funding_series = pd.Series(0, index=filtered_grants.index)
+
+        if filter_config.use_active_grant_period:
+            expanded_records = []
+            for _, row in filtered_grants.iterrows():
+                years = compute_active_years(
+                    row.get('start_year'),
+                    row.get('end_year'),
+                    use_active_period=True,
+                    min_year=filter_config.start_year_min,
+                    max_year=filter_config.start_year_max,
+                )
+                if not years or pd.isna(row.get('funder')):
+                    continue
+                funding = row.get('funding_amount', 0) or 0
+                for index, year in enumerate(years):
+                    expanded_records.append({
+                        'start_year': year,
+                        'funder': row['funder'],
+                        'grant_count': 1,
+                        'total_funding': funding if index == 0 else 0,
+                    })
+            if not expanded_records:
+                return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
+            grouped = pd.DataFrame(expanded_records)
+        else:
+            grouped = filtered_grants.copy()
+            grouped = grouped.assign(
+                grant_count=1,
+                total_funding=funding_series
+            )
+
+        aggregated = grouped.groupby(['start_year', 'funder'], as_index=False).agg({
+            'grant_count': 'sum',
+            'total_funding': 'sum'
+        })
+        return aggregated
+
     def _create_grants_visualization(self, grants_by_year_funder: pd.DataFrame, filter_config: FilterConfig, display_config: DisplayConfig) -> go.Figure:
         """Create the grants visualization using the new TrendsVisualizer"""
         
@@ -147,17 +170,28 @@ class GrantDistributionVisualizer:
         viz_data = grants_by_year_funder.rename(columns={
             'start_year': 'year',
             'funder': 'funder',
-            'count': 'grant_count'
+            'grant_count': 'grant_count',
+            'total_funding': 'total_funding'
         })
         
         # Create title with filter information
         title = self._create_chart_title(filter_config, display_config)
+
+        value_column = 'total_funding' if display_config.display_metric == "funding" else 'grant_count'
+        ranking_column = 'total_funding' if display_config.ranking_metric == "funding" else 'grant_count'
+        y_label = (
+            'Cumulative Funding Amount' if display_config.display_metric == "funding" and display_config.use_cumulative
+            else 'Funding Amount' if display_config.display_metric == "funding"
+            else 'Cumulative Grant Count' if display_config.use_cumulative
+            else 'Yearly Grant Count'
+        )
         
         # Configure the new visualizer for stacked area chart
         viz_config = TrendsConfig(
             entity_col='funder',
             time_col='year',
-            value_col='grant_count',
+            value_col=value_column,
+            ranking_col=ranking_column,
             max_entities=display_config.num_entities,
             aggregation='sum',
             use_cumulative=display_config.use_cumulative,
@@ -165,7 +199,7 @@ class GrantDistributionVisualizer:
             show_others=True,
             title=title,
             x_label='Year',
-            y_label='Number of Grants',
+            y_label=y_label,
             height=600
         )
         
@@ -203,16 +237,21 @@ class GrantDistributionVisualizer:
         col1, col2, col3, col4, col5 = st.columns(5)
         
         # Calculate total grants per year for peak year calculation
-        grants_per_year = grants_by_year_funder.groupby('start_year')['count'].sum()
+        grants_per_year = grants_by_year_funder.groupby('start_year')['grant_count'].sum()
+        total_funding = (
+            filtered_grants.get('funding_amount', pd.Series(dtype=float))
+            .fillna(0)
+            .sum()
+        )
         
         with col1:
             st.metric("Total Grants", len(self.grants_df))
         with col2:
             st.metric("Filtered Grants", len(filtered_grants))
         with col3:
-            st.metric("Unique Funders", grants_by_year_funder['funder'].nunique())
+            st.metric("Filtered Funding", f"${total_funding:,.0f}")
         with col4:
-            st.metric("Year Range", f"{grants_per_year.index.min()}-{grants_per_year.index.max()}")
+            st.metric("Unique Funders", grants_by_year_funder['funder'].nunique())
         with col5:
             peak_year = grants_per_year.idxmax()
             peak_count = grants_per_year.max()
@@ -255,47 +294,6 @@ class GrantsPage:
         """Load and store data"""
         self.keywords_df, self.grants_df, self.categories_df = load_data()
     
-    @staticmethod
-    def prepare_grants_data(grants_df: pd.DataFrame) -> tuple[pd.DataFrame, DataExplorerConfig]:
-        """Prepare grants data for DataExplorer"""
-        if grants_df is None or grants_df.empty:
-            return pd.DataFrame(), DataExplorerConfig(
-                title="Grants Dataset",
-                description="No grants data available",
-                search_columns=[],
-                display_columns=[]
-            )
-        
-        display_df = grants_df.copy()
-        display_df = display_df.sort_values(['funding_amount', 'start_year'], ascending=[False, False])
-        
-        config = DataExplorerConfig(
-            title="Grants Dataset",
-            description="Explore grants data. Search by grant title, funder, or source.",
-            search_columns=['title', 'funder', 'source'],
-            search_placeholder="Search by grant title, funder, or source...",
-            search_help="Enter text to search across grant titles, funders, and sources",
-            display_columns=['title', 'funder', 'source', 'start_year', 'funding_amount'],
-            column_formatters={
-                'funding_amount': lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "N/A",
-                'title': lambda x: x[:80] + "..." if len(str(x)) > 80 else str(x)
-            },
-            column_renames={
-                'title': 'Grant Title',
-                'funder': 'Funder',
-                'source': 'Source',
-                'start_year': 'Start Year',
-                'funding_amount': 'Funding Amount'
-            },
-            statistics_columns=['funding_amount', 'start_year'],
-            max_display_rows=50,
-            show_statistics=True,
-            show_data_info=True,
-            enable_download=True
-        )
-        
-        return display_df, config
-    
     def run(self):
         """Main execution method"""
         # Create unified sidebar
@@ -305,20 +303,8 @@ class GrantsPage:
         )
         filter_config, display_config = sidebar_controls.render_sidebar()
         
-        # Apply filters once for use across both tabs
-        filter_manager = GrantFilterManager(self.grants_df)
-        filtered_grants = filter_manager.apply_filters(filter_config)
-        
-        tab1, tab2 = st.tabs(["Grant Distributions", "Grants Explorer"])
-        
-        with tab1:
-            distribution_visualizer = GrantDistributionVisualizer(self.grants_df)
-            distribution_visualizer.render_tab(filter_config, display_config)
-        
-        with tab2:
-            display_df, config = self.prepare_grants_data(filtered_grants)
-            data_explorer = DataExplorer()
-            data_explorer.render_explorer(display_df, config)
+        distribution_visualizer = GrantDistributionVisualizer(self.grants_df)
+        distribution_visualizer.render_tab(filter_config, display_config)
 
 
 def main():

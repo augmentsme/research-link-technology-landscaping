@@ -14,7 +14,7 @@ OPENAI_BASE_URL = CONFIG.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
 OPENAI_MODEL = CONFIG.get("OPENAI_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
 EMBEDDING_MODEL = CONFIG.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
 OPENAI_TIMEOUT_SECONDS = 600
-CONCURRENCY = 1
+CONCURRENCY = 512
 
 
 def _item_template(record):

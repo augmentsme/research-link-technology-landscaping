@@ -1,24 +1,86 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Any, Iterable, List, Sequence
 
 import config
 from models import FieldOfResearch
 
 from openai import AsyncOpenAI
 
+import jsonlines
+
 from . import llm_client
-from .batching import (
-    iter_jsonl_batches,
-    stream_jsonl,
-    prepare_category_outputs,
-    write_categorisation_result,
-    JsonlBatch,
-)
+from .cluster_io import ClusterBatch, load_cluster_file
 from .concurrency import run_with_concurrency
 from pydantic import BaseModel, Field
+
+
+@dataclass
+class CategoryOutputs:
+    categories: jsonlines.Writer
+    unknown: jsonlines.Writer
+    missing: jsonlines.Writer
+    requests: jsonlines.Writer
+
+    def close(self) -> None:
+        self.categories.close()
+        self.unknown.close()
+        self.missing.close()
+        self.requests.close()
+
+
+def prepare_category_outputs(output_dir: Path | str) -> CategoryOutputs:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    return CategoryOutputs(
+        categories=jsonlines.open(output_path / "output.jsonl", "a"),
+        unknown=jsonlines.open(output_path / "unknown.jsonl", "a"),
+        missing=jsonlines.open(output_path / "missing.jsonl", "a"),
+        requests=jsonlines.open(output_path / "requests.jsonl", "a"),
+    )
+
+
+def write_categorisation_result(
+    records: Iterable[dict[str, Any]],
+    result: Any,
+    outputs: CategoryOutputs,
+) -> tuple[int, int, int]:
+    keyword_records = [record for record in records if record.get("name")]
+    records_by_keyword: dict[str, list[dict[str, Any]]] = {}
+    for record in keyword_records:
+        name = record["name"]
+        bucket = records_by_keyword.get(name)
+        if bucket is None:
+            records_by_keyword[name] = [record]
+        else:
+            bucket.append(record)
+    assigned_keywords: set[str] = set()
+    unknown_count = 0
+
+    for category in result.categories:
+        payload = category.model_dump()
+        keywords = payload.get("keywords", [])
+        assigned_keywords.update(keywords)
+        if payload.get("name") == "Unknown":
+            for keyword in keywords:
+                matches = records_by_keyword.get(keyword, [])
+                for match in matches:
+                    outputs.unknown.write(match)
+                unknown_count += len(matches)
+        else:
+            outputs.categories.write(payload)
+
+    missing_count = 0
+    for record in keyword_records:
+        if record["name"] not in assigned_keywords:
+            outputs.missing.write(record)
+            missing_count += 1
+
+    total_keywords = len(keyword_records)
+    return total_keywords, missing_count, unknown_count
 
 
 class Category(BaseModel):
@@ -34,6 +96,93 @@ class CategoryList(BaseModel):
     categories: List[Category] = Field(description="List of research categories")
 
 
+class KeywordCategoriser:
+    def __init__(self, outputs: CategoryOutputs) -> None:
+        self.outputs = outputs
+        self.total_keywords_processed = 0
+        self.total_missing_keywords = 0
+        self.total_unknown_keywords = 0
+
+    async def run(
+        self,
+        client: AsyncOpenAI,
+        batches: Sequence[ClusterBatch],
+        concurrency: int,
+    ) -> list[tuple[int, str, int, int, int]]:
+        async def handler(batch: ClusterBatch) -> tuple[int, str, int, int, int]:
+            return await self._handle_batch(client, batch)
+
+        def update_progress(
+            result: tuple[int, str, int, int, int] | None,
+            progress_bar: Any,
+            task_id: int,
+        ) -> None:
+            self._update_progress(result, progress_bar, task_id)
+
+        processed = await run_with_concurrency(
+            batches,
+            handler,
+            concurrency=concurrency,
+            progress_description="Categorising keywords",
+            progress_unit="batch",
+            progress_callback=update_progress,
+        )
+        if processed:
+            processed.sort(key=lambda item: item[0])
+        return processed
+
+    async def _handle_batch(
+        self,
+        client: AsyncOpenAI,
+        batch: ClusterBatch,
+    ) -> tuple[int, str, int, int, int]:
+        records = batch.records
+        batch_text = _format_keywords(records)
+        log_entry = {
+            "batch_id": batch.batch_id,
+            "request": batch_text,
+        }
+        try:
+            categories = await _request_categories(client, batch_text)
+            log_entry["response"] = categories.model_dump()
+            self.outputs.requests.write(log_entry)
+            total_keywords, missing_keywords, unknown_keywords = write_categorisation_result(
+                records,
+                categories,
+                self.outputs,
+            )
+            return batch.index, batch.batch_id, total_keywords, missing_keywords, unknown_keywords
+        except Exception as error:
+            log_entry["error"] = str(error)
+            self.outputs.requests.write(log_entry)
+            keyword_records = [record for record in records if record.get("name")]
+            for record in keyword_records:
+                self.outputs.unknown.write(record)
+            total_keywords = len(keyword_records)
+            return batch.index, batch.batch_id, total_keywords, 0, total_keywords
+
+    def _update_progress(
+        self,
+        result: tuple[int, str, int, int, int] | None,
+        progress_bar: Any,
+        task_id: int,
+    ) -> None:
+        if result is None:
+            return
+
+        _, _, batch_total, batch_missing, batch_unknown = result
+        self.total_keywords_processed += batch_total
+        self.total_missing_keywords += batch_missing
+        self.total_unknown_keywords += batch_unknown
+        if self.total_keywords_processed:
+            missing_rate = self.total_missing_keywords / self.total_keywords_processed
+            unknown_rate = self.total_unknown_keywords / self.total_keywords_processed
+            progress_bar.update(
+                task_id,
+                rate=f"missing rate {missing_rate:.2%} | unknown rate {unknown_rate:.2%}",
+            )
+
+
 CATEGORISE_SYSTEM_PROMPT = """
 You are an expert Technology Analyst and Innovation Forecaster, specializing in synthesizing information to identify and map emerging technological domains for strategic planning.
 
@@ -41,8 +190,14 @@ Your task is to analyze a list of user-provided keywords and generate a comprehe
 
 **IMPORTANT: You MUST complete this task immediately and provide the full categorization. Do NOT ask for clarification, approval, or propose alternative approaches. Proceed directly with categorizing all provided keywords.**
 
-**Input Format:**
-Each keyword will be provided in the format: `**keyword_term** (type): description`
+**Input Structure:**
+Each keyword is provided as an XML-like snippet using HTML-style tags:
+
+```
+<item><name>KEYWORD_NAME</name><description>KEYWORD_DESCRIPTION</description></item>
+```
+
+`<name>` contains the exact keyword term. `<description>` contains a concise summary of the keyword's relevance, context, or notable attributes. Use these tags to parse the input reliably.
 
 **Core Objective:**
 Your primary goal is to organize the provided keywords into meaningful, emergent categories that bridge the specificity of the keywords with the broadness of the 23 top-level FOR divisions. Your analysis should favor the identification of potential breakthroughs and new interdisciplinary fields.
@@ -93,35 +248,47 @@ async def _request_categories(client: AsyncOpenAI, batch_text: str) -> CategoryL
     return CategoryList.model_validate_json(output_text)
 
 
-async def categorise_async(input_dir: Path, output_dir: Path, concurrency: int = config.CONCURRENCY) -> List[str]:
-    batches = list(iter_jsonl_batches(input_dir))
+async def categorise_async(
+    clusters_path: Path,
+    output_dir: Path,
+    concurrency: int = config.CONCURRENCY,
+    limit: int | None = None,
+) -> List[str]:
+    cluster_file = load_cluster_file(clusters_path)
+    batches = list(cluster_file.batches)
     if not batches:
         return []
 
+    if limit is not None and limit > 0:
+        batches = batches[:limit]
+
     outputs = prepare_category_outputs(output_dir)
+    categoriser = KeywordCategoriser(outputs)
+    processed: list[tuple[int, str, int, int, int]] = []
     try:
         async with llm_client.async_client() as client:
-
-            async def handler(batch: JsonlBatch) -> tuple[int, str]:
-                records = list(stream_jsonl(batch.path))
-                batch_text = _format_keywords(records)
-                categories = await _request_categories(client, batch_text)
-                write_categorisation_result(records, categories, outputs)
-                return batch.index, batch.batch_id
-
-            processed = await run_with_concurrency(
+            processed = await categoriser.run(
+                client,
                 batches,
-                handler,
                 concurrency=concurrency,
-                progress_description="Categorising keywords",
-                progress_unit="batch",
             )
     finally:
         outputs.close()
 
-    processed.sort(key=lambda item: item[0])
-    return [batch_id for _, batch_id in processed]
+    return [batch_id for _, batch_id, _, _, _ in processed]
 
 
-def categorise(input_dir: Path | str, output_dir: Path | str, concurrency: int = config.CONCURRENCY) -> List[str]:
-    return asyncio.run(categorise_async(Path(input_dir), Path(output_dir), concurrency=concurrency))
+def categorise(
+    clusters_path: Path | str,
+    output_dir: Path | str,
+    concurrency: int = config.CONCURRENCY,
+    limit: int | None = None,
+) -> List[str]:
+    return asyncio.run(
+        categorise_async(
+            Path(clusters_path),
+            Path(output_dir),
+            concurrency=concurrency,
+            limit=limit,
+        )
+    )

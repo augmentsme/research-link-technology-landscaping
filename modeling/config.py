@@ -1,10 +1,8 @@
 from pathlib import Path
-from typing import Any, Dict, List
-from dotenv import dotenv_values
-import json
-import math
-import jsonlines
 from dataclasses import dataclass
+
+from dotenv import dotenv_values
+
 import utils
 import pandas as pd
 CONFIG = dotenv_values()
@@ -14,11 +12,13 @@ FIGURES_DIR = ROOT_DIR / "figures"
 
 OPENAI_BASE_URL = CONFIG.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
 OPENAI_MODEL = CONFIG.get("OPENAI_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
-EMBEDDING_MODEL = CONFIG.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-OPENAI_TIMEOUT_SECONDS = 300
-OPENAI_MAX_RETRIES = 3
-CONCURRENCY = 512
+EMBEDDING_MODEL = CONFIG.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
+OPENAI_TIMEOUT_SECONDS = 600
+CONCURRENCY = 1
 
+
+def _item_template(record):
+    return f"""<item><name>{record['name']}</name><description>{record['description']}</description></item>"""
 
 
 @dataclass
@@ -27,8 +27,7 @@ class Keywords:
     keywords_dir.mkdir(parents=True, exist_ok=True)
     extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
     keywords_path: Path = keywords_dir / "keywords.jsonl"
-    
-    template = lambda record: f"<keyword><name>{record['name']}</name><description>{record['description']}</description></keyword>"
+    template = staticmethod(_item_template)
     
     def load(as_dataframe=True):
         return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=as_dataframe)
@@ -42,7 +41,7 @@ class Keywords:
 class Categories:
 
     CATEGORIY_PATH = RESULTS_DIR / "categories.jsonl"
-    template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{','.join(record.get('keywords', []))}</keywords></category>"
+    template = staticmethod(_item_template)
     
     def last_merged():
         list_of_digits_dirs = [i for i in RESULTS_DIR.iterdir() if i.stem.isdigit() and i.is_dir()]
@@ -63,12 +62,12 @@ class Grants:
     source_path = RESULTS_DIR / "grants.json"
     grants_path = RESULTS_DIR / "grants.jsonl"
 
-    template = staticmethod(
-        lambda record: (
+    @staticmethod
+    def template(record):
+        return (
             f"<grant><title>{record.get('title')}</title>"
             f"<description>{record.get('grant_summary')}</description></grant>"
         )
-    )
     @staticmethod
     def preprocess():
         df = utils.load_json_file(Grants.source_path, as_dataframe=True)

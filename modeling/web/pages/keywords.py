@@ -10,19 +10,19 @@ import numpy as np
 import sys
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Tuple
 
 # Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import (
+from shared_utils import (  # noqa: E402
     format_research_field,
     load_data
 )
-from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
-from visualisation import (
+from web.sidebar import SidebarControl  # noqa: E402
+from visualisation import (  # noqa: E402
     DataExplorer,
     DataExplorerConfig,
     TrendsVisualizer,
@@ -46,6 +46,9 @@ class KeywordFilterConfig:
     keyword_type_filter: List[str]
     min_count: int
     max_count: int
+    start_year_min: Optional[int] = None
+    start_year_max: Optional[int] = None
+    use_active_grant_period: bool = False
 
 
 @dataclass
@@ -85,41 +88,47 @@ class KeywordFilterManager:
         
         if config.field_filter and 'primary_subject' in filtered_grants.columns:
             filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
-        
+
+        if config.use_active_grant_period:
+            grant_start = filtered_grants['start_year'] if 'start_year' in filtered_grants.columns else pd.Series(dtype=float)
+            grant_end = filtered_grants['end_year'] if 'end_year' in filtered_grants.columns else grant_start
+            grant_start = grant_start.fillna(grant_end)
+            grant_end = grant_end.fillna(grant_start)
+            mask = pd.Series(True, index=filtered_grants.index)
+            if config.start_year_min is not None:
+                mask &= grant_end >= config.start_year_min
+            if config.start_year_max is not None:
+                mask &= grant_start <= config.start_year_max
+            filtered_grants = filtered_grants[mask]
+        else:
+            if config.start_year_min is not None and 'start_year' in filtered_grants.columns:
+                filtered_grants = filtered_grants[filtered_grants['start_year'] >= config.start_year_min]
+            if config.start_year_max is not None and 'start_year' in filtered_grants.columns:
+                filtered_grants = filtered_grants[filtered_grants['start_year'] <= config.start_year_max]
+
         return filtered_grants
-    
+
     def apply_keyword_filters(self, config: KeywordFilterConfig, filtered_grants: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-        """Apply filters to keywords dataframe and update grants to reflect filtered results"""
+        """Apply filters to keywords dataframe and update grants lists"""
         filtered_keywords = self.keywords_df.copy()
-        
+
         if config.keyword_type_filter:
             filtered_keywords = filtered_keywords[filtered_keywords['type'].isin(config.keyword_type_filter)]
-        
-        # Apply grant-based filtering if any grant filters are active
-        if any([config.funder_filter, config.source_filter, config.field_filter]):
-            if filtered_grants is None:
-                filtered_grants = self.apply_grant_filters(config)
-            
-            # Get set of filtered grant IDs (preserve original type)
-            filtered_grants_ids = set(filtered_grants['id'])
-            
-            # Filter keywords and update their grants lists to only include filtered grants
-            def filter_keyword_grants(grants_list):
-                # Filter to only grants that are in the filtered set
-                filtered_grants_for_keyword = [g for g in grants_list if g in filtered_grants_ids]
-                return filtered_grants_for_keyword
-            
-            # Update grants column to only include grants that match the filter
-            filtered_keywords['grants'] = filtered_keywords['grants'].apply(filter_keyword_grants)
-            
-            # Filter keywords based on count requirements using the filtered grants
-            filtered_keywords = filtered_keywords[filtered_keywords['grants'].apply(
-                lambda x: config.min_count <= len(x) <= config.max_count
-            )]
-        else:
-            grant_counts = filtered_keywords.grants.map(len)
-            filtered_keywords = filtered_keywords[(grant_counts >= config.min_count) & (grant_counts <= config.max_count)]
-        
+
+        if filtered_grants is None:
+            filtered_grants = self.apply_grant_filters(config)
+
+        if filtered_grants is not None and not filtered_grants.empty:
+            valid_grant_ids = set(filtered_grants['id'])
+            filtered_keywords['grants'] = filtered_keywords['grants'].apply(
+                lambda grants_list: [g for g in grants_list if g in valid_grant_ids]
+            )
+
+        grant_counts = filtered_keywords['grants'].apply(len)
+        filtered_keywords = filtered_keywords[
+            (grant_counts >= config.min_count) & (grant_counts <= config.max_count)
+        ]
+
         return filtered_keywords
     
     def get_available_keywords(self, config: KeywordFilterConfig) -> List[str]:
@@ -215,7 +224,14 @@ class KeywordTrendsVisualizer:
             title_with_filters = self._add_filter_info_to_title(title, filter_config)
             
             # Use filtered data for trends visualization
-            viz_data = TrendsDataPreparation.from_keyword_grants(filtered_keywords, filtered_grants, selected_keywords)
+            viz_data = TrendsDataPreparation.from_keyword_grants(
+                filtered_keywords,
+                filtered_grants,
+                selected_keywords,
+                use_active_period=filter_config.use_active_grant_period,
+                year_min=filter_config.start_year_min,
+                year_max=filter_config.start_year_max,
+            )
             
             if viz_data.empty:
                 st.warning("No data available for the selected keywords and filters.")
@@ -265,6 +281,12 @@ class KeywordTrendsVisualizer:
             filter_parts.append(f"Research Fields: {field_display}")
         if filter_config.keyword_type_filter:
             filter_parts.append(f"Types: {', '.join(filter_config.keyword_type_filter)}")
+        if filter_config.start_year_min is not None or filter_config.start_year_max is not None:
+            year_min = filter_config.start_year_min if filter_config.start_year_min is not None else "*"
+            year_max = filter_config.start_year_max if filter_config.start_year_max is not None else "*"
+            filter_parts.append(f"Years: {year_min}-{year_max}")
+        if filter_config.use_active_grant_period:
+            filter_parts.append("Active grant period")
         
         return f"{title} | Filtered by {' | '.join(filter_parts)}" if filter_parts else title
     
@@ -428,7 +450,10 @@ class KeywordsPage:
             field_filter=unified_filter.field_filter,
             keyword_type_filter=unified_filter.keyword_type_filter,
             min_count=unified_filter.min_count,
-            max_count=unified_filter.max_count
+            max_count=unified_filter.max_count,
+            start_year_min=unified_filter.start_year_min,
+            start_year_max=unified_filter.start_year_max,
+            use_active_grant_period=unified_filter.use_active_grant_period
         )
         
         selection_config = KeywordSelectionConfig(

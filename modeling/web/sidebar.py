@@ -30,6 +30,7 @@ class FilterConfig:
     max_count: int = 999999
     search_term: str = ""
     use_all_for_codes: bool = False
+    use_active_grant_period: bool = False
 
 
 @dataclass
@@ -57,6 +58,7 @@ class SidebarFeatures:
     show_date_filter: bool = False
     show_count_range: bool = False
     show_search: bool = False
+    show_active_period_toggle: bool = False
     
     # Display settings features
     show_selection_methods: List[str] = field(default_factory=lambda: ["top_n"])
@@ -106,6 +108,7 @@ class SidebarControl:
                 show_source_filter=True,
                 show_field_filter=True,
                 show_date_filter=True,
+                show_active_period_toggle=True,
                 show_selection_methods=["top_n"],
                 default_num_entities=10
             )
@@ -117,6 +120,7 @@ class SidebarControl:
                 show_keyword_type_filter=True,
                 show_date_filter=True,
                 show_count_range=True,
+                show_active_period_toggle=True,
                 show_selection_methods=["top_n", "random", "custom"],
                 show_baseline=True,
                 default_num_entities=10,
@@ -129,6 +133,7 @@ class SidebarControl:
                 show_field_filter=True,
                 show_count_range=True,
                 show_search=True,
+                show_active_period_toggle=True,
                 show_selection_methods=["top_n", "random", "custom"],
                 show_metrics=True,
                 default_num_entities=10,
@@ -299,6 +304,15 @@ class SidebarControl:
             else:
                 start_year_min = None
                 start_year_max = None
+
+            if self.features.show_active_period_toggle:
+                use_active_grant_period = st.toggle(
+                    "Treat grants as active through their end year",
+                    value=False,
+                    help="When enabled, grant counts include every year between start and end year."
+                )
+            else:
+                use_active_grant_period = False
             
             # Count range filter
             if self.features.show_count_range:
@@ -346,7 +360,8 @@ class SidebarControl:
             min_count=min_count,
             max_count=max_count,
             search_term=search_term,
-            use_all_for_codes=use_all_for_codes
+            use_all_for_codes=use_all_for_codes,
+            use_active_grant_period=use_active_grant_period
         )
     
     def _render_display_settings_expander(self) -> DisplayConfig:
@@ -509,6 +524,8 @@ class SidebarControl:
         
         if filter_config.start_year_min or filter_config.start_year_max:
             active_filters.append(f"Years: {filter_config.start_year_min}-{filter_config.start_year_max}")
+        if filter_config.use_active_grant_period:
+            active_filters.append("Active grant period enabled")
         
         if self.features.show_count_range and (filter_config.min_count > 0 or filter_config.max_count < 999999):
             active_filters.append(f"Count: {filter_config.min_count}-{filter_config.max_count}")

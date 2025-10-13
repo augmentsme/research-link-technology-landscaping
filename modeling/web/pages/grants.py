@@ -15,12 +15,18 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import (
+from shared_utils import (  # noqa: E402
     format_research_field,
     load_data
 )
-from visualisation import DataExplorer, DataExplorerConfig, TrendsVisualizer, TrendsConfig
-from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
+from visualisation import (  # noqa: E402
+    DataExplorer,
+    DataExplorerConfig,
+    TrendsVisualizer,
+    TrendsConfig,
+    compute_active_years,
+)
+from web.sidebar import SidebarControl, FilterConfig, DisplayConfig  # noqa: E402
 
 st.set_page_config(
     page_title="Grant",
@@ -44,13 +50,23 @@ class GrantFilterManager:
             # Apply research field filter
             if config.field_filter and 'primary_subject' in filtered_grants.columns:
                 filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
-        
-        # Apply date range filter
-        if config.start_year_min is not None:
-            filtered_grants = filtered_grants[filtered_grants['start_year'] >= config.start_year_min]
-        
-        if config.start_year_max is not None:
-            filtered_grants = filtered_grants[filtered_grants['start_year'] <= config.start_year_max]
+
+        if config.use_active_grant_period and 'start_year' in filtered_grants.columns:
+            start_series = filtered_grants['start_year']
+            end_series = filtered_grants['end_year'] if 'end_year' in filtered_grants.columns else start_series
+            start_series = start_series.fillna(end_series)
+            end_series = end_series.fillna(start_series)
+            mask = pd.Series(True, index=filtered_grants.index)
+            if config.start_year_min is not None:
+                mask &= end_series >= config.start_year_min
+            if config.start_year_max is not None:
+                mask &= start_series <= config.start_year_max
+            filtered_grants = filtered_grants[mask]
+        else:
+            if config.start_year_min is not None and 'start_year' in filtered_grants.columns:
+                filtered_grants = filtered_grants[filtered_grants['start_year'] >= config.start_year_min]
+            if config.start_year_max is not None and 'start_year' in filtered_grants.columns:
+                filtered_grants = filtered_grants[filtered_grants['start_year'] <= config.start_year_max]
         
         return filtered_grants
 
@@ -89,8 +105,27 @@ class GrantDistributionVisualizer:
                 st.error("No grants found with the current filters. Please adjust your filter settings.")
                 return
             
-            # Group grants by year and funder
-            grants_by_year_funder = filtered_grants.groupby(['start_year', 'funder']).size().reset_index(name='count')
+            if filter_config.use_active_grant_period:
+                expanded_records = []
+                for _, row in filtered_grants.iterrows():
+                    years = compute_active_years(
+                        row.get('start_year'),
+                        row.get('end_year'),
+                        use_active_period=True,
+                        min_year=filter_config.start_year_min,
+                        max_year=filter_config.start_year_max,
+                    )
+                    if not years or pd.isna(row.get('funder')):
+                        continue
+                    expanded_records.extend({'start_year': year, 'funder': row['funder']} for year in years)
+                if not expanded_records:
+                    st.warning("No active grants within the selected period.")
+                    return
+                expanded_df = pd.DataFrame(expanded_records)
+                grants_by_year_funder = expanded_df.groupby(['start_year', 'funder']).size().reset_index(name='count')
+            else:
+                # Group grants by year and funder
+                grants_by_year_funder = filtered_grants.groupby(['start_year', 'funder']).size().reset_index(name='count')
             
             # Create stacked area chart using generalized visualizer
             fig = self._create_grants_visualization(grants_by_year_funder, filter_config, display_config)
@@ -158,6 +193,8 @@ class GrantDistributionVisualizer:
                 title_parts.append(f"Year: {filter_config.start_year_min}")
             else:
                 title_parts.append(f"Years: {filter_config.start_year_min}-{filter_config.start_year_max}")
+        if filter_config.use_active_grant_period:
+            title_parts.append("Active grant period")
         
         return title_parts[0] if len(title_parts) == 1 else f"{title_parts[0]} | Filtered by {' | '.join(title_parts[1:])}"
     

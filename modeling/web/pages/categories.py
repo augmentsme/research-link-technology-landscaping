@@ -9,18 +9,18 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional
 
 # Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data
-from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
+from shared_utils import load_data  # noqa: E402
+from web.sidebar import SidebarControl  # noqa: E402
 
 import config
-from visualisation import (
+from visualisation import (  # noqa: E402
     DataExplorer,
     DataExplorerConfig,
     TrendsVisualizer,
@@ -42,6 +42,9 @@ class CategoryFilterConfig:
     max_keywords: int
     search_term: str
     category_names: List[str]
+    start_year_min: Optional[int] = None
+    start_year_max: Optional[int] = None
+    use_active_grant_period: bool = False
 
 
 @dataclass
@@ -412,7 +415,10 @@ class CategoryTrendsTab:
             viz_data = TrendsDataPreparation.from_category_grants(
                 filtered_data,
                 grants_df,
-                selected_categories
+                selected_categories,
+                use_active_period=filter_config.use_active_grant_period,
+                year_min=filter_config.start_year_min,
+                year_max=filter_config.start_year_max,
             )
             
             if viz_data.empty:
@@ -520,7 +526,10 @@ class CategoriesPage:
             min_keywords=unified_filter.min_count,
             max_keywords=unified_filter.max_count,
             search_term=unified_filter.search_term,
-            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else []
+            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else [],
+            start_year_min=unified_filter.start_year_min,
+            start_year_max=unified_filter.start_year_max,
+            use_active_grant_period=unified_filter.use_active_grant_period
         )
         
         trends_config = CategoryTrendsConfig(

@@ -683,6 +683,36 @@ class TrendsVisualizer:
         return fig
 
 
+def compute_active_years(
+    start_year: Optional[Union[int, float]],
+    end_year: Optional[Union[int, float]],
+    *,
+    use_active_period: bool,
+    min_year: Optional[int] = None,
+    max_year: Optional[int] = None,
+) -> List[int]:
+    if pd.isna(start_year):
+        return []
+    start = int(start_year)
+    end_candidate = end_year if end_year is not None else start
+    if pd.isna(end_candidate):
+        end_candidate = start
+    end = int(end_candidate)
+    if not use_active_period:
+        end = start
+    if min_year is not None:
+        if end < min_year:
+            return []
+        start = max(start, min_year)
+    if max_year is not None:
+        if start > max_year:
+            return []
+        end = min(end, max_year)
+    if end < start:
+        return []
+    return list(range(start, end + 1))
+
+
 class TrendsDataPreparation:
     """Helper class for preparing data from different sources"""
 
@@ -690,10 +720,26 @@ class TrendsDataPreparation:
     def from_keyword_grants(
         keywords_df: pd.DataFrame,
         grants_df: pd.DataFrame,
-        selected_keywords: Optional[List[str]] = None
+        selected_keywords: Optional[List[str]] = None,
+        *,
+        use_active_period: bool = False,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None,
     ) -> pd.DataFrame:
-        grant_years_lookup = dict(zip(grants_df['id'], grants_df['start_year']))
-        grant_years_lookup = {k: v for k, v in grant_years_lookup.items() if pd.notna(v)}
+        if grants_df is None or grants_df.empty:
+            return pd.DataFrame(columns=['keyword', 'year', 'grant_count'])
+        end_year_series = grants_df['end_year'] if 'end_year' in grants_df.columns else pd.Series([None] * len(grants_df))
+        grant_years_lookup: Dict[Any, List[int]] = {}
+        for grant_id, start_year, end_year in zip(grants_df['id'], grants_df['start_year'], end_year_series):
+            years = compute_active_years(
+                start_year,
+                end_year,
+                use_active_period=use_active_period,
+                min_year=year_min,
+                max_year=year_max,
+            )
+            if years:
+                grant_years_lookup[grant_id] = years
         valid_grant_ids = set(grant_years_lookup.keys())
         if selected_keywords:
             keywords_df = keywords_df[keywords_df['name'].isin(selected_keywords)]
@@ -704,8 +750,8 @@ class TrendsDataPreparation:
             valid_grants = [g for g in grants_list if g in valid_grant_ids]
             if valid_grants:
                 for grant_id in valid_grants:
-                    year = grant_years_lookup[grant_id]
-                    viz_data.append((keyword_name, int(year), 1))
+                    for year in grant_years_lookup[grant_id]:
+                        viz_data.append((keyword_name, year, 1))
         if viz_data:
             return pd.DataFrame(viz_data, columns=['keyword', 'year', 'grant_count'])
         return pd.DataFrame(columns=['keyword', 'year', 'grant_count'])
@@ -714,7 +760,11 @@ class TrendsDataPreparation:
     def from_category_grants(
         categories_df: pd.DataFrame,
         grants_df: pd.DataFrame,
-        selected_categories: Optional[List[str]] = None
+        selected_categories: Optional[List[str]] = None,
+        *,
+        use_active_period: bool = False,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None,
     ) -> pd.DataFrame:
         from config import Keywords
         keywords_df = Keywords.load()
@@ -727,7 +777,20 @@ class TrendsDataPreparation:
         if selected_categories:
             categories_df = categories_df[categories_df['name'].isin(selected_categories)]
         viz_data = []
-        grant_years = dict(zip(grants_df['id'], grants_df['start_year']))
+        end_year_series = grants_df['end_year'] if 'end_year' in grants_df.columns else pd.Series([None] * len(grants_df))
+        grant_years_lookup: Dict[Any, List[int]] = {}
+        for grant_id, start_year, end_year in zip(grants_df['id'], grants_df['start_year'], end_year_series):
+            years = compute_active_years(
+                start_year,
+                end_year,
+                use_active_period=use_active_period,
+                min_year=year_min,
+                max_year=year_max,
+            )
+            if years:
+                grant_years_lookup[grant_id] = years
+        if not grant_years_lookup:
+            return pd.DataFrame(columns=['category', 'year', 'grant_count', 'total_funding'])
         grant_funding = dict(zip(grants_df['id'], grants_df.get('funding_amount', [0] * len(grants_df))))
         for _, category in categories_df.iterrows():
             category_name = category['name']
@@ -739,10 +802,13 @@ class TrendsDataPreparation:
                 if keyword in keyword_grants_lookup:
                     category_grant_ids.update(keyword_grants_lookup[keyword])
             for grant_id in category_grant_ids:
-                if grant_id in grant_years and pd.notna(grant_years[grant_id]):
-                    year = int(grant_years[grant_id])
-                    funding = grant_funding.get(grant_id, 0)
-                    viz_data.append((category_name, year, 1, funding))
+                years = grant_years_lookup.get(grant_id)
+                if not years:
+                    continue
+                funding = grant_funding.get(grant_id, 0)
+                for index, year in enumerate(years):
+                    yearly_funding = funding if index == 0 else 0
+                    viz_data.append((category_name, year, 1, yearly_funding))
         if viz_data:
             return pd.DataFrame(viz_data, columns=['category', 'year', 'grant_count', 'total_funding'])
         return pd.DataFrame(columns=['category', 'year', 'grant_count', 'total_funding'])
@@ -750,15 +816,34 @@ class TrendsDataPreparation:
     @staticmethod
     def from_grants_by_attribute(
         grants_df: pd.DataFrame,
-        attribute_col: str
+        attribute_col: str,
+        *,
+        use_active_period: bool = False,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None,
     ) -> pd.DataFrame:
         if 'start_year' not in grants_df.columns:
             raise ValueError("grants_df must have 'start_year' column")
         if attribute_col not in grants_df.columns:
             raise ValueError(f"grants_df must have '{attribute_col}' column")
-        filtered_df = grants_df[[attribute_col, 'start_year']].dropna()
-        filtered_df['grant_count'] = 1
-        return filtered_df.rename(columns={'start_year': 'year'})
+        relevant_cols = [attribute_col, 'start_year']
+        if 'end_year' in grants_df.columns:
+            relevant_cols.append('end_year')
+        filtered_df = grants_df[relevant_cols].dropna(subset=['start_year'])
+        records: List[tuple[Any, int, int]] = []
+        for _, row in filtered_df.iterrows():
+            years = compute_active_years(
+                row['start_year'],
+                row.get('end_year'),
+                use_active_period=use_active_period,
+                min_year=year_min,
+                max_year=year_max,
+            )
+            for year in years:
+                records.append((row[attribute_col], year, 1))
+        if records:
+            return pd.DataFrame(records, columns=[attribute_col, 'year', 'grant_count'])
+        return pd.DataFrame(columns=[attribute_col, 'year', 'grant_count'])
 
 
 # Convenience functions for backward compatibility

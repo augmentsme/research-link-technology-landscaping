@@ -43,7 +43,7 @@ def deduplicate_keywords(input_path):
         best_variant = max(data["variants"], key=lambda k: len(k["description"]))
         
         # Create final keyword with all grants
-        grants_list = list(data["grants"])
+        grants_list = sorted(data["grants"])
         final_keyword = {
             "name": best_variant["name"],
             "type": best_variant["type"],
@@ -53,6 +53,7 @@ def deduplicate_keywords(input_path):
         
         final_keywords.append(final_keyword)
     
+    final_keywords.sort(key=lambda item: utils.normalize(item["name"]))
     return final_keywords
 
 def postprocess_keywords(input_path=config.Keywords.extracted_keywords_path, output_path=config.Keywords.keywords_path):

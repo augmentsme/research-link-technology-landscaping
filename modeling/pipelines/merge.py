@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Any, Iterable, List, Sequence
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -10,15 +11,75 @@ from pydantic import BaseModel, Field
 import config
 from models import FieldOfResearch
 
+import jsonlines
+
 from . import llm_client
-from .batching import (
-    iter_jsonl_batches,
-    stream_jsonl,
-    prepare_merge_outputs,
-    write_merge_result,
-    JsonlBatch,
-)
+from .cluster_io import ClusterBatch, load_cluster_file
 from .concurrency import run_with_concurrency
+
+
+@dataclass
+class MergeOutputs:
+    categories: jsonlines.Writer
+    unknown: jsonlines.Writer
+    missing: jsonlines.Writer
+    requests: jsonlines.Writer
+
+    def close(self) -> None:
+        self.categories.close()
+        self.unknown.close()
+        self.missing.close()
+        self.requests.close()
+
+
+def prepare_merge_outputs(output_dir: Path | str) -> MergeOutputs:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    return MergeOutputs(
+        categories=jsonlines.open(output_path / "output.jsonl", "a"),
+        unknown=jsonlines.open(output_path / "unknown.jsonl", "a"),
+        missing=jsonlines.open(output_path / "missing.jsonl", "a"),
+        requests=jsonlines.open(output_path / "requests.jsonl", "a"),
+    )
+
+
+def write_merge_result(
+    records: Iterable[dict[str, Any]],
+    result: Any,
+    outputs: MergeOutputs,
+) -> tuple[int, int, int]:
+    category_records = [record for record in records if record.get("name")]
+    records_by_name = {
+        record["name"]: record for record in category_records
+    }
+    referenced: set[str] = set()
+
+    for merged_category in result.categories:
+        payload = merged_category.model_dump()
+        source_names = payload.get("source_categories", [])
+        valid_sources = [name for name in source_names if name in records_by_name]
+        payload["source_categories"] = valid_sources
+        referenced.update(valid_sources)
+
+        merged_keywords: set[str] = set()
+        for source_name in valid_sources:
+            keywords = records_by_name[source_name].get("keywords") or []
+            merged_keywords.update(keyword for keyword in keywords if keyword)
+
+        if not merged_keywords:
+            continue
+
+        payload["keywords"] = sorted(merged_keywords)
+        outputs.categories.write(payload)
+
+    missing_names = sorted(set(records_by_name.keys()) - referenced)
+    for name in missing_names:
+        outputs.missing.write(records_by_name[name])
+
+    total_categories = len(category_records)
+    missing_count = len(missing_names)
+    unknown_count = 0
+    return total_categories, missing_count, unknown_count
 
 
 class MergedCategory(BaseModel):
@@ -94,35 +155,101 @@ async def _request_merged_categories(client: AsyncOpenAI, batch_text: str) -> Me
     return MergedCategoryList.model_validate_json(output_text)
 
 
-async def merge_async(input_dir: Path, output_dir: Path, concurrency: int = config.CONCURRENCY) -> List[str]:
-    batches = list(iter_jsonl_batches(input_dir))
+class CategoryMerger:
+    def __init__(self, outputs: MergeOutputs) -> None:
+        self.outputs = outputs
+
+    async def run(
+        self,
+        client: AsyncOpenAI,
+        batches: Sequence[ClusterBatch],
+        concurrency: int,
+    ) -> list[tuple[int, str, int, int, int]]:
+        async def handler(batch: ClusterBatch) -> tuple[int, str, int, int, int]:
+            return await self._handle_batch(client, batch)
+
+        processed = await run_with_concurrency(
+            batches,
+            handler,
+            concurrency=concurrency,
+            progress_description="Merging categories",
+            progress_unit="batch",
+        )
+        if processed:
+            processed.sort(key=lambda item: item[0])
+        return processed
+
+    async def _handle_batch(
+        self,
+        client: AsyncOpenAI,
+        batch: ClusterBatch,
+    ) -> tuple[int, str, int, int, int]:
+        records = batch.records
+        batch_text = _format_categories(records)
+        log_entry = {
+            "batch_id": batch.batch_id,
+            "request": batch_text,
+        }
+        try:
+            merged_categories = await _request_merged_categories(client, batch_text)
+            log_entry["response"] = merged_categories.model_dump()
+            self.outputs.requests.write(log_entry)
+            total_categories, missing_categories, unknown_categories = write_merge_result(
+                records,
+                merged_categories,
+                self.outputs,
+            )
+            return batch.index, batch.batch_id, total_categories, missing_categories, unknown_categories
+        except Exception as error:
+            log_entry["error"] = str(error)
+            self.outputs.requests.write(log_entry)
+            category_records = [record for record in records if record.get("name")]
+            for record in category_records:
+                self.outputs.unknown.write(record)
+            total_categories = len(category_records)
+            return batch.index, batch.batch_id, total_categories, 0, total_categories
+
+async def merge_async(
+    clusters_path: Path,
+    output_dir: Path,
+    concurrency: int = config.CONCURRENCY,
+    limit: int | None = None,
+) -> List[str]:
+    cluster_file = load_cluster_file(clusters_path)
+    batches = list(cluster_file.batches)
     if not batches:
         return []
 
+    if limit is not None and limit > 0:
+        batches = batches[:limit]
+
     outputs = prepare_merge_outputs(output_dir)
+    merger = CategoryMerger(outputs)
+    processed: list[tuple[int, str, int, int, int]] = []
     try:
         async with llm_client.async_client() as client:
-
-            async def handler(batch: JsonlBatch) -> tuple[int, str]:
-                records = list(stream_jsonl(batch.path))
-                batch_text = _format_categories(records)
-                merged_categories = await _request_merged_categories(client, batch_text)
-                write_merge_result(records, merged_categories, outputs)
-                return batch.index, batch.batch_id
-
-            processed = await run_with_concurrency(
+            processed = await merger.run(
+                client,
                 batches,
-                handler,
                 concurrency=concurrency,
-                progress_description="Merging categories",
-                progress_unit="batch",
             )
     finally:
         outputs.close()
 
-    processed.sort(key=lambda item: item[0])
-    return [batch_id for _, batch_id in processed]
+    return [batch_id for _, batch_id, _, _, _ in processed]
 
 
-def merge(input_dir: Path | str, output_dir: Path | str, concurrency: int = config.CONCURRENCY) -> List[str]:
-    return asyncio.run(merge_async(Path(input_dir), Path(output_dir), concurrency=concurrency))
+def merge(
+    clusters_path: Path | str,
+    output_dir: Path | str,
+    concurrency: int = config.CONCURRENCY,
+    limit: int | None = None,
+) -> List[str]:
+    return asyncio.run(
+        merge_async(
+            Path(clusters_path),
+            Path(output_dir),
+            concurrency=concurrency,
+            limit=limit,
+        )
+    )

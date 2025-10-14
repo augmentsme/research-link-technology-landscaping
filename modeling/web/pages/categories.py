@@ -39,6 +39,7 @@ def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_ke
                   max_keywords, year_min, year_max, search_term):
     """Apply filters to categories"""
     filtered_categories = categories_df.copy()
+    filtered_grants = grants_df.copy()
     
     # Add keyword_count if not present
     if 'keyword_count' not in filtered_categories.columns and 'keywords' in filtered_categories.columns:
@@ -46,11 +47,13 @@ def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_ke
             lambda x: len(x) if isinstance(x, list) else 0
         )
     
+    # Filter categories by field of research
     if fields:
         filtered_categories = filtered_categories[
             filtered_categories['field_of_research'].isin(fields)
         ]
     
+    # Filter categories by keyword count
     if min_keywords is not None or max_keywords is not None:
         min_val = min_keywords if min_keywords is not None else 0
         max_val = max_keywords if max_keywords is not None else float('inf')
@@ -59,6 +62,7 @@ def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_ke
             (filtered_categories['keyword_count'] <= max_val)
         ]
     
+    # Filter categories by search term
     if search_term:
         search_mask = (
             filtered_categories.index.str.contains(search_term, case=False, na=False) |
@@ -66,27 +70,11 @@ def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_ke
         )
         filtered_categories = filtered_categories[search_mask]
     
-    if sources:
-        category_grant_links = get_category_grant_links(filtered_categories, keywords_df)
-        if not category_grant_links.empty:
-            merged = category_grant_links.merge(
-                grants_df[['source']], 
-                left_on='grant_id', 
-                right_index=True, 
-                how='inner'
-            )
-            source_matches = merged[merged['source'].isin(sources)]['category'].unique()
-            if len(source_matches) > 0:
-                filtered_categories = filtered_categories[
-                    filtered_categories.index.isin(source_matches)
-                ]
-            else:
-                return filtered_categories.iloc[0:0], grants_df.iloc[0:0]
-    
-    filtered_grants = grants_df.copy()
+    # Filter grants by source
     if sources:
         filtered_grants = filtered_grants[filtered_grants['source'].isin(sources)]
     
+    # Filter grants by year range
     if 'start_year' in filtered_grants.columns:
         start = filtered_grants['start_year']
         end = filtered_grants['end_year']
@@ -98,6 +86,36 @@ def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_ke
         if year_max is not None:
             mask &= start <= year_max
         filtered_grants = filtered_grants[mask]
+    
+    # Filter grants to only those linked to filtered categories
+    if not filtered_categories.empty:
+        category_grant_links = get_category_grant_links(filtered_categories, keywords_df)
+        if not category_grant_links.empty:
+            category_grant_ids = set(category_grant_links['grant_id'].unique())
+            filtered_grants = filtered_grants[filtered_grants.index.isin(category_grant_ids)]
+        else:
+            # No grants linked to filtered categories
+            filtered_grants = filtered_grants.iloc[0:0]
+    else:
+        # No categories matched the filters
+        filtered_grants = filtered_grants.iloc[0:0]
+    
+    # Filter categories that have at least one grant after all filters
+    if not filtered_grants.empty:
+        category_grant_links = get_category_grant_links(filtered_categories, keywords_df)
+        if not category_grant_links.empty:
+            # Only keep categories that have grants in the filtered grants set
+            valid_grant_ids = set(filtered_grants.index)
+            categories_with_grants = category_grant_links[
+                category_grant_links['grant_id'].isin(valid_grant_ids)
+            ]['category'].unique()
+            filtered_categories = filtered_categories[
+                filtered_categories.index.isin(categories_with_grants)
+            ]
+        else:
+            filtered_categories = filtered_categories.iloc[0:0]
+    else:
+        filtered_categories = filtered_categories.iloc[0:0]
     
     return filtered_categories, filtered_grants
 

@@ -1,1 +1,1 @@
-You are free to use demo.ipynb to test your code
+You are free to use demo.ipynb to test your code. You should test you functions frequently. You should use the same notebook to understand the structure of the data (e.g. what are the columns in a pandas dataframe)

@@ -122,11 +122,14 @@ def get_unique_research_fields():
 
 
 # Vectorized data processing functions
-@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def get_category_grant_links(categories_df, keywords_df):
     """Extract category-grant relationships using vectorized pandas operations
     
     Returns DataFrame with columns: category, grant_id
+    
+    NOTE: This function is NOT cached because it's often called with filtered
+    subsets of categories, and Streamlit's caching doesn't reliably differentiate
+    between different filtered versions of the same base DataFrame.
     """
     if categories_df is None or keywords_df is None:
         return pd.DataFrame()
@@ -164,11 +167,12 @@ def get_category_grant_links(categories_df, keywords_df):
     return result[['category', 'grant_id']].reset_index(drop=True)
 
 
-@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def get_keyword_grant_links(keywords_df):
     """Extract keyword-grant relationships using vectorized pandas operations
     
     Returns DataFrame with columns: keyword, grant_id
+    
+    NOTE: This function is NOT cached for the same reason as get_category_grant_links.
     """
     if keywords_df is None or keywords_df.empty:
         return pd.DataFrame()
@@ -187,7 +191,6 @@ def get_keyword_grant_links(keywords_df):
     return result[['keyword', 'grant_id']].reset_index(drop=True)
 
 
-@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def expand_grants_to_years(grants_df, use_active_period=True, include_org_ids=False):
     """Expand grants to one row per year (and optionally per organisation) using vectorized operations
     
@@ -198,6 +201,8 @@ def expand_grants_to_years(grants_df, use_active_period=True, include_org_ids=Fa
         
     Returns:
         DataFrame with columns: grant_id, year, funding_amount, [organisation_id if include_org_ids=True]
+    
+    NOTE: Not cached - operates on potentially filtered DataFrames
     """
     if grants_df.empty:
         return pd.DataFrame()

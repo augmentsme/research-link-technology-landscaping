@@ -6,7 +6,7 @@ from dotenv import dotenv_values
 import utils
 import pandas as pd
 CONFIG = dotenv_values()
-ROOT_DIR = Path(CONFIG["ROOT_DIR"])
+ROOT_DIR = Path(__file__).parent
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
 

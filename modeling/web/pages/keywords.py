@@ -13,13 +13,24 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data
+from shared_utils import load_data, load_css
 
 st.set_page_config(
     page_title="Keywords",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+load_css()
+
+col1, col2, col3, col4 = st.columns(4, width=820)
+
+col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
+col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
+col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
+col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
+
 
 
 def get_keyword_grant_links(keywords_df: pd.DataFrame) -> pd.DataFrame:

@@ -41,7 +41,7 @@ class Keyword(BaseModel):
     """Individual keyword with context."""
     model_config = {"extra": "forbid"}
     name: str = Field(description="The actual keyword or phrase")
-    type: KeywordType = Field(description="Type of keyword: general, methodology, application, or technology")
+    type: KeywordType = Field(description="Type of keyword: General, Methodology, Application, or Technology")
     description: str = Field(description="Short description explaining the context and relevance of this keyword within the research")
     # grants: List[str] = Field(description="List of grant IDs where this keyword appears")
 

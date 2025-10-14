@@ -8,6 +8,11 @@ import pandas as pd
 import utils
 import config
 
+# def preprocess_grants(grants_df):
+#     df = grants_df[~grants_df.title.isna()] 
+#     df = df[~df.title.str.contains("equipment grant", case=False) & ~df.title.str.contains("travel grant", case=False)]
+#     return df
+
 def deduplicate_keywords(input_path):
     """
     Deduplicate keywords by normalizing terms and selecting best variants.
@@ -38,7 +43,7 @@ def deduplicate_keywords(input_path):
         best_variant = max(data["variants"], key=lambda k: len(k["description"]))
         
         # Create final keyword with all grants
-        grants_list = list(data["grants"])
+        grants_list = sorted(data["grants"])
         final_keyword = {
             "name": best_variant["name"],
             "type": best_variant["type"],
@@ -48,6 +53,7 @@ def deduplicate_keywords(input_path):
         
         final_keywords.append(final_keyword)
     
+    final_keywords.sort(key=lambda item: utils.normalize(item["name"]))
     return final_keywords
 
 def postprocess_keywords(input_path=config.Keywords.extracted_keywords_path, output_path=config.Keywords.keywords_path):
@@ -113,5 +119,5 @@ def postprocess_category(input_path=config.Categories.last_merged_path(), output
     cats = cats.drop(cats[cats.keywords.map(len) == 0].index) # drop categories with no keywords
     utils.save_jsonl_file(cats.to_dict(orient="records"), output_path)
 
-# postprocess_category()
+
     

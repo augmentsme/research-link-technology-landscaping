@@ -9,24 +9,25 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional
 
 # Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, load_css
-from web.sidebar import SidebarControl, FilterConfig, DisplayConfig
+from shared_utils import load_data, load_css  # noqa: E402
+from web.sidebar import SidebarControl  # noqa: E402
 
 import config
-from visualisation import (
+from visualisation import (  # noqa: E402
     DataExplorer,
     DataExplorerConfig,
     TrendsVisualizer,
     TrendsConfig,
     TrendsDataPreparation,
 )
+from precomputed import get_category_grant_links  # noqa: E402
 st.set_page_config(
     page_title="Category",
     layout="wide",
@@ -51,6 +52,9 @@ class CategoryFilterConfig:
     max_keywords: int
     search_term: str
     category_names: List[str]
+    start_year_min: Optional[int] = None
+    start_year_max: Optional[int] = None
+    use_active_grant_period: bool = False
 
 
 @dataclass
@@ -58,9 +62,10 @@ class CategoryTrendsConfig:
     """Configuration for category trends visualization"""
     num_categories: int
     use_cumulative: bool
-    ranking_metric: str  # "grant_count" or "total_funding" - for selecting which categories to show
-    display_metric: str  # "grant_count" or "total_funding" - for y-axis values
+    metric: str  # "grant_count" or "total_funding" - used for both ranking and display
     selection_method: str  # "top_n", "random", or "custom"
+    smooth_trends: bool
+    smoothing_window: int
 
 
 class CategoryDataManager:
@@ -71,6 +76,7 @@ class CategoryDataManager:
         self.field_options = None
         self.grants_df = None
         self.keywords_df = None
+        self._category_grant_links = get_category_grant_links()
         self._load_data()
     
     def _load_data(self):
@@ -110,30 +116,13 @@ class CategoryDataManager:
         filtered_df = self.categories_df.copy()
         
         # Apply source filtering through grants if source filter is active
-        if filter_config.source_filter and self.grants_df is not None and self.keywords_df is not None:
-            # Filter grants by source
-            filtered_grants = self.grants_df[self.grants_df['source'].isin(filter_config.source_filter)]
-            filtered_grant_ids = set(filtered_grants['id'])
-            
-            # Build keyword-to-grants lookup
-            keyword_grants_lookup = {}
-            for _, kw_row in self.keywords_df.iterrows():
-                if 'grants' in kw_row and kw_row['grants']:
-                    # Filter keyword grants to only those matching source filter
-                    filtered_kw_grants = [g for g in kw_row['grants'] if g in filtered_grant_ids]
-                    if filtered_kw_grants:
-                        keyword_grants_lookup[kw_row['name']] = filtered_kw_grants
-            
-            # Filter categories based on whether their keywords have any filtered grants
-            def category_has_valid_grants(keywords_list):
-                if not keywords_list:
-                    return False
-                for keyword in keywords_list:
-                    if keyword in keyword_grants_lookup:
-                        return True
-                return False
-            
-            filtered_df = filtered_df[filtered_df['keywords'].apply(category_has_valid_grants)]
+        if filter_config.source_filter and not self._category_grant_links.empty:
+            source_matches = self._category_grant_links[
+                self._category_grant_links['source'].isin(filter_config.source_filter)
+            ]["category"].unique()
+            if len(source_matches) == 0:
+                return filtered_df.iloc[0:0]
+            filtered_df = filtered_df[filtered_df['name'].isin(source_matches)]
         
         # Field filter
         if filter_config.field_filter:
@@ -407,9 +396,8 @@ class CategoryTrendsTab:
             return
         
         # Show data info
-        st.info(f"Processing {len(filtered_data)} categories. "
-               f"Ranking by: {'Grant Count' if trends_config.ranking_metric == 'grant_count' else 'Total Funding Amount'}, "
-               f"Displaying: {'Grant Count' if trends_config.display_metric == 'grant_count' else 'Funding Amount'}")
+        metric_label = 'Grant Count' if trends_config.metric == 'grant_count' else 'Funding Amount'
+        st.info(f"Processing {len(filtered_data)} categories. Metric: {metric_label}")
         
         with st.spinner("Creating category trends visualization..."):
             # Determine selected categories based on selection method
@@ -421,7 +409,10 @@ class CategoryTrendsTab:
             viz_data = TrendsDataPreparation.from_category_grants(
                 filtered_data,
                 grants_df,
-                selected_categories
+                selected_categories,
+                use_active_period=filter_config.use_active_grant_period,
+                year_min=filter_config.start_year_min,
+                year_max=filter_config.start_year_max,
             )
             
             if viz_data.empty:
@@ -429,23 +420,22 @@ class CategoryTrendsTab:
                 return
             
             # Configure visualization
-            ranking_text = "Grant Count" if trends_config.ranking_metric == "grant_count" else "Total Funding"
-            display_text = "Grant Count" if trends_config.display_metric == "grant_count" else "Funding Amount"
             cumulative_text = "Cumulative" if trends_config.use_cumulative else "Yearly"
-            
+            display_text = metric_label
+
             # Create appropriate title based on selection method
             if trends_config.selection_method == "custom":
                 title = f"{cumulative_text} Category Trends Over Time - Custom Selection ({len(selected_categories)} categories)"
                 max_entities_to_show = len(selected_categories)
             else:
-                title = f"{cumulative_text} Category Trends Over Time (Top {trends_config.num_categories} by {ranking_text})"
+                title = f"{cumulative_text} Category Trends Over Time (Top {trends_config.num_categories} by {metric_label})"
                 max_entities_to_show = trends_config.num_categories
             
             viz_config = TrendsConfig(
                 entity_col='category',
                 time_col='year',
-                value_col=trends_config.display_metric,
-                ranking_col=trends_config.ranking_metric,
+                value_col=trends_config.metric,
+                ranking_col=trends_config.metric,
                 max_entities=max_entities_to_show,
                 aggregation='sum',
                 use_cumulative=trends_config.use_cumulative,
@@ -453,7 +443,9 @@ class CategoryTrendsTab:
                 title=title,
                 x_label='Year',
                 y_label=f'{"Cumulative" if trends_config.use_cumulative else "Yearly"} {display_text}',
-                height=600
+                height=600,
+                smooth_trends=trends_config.smooth_trends,
+                smoothing_window=trends_config.smoothing_window,
             )
             
             # Create visualization
@@ -496,7 +488,6 @@ class CategoriesPage:
     
     def __init__(self):
         self.data_manager = CategoryDataManager()
-        self.explorer_tab = CategoryExplorerTab(self.data_manager)
         self.trends_tab = CategoryTrendsTab(self.data_manager)
 
     
@@ -529,27 +520,24 @@ class CategoriesPage:
             min_keywords=unified_filter.min_count,
             max_keywords=unified_filter.max_count,
             search_term=unified_filter.search_term,
-            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else []
+            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else [],
+            start_year_min=unified_filter.start_year_min,
+            start_year_max=unified_filter.start_year_max,
+            use_active_grant_period=unified_filter.use_active_grant_period
         )
         
+        metric_column = "grant_count" if unified_display.metric == "count" else "total_funding"
         trends_config = CategoryTrendsConfig(
             num_categories=unified_display.num_entities,
             use_cumulative=unified_display.use_cumulative,
-            ranking_metric="grant_count" if unified_display.ranking_metric == "count" else "total_funding",
-            display_metric="grant_count" if unified_display.display_metric == "count" else "total_funding",
-            selection_method=unified_display.selection_method
+            metric=metric_column,
+            selection_method=unified_display.selection_method,
+            smooth_trends=unified_display.smooth_trends,
+            smoothing_window=unified_display.smoothing_window,
         )
         
-        # Create tabs
-        tab1, tab2 = st.tabs(["Category Trends", "Category Explorer"])
-        
-        with tab1:
-            self.trends_tab.render_tab(filter_config, trends_config)
-            
-        
-        with tab2:
-            self.explorer_tab.render_tab(filter_config)
-            
+        self.trends_tab.render_tab(filter_config, trends_config)
+
 
 
 def main():

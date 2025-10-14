@@ -1,16 +1,24 @@
 from pathlib import Path
-from typing import Any, Dict, List
-from dotenv import dotenv_values
-import json
-import math
-import jsonlines
 from dataclasses import dataclass
+
+from dotenv import dotenv_values
+
 import utils
 import pandas as pd
 CONFIG = dotenv_values()
 ROOT_DIR = Path(CONFIG["ROOT_DIR"])
 RESULTS_DIR = ROOT_DIR / "results"
 FIGURES_DIR = ROOT_DIR / "figures"
+
+OPENAI_BASE_URL = CONFIG.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
+OPENAI_MODEL = CONFIG.get("OPENAI_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
+EMBEDDING_MODEL = CONFIG.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
+OPENAI_TIMEOUT_SECONDS = 600
+CONCURRENCY = 512
+
+
+def _item_template(record):
+    return f"""<item><name>{record['name']}</name><description>{record['description']}</description></item>"""
 
 
 @dataclass
@@ -19,8 +27,7 @@ class Keywords:
     keywords_dir.mkdir(parents=True, exist_ok=True)
     extracted_keywords_path: Path = keywords_dir / "extracted_keywords.jsonl"
     keywords_path: Path = keywords_dir / "keywords.jsonl"
-    
-    template = lambda record: f"<keyword><name>{record['name']}</name><type>{record['type']}</type><description>{record['description']}</description></keyword>"
+    template = staticmethod(_item_template)
     
     def load(as_dataframe=True):
         return utils.load_jsonl_file(Keywords.keywords_path, as_dataframe=as_dataframe)
@@ -34,10 +41,14 @@ class Keywords:
 class Categories:
 
     CATEGORIY_PATH = RESULTS_DIR / "categories.jsonl"
-    template = lambda record: f"<category><name>{record['name']}</name><description>{record['description']}</description><keywords>{','.join(record.get('keywords', []))}</keywords></category>"
+    template = staticmethod(_item_template)
     
     def last_merged():
-        return max([int(i.stem) for i in RESULTS_DIR.iterdir() if i.stem.isdigit()])
+        list_of_digits_dirs = [i for i in RESULTS_DIR.iterdir() if i.stem.isdigit() and i.is_dir()]
+        if len(list_of_digits_dirs) == 0:
+            return None
+        else:
+            return max([int(i.stem) for i in list_of_digits_dirs])
     def last_merged_path():
         return RESULTS_DIR / str(Categories.last_merged()) / "output.jsonl"
     def load_last_merged():
@@ -48,45 +59,30 @@ class Categories:
 
 @dataclass
 class Grants:
-    grants_path = RESULTS_DIR / "grants.json"
-
-    template = staticmethod(
-        lambda record: (
-            f"<grant><title>{record.get('title') or record.get('grant_title', '')}</title>"
-            f"<description>{record.get('grant_summary') or record.get('summary', '')}</description></grant>"
-        )
-    )
+    source_path = RESULTS_DIR / "grants.json"
+    grants_path = RESULTS_DIR / "grants.jsonl"
 
     @staticmethod
-    def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return df
-
-        if "funding_amount" in df.columns:
-            df["funding_amount"] = pd.to_numeric(df["funding_amount"], errors="coerce")
-
-        if "start_date" in df.columns and "start_year" not in df.columns:
-            df["start_year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
-        elif "start_year" in df.columns:
-            df["start_year"] = pd.to_numeric(df["start_year"], errors="coerce").astype("Int64")
-
-        if "end_date" in df.columns and "end_year" not in df.columns:
-            df["end_year"] = pd.to_datetime(df["end_date"], errors="coerce").dt.year.astype("Int64")
-        elif "end_year" in df.columns:
-            df["end_year"] = pd.to_numeric(df["end_year"], errors="coerce").astype("Int64")
-
+    def template(record):
+        return (
+            f"<grant><title>{record.get('title')}</title>"
+            f"<description>{record.get('grant_summary')}</description></grant>"
+        )
+    @staticmethod
+    def preprocess():
+        df = utils.load_json_file(Grants.source_path, as_dataframe=True)
+        df = df[~df.title.isna()] 
+        df = df[~df.title.str.contains("equipment grant", case=False) & ~df.title.str.contains("travel grant", case=False)]
+        df["funding_amount"] = pd.to_numeric(df["funding_amount"], errors="coerce")
+        df["start_year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
+        df["end_year"] = pd.to_datetime(df["end_date"], errors="coerce").dt.year.astype("Int64")
+        utils.save_jsonl_file(df.to_dict(orient="records"), Grants.grants_path)
         return df
 
     @staticmethod
-    def _load_source_records() -> List[Dict[str, Any]]:
-        return utils.load_json_file(Grants.grants_path, as_dataframe=False)
-
-    @staticmethod
     def load(as_dataframe: bool = True):
-        records = Grants._load_source_records()
-        if as_dataframe:
-            df = pd.DataFrame(records)
-            return Grants._normalize_dataframe(df)
-        return records
-
+        if not Grants.grants_path.exists():
+            Grants.preprocess()
+        return utils.load_jsonl_file(Grants.grants_path, as_dataframe=as_dataframe)
+    
     

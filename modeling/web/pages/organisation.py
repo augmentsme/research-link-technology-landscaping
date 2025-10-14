@@ -13,7 +13,11 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data
+from shared_utils import (
+    load_data, render_page_links,
+    get_category_grant_links, get_keyword_grant_links,
+    expand_grants_to_years, expand_links_to_years
+)
 
 st.set_page_config(
     page_title="Organisation Insights",
@@ -21,142 +25,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+render_page_links()
 
 def create_grant_years_table(grants_df, use_active_period=True):
     """Create a table with one row per grant per year"""
-    records = []
-    for _, grant in grants_df.iterrows():
-        start = grant.get('start_year')
-        end = grant.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-        
-        years = range(start, end + 1) if use_active_period else [start]
-        funding = grant.get('funding_amount', 0)
-        
-        for year in years:
-            records.append({
-                'grant_id': grant.name,
-                'year': year,
-                'funding_amount': funding
-            })
-    
-    return pd.DataFrame(records)
-
-
-def get_keyword_grant_links(keywords_df):
-    """Extract keyword-grant relationships"""
-    records = []
-    for idx, row in keywords_df.iterrows():
-        keyword_name = row.get('name', idx)
-        grants = row.get('grants', [])
-        if isinstance(grants, list):
-            for grant_id in grants:
-                records.append({'keyword': keyword_name, 'grant_id': grant_id})
-    return pd.DataFrame(records)
+    return expand_grants_to_years(grants_df, use_active_period=use_active_period)
 
 
 def create_keyword_years_table(keywords_df, grants_df, use_active_period=True):
     """Create a table with one row per keyword per year based on active grants"""
     keyword_grant_links = get_keyword_grant_links(keywords_df)
-    
-    if keyword_grant_links.empty:
-        return pd.DataFrame()
-    
-    merged = keyword_grant_links.merge(
-        grants_df[['start_year', 'end_year', 'funding_amount']], 
-        left_on='grant_id', 
-        right_index=True, 
-        how='inner'
-    )
-    
-    records = []
-    for _, row in merged.iterrows():
-        start = row.get('start_year')
-        end = row.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-        
-        years = range(start, end + 1) if use_active_period else [start]
-        
-        for year in years:
-            records.append({
-                'keyword': row['keyword'],
-                'year': year,
-                'grant_id': row['grant_id'],
-                'funding_amount': row.get('funding_amount', 0)
-            })
-    
-    return pd.DataFrame(records)
-
-
-def get_category_grant_links(categories_df, keywords_df):
-    """Extract category-grant relationships"""
-    if categories_df is None or keywords_df is None:
-        return pd.DataFrame()
-    
-    records = []
-    for cat_name, cat in categories_df.iterrows():
-        cat_keywords = cat.get('keywords', [])
-        if not isinstance(cat_keywords, list):
-            continue
-        
-        for kw in cat_keywords:
-            if kw in keywords_df.index:
-                kw_row = keywords_df.loc[[kw]]
-            else:
-                if 'name' in keywords_df.columns:
-                    kw_row = keywords_df[keywords_df['name'] == kw]
-                else:
-                    continue
-            
-            if not kw_row.empty:
-                grants = kw_row.iloc[0].get('grants', [])
-                if isinstance(grants, list):
-                    for grant_id in grants:
-                        records.append({'category': cat_name, 'grant_id': grant_id})
-    
-    return pd.DataFrame(records)
+    return expand_links_to_years(keyword_grant_links, grants_df, 'keyword', use_active_period=use_active_period)
 
 
 def create_category_years_table(categories_df, keywords_df, grants_df, use_active_period=True):
     """Create a table with one row per category per year based on active grants"""
     category_grant_links = get_category_grant_links(categories_df, keywords_df)
-    
-    if category_grant_links.empty:
-        return pd.DataFrame()
-    
-    merged = category_grant_links.merge(
-        grants_df[['start_year', 'end_year', 'funding_amount']], 
-        left_on='grant_id', 
-        right_index=True, 
-        how='inner'
-    )
-    
-    records = []
-    for _, row in merged.iterrows():
-        start = row.get('start_year')
-        end = row.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-        
-        years = range(start, end + 1) if use_active_period else [start]
-        
-        for year in years:
-            records.append({
-                'category': row['category'],
-                'year': year,
-                'grant_id': row['grant_id'],
-                'funding_amount': row.get('funding_amount', 0)
-            })
-    
-    return pd.DataFrame(records)
+    return expand_links_to_years(category_grant_links, grants_df, 'category', use_active_period=use_active_period)
 
 
 def filter_grants_by_organisation(grants_df, organisation_ids, year_min, year_max, use_active_period):

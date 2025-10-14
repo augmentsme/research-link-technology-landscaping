@@ -12,7 +12,7 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, load_css
+from shared_utils import load_data, load_css, render_page_links, expand_grants_to_years
 
 st.set_page_config(
     page_title="Grant Analysis",
@@ -21,45 +21,12 @@ st.set_page_config(
 )
 load_css()
 
-col1, col2, col3, col4 = st.columns(4, width=820)
-
-col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
-col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
-col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
-col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
+render_page_links()
 
 
 def create_grant_years_table(grants_df: pd.DataFrame, active: bool = False) -> pd.DataFrame:
     """Create a table with one row per grant per year per organization"""
-    records = []
-    for _, grant in grants_df.iterrows():
-        start = grant.get('start_year')
-        end = grant.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-
-        years = range(start, end + 1) if active else [start]
-        funding = grant.get('funding_amount', 0)
-        
-        org_ids = grant.get('organisation_ids', [])
-        if not isinstance(org_ids, list):
-            org_ids = [org_ids] if pd.notna(org_ids) else []
-        
-        if not org_ids:
-            continue
-            
-        for year in years:
-            for org_id in org_ids:
-                records.append({
-                    'grant_id': grant.name,
-                    'year': year,
-                    'organisation_id': org_id,
-                    'funding_amount': funding
-                })
-    
-    return pd.DataFrame(records)
+    return expand_grants_to_years(grants_df, use_active_period=active, include_org_ids=True)
 
 
 def apply_filters(grants_df: pd.DataFrame, sources, year_min, year_max) -> pd.DataFrame:

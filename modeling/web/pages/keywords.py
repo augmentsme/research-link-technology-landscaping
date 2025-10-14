@@ -13,7 +13,10 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, load_css
+from shared_utils import (
+    load_data, load_css, render_page_links,
+    get_keyword_grant_links, expand_links_to_years
+)
 
 st.set_page_config(
     page_title="Keywords",
@@ -24,59 +27,13 @@ st.set_page_config(
 
 load_css()
 
-col1, col2, col3, col4 = st.columns(4, width=820)
-
-col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
-col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
-col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
-col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
-
-
-
-def get_keyword_grant_links(keywords_df: pd.DataFrame) -> pd.DataFrame:
-    """Extract keyword-grant relationships from keywords dataframe"""
-    records = []
-    for idx, row in keywords_df.iterrows():
-        keyword_name = row.get('name', idx)
-        grants = row.get('grants', [])
-        if isinstance(grants, list):
-            for grant_id in grants:
-                records.append({'keyword': keyword_name, 'grant_id': grant_id})
-    return pd.DataFrame(records)
+render_page_links()
 
 
 def create_keyword_years_table(keywords_df: pd.DataFrame, grants_df: pd.DataFrame) -> pd.DataFrame:
     """Create a table with one row per keyword per year based on active grants"""
     keyword_grant_links = get_keyword_grant_links(keywords_df)
-    
-    if keyword_grant_links.empty:
-        return pd.DataFrame()
-    
-    merged = keyword_grant_links.merge(
-        grants_df[['start_year', 'end_year', 'funding_amount']], 
-        left_on='grant_id', 
-        right_index=True, 
-        how='inner'
-    )
-    
-    records = []
-    for _, row in merged.iterrows():
-        start = row.get('start_year')
-        end = row.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-        
-        for year in range(start, end + 1):
-            records.append({
-                'keyword': row['keyword'],
-                'year': year,
-                'grant_id': row['grant_id'],
-                'funding_amount': row.get('funding_amount', 0)
-            })
-    
-    return pd.DataFrame(records)
+    return expand_links_to_years(keyword_grant_links, grants_df, 'keyword', use_active_period=True)
 
 
 def apply_filters(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, sources, 

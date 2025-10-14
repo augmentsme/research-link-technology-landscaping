@@ -29,6 +29,18 @@ def format_research_field(field: Optional[str]) -> str:
         return "Unspecified"
     return str(field)
 
+def render_page_links():
+    """Render navigation page links"""
+    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+    
+    col1.page_link(page="pages/categories.py", label="Categories", icon=":material/category:")
+    col2.page_link(page="pages/grants.py", label="Grants", icon=":material/library_books:")
+    col3.page_link(page="pages/keywords.py", label="Keywords", icon=":material/tag:")
+    col4.page_link(page="pages/research_landscape.py", label="Research Landscapes", icon=":material/document_search:")
+    col5.page_link(page="pages/organisation.py", label="Organisation", icon=":material/business:")
+    col6.page_link(page="pages/comparing_organisations.py", label="Compare Orgs", icon=":material/compare_arrows:")
+    col7.page_link(page="pages/raw_data.py", label="Raw Data", icon=":material/table:")
+
 def hash_df(df: pd.DataFrame) -> int:
     """Generate a hash for a DataFrame based on its content."""
     if "id" in df.columns:
@@ -108,12 +120,192 @@ def get_unique_research_fields():
         st.error(f"Error getting unique research subjects: {e}")
         return set()
 
-def create_research_field_options(unique_fields):
-    """Create research field options for dropdowns with display names"""
-    sorted_fields = sorted(unique_fields, key=lambda x: format_research_field(x))
-    field_options = [format_research_field(field) for field in sorted_fields]
-    field_values = list(sorted_fields)
-    return field_options, field_values
+
+# Vectorized data processing functions
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
+def get_category_grant_links(categories_df, keywords_df):
+    """Extract category-grant relationships using vectorized pandas operations
+    
+    Returns DataFrame with columns: category, grant_id
+    """
+    if categories_df is None or keywords_df is None:
+        return pd.DataFrame()
+    
+    # Reset index to get category names as a column
+    cats = categories_df.reset_index()
+    if 'name' not in cats.columns:
+        cats = cats.rename(columns={cats.columns[0]: 'name'})
+    
+    # Explode keywords to get one row per category-keyword pair
+    cat_kw_pairs = cats[['name', 'keywords']].explode('keywords')
+    cat_kw_pairs = cat_kw_pairs.dropna(subset=['keywords'])
+    cat_kw_pairs = cat_kw_pairs.rename(columns={'name': 'category', 'keywords': 'keyword'})
+    
+    if cat_kw_pairs.empty:
+        return pd.DataFrame()
+    
+    # Prepare keywords dataframe
+    if 'name' in keywords_df.columns:
+        kw_grants = keywords_df[['name', 'grants']].rename(columns={'name': 'keyword'})
+    else:
+        kw_grants = keywords_df.reset_index()[['name', 'grants']].rename(columns={'name': 'keyword'})
+    
+    # Merge category-keyword pairs with keyword-grants
+    merged = cat_kw_pairs.merge(kw_grants, on='keyword', how='inner')
+    
+    if merged.empty:
+        return pd.DataFrame()
+    
+    # Explode grants to get one row per category-grant pair
+    result = merged[['category', 'grants']].explode('grants')
+    result = result.dropna(subset=['grants'])
+    result = result.rename(columns={'grants': 'grant_id'})
+    
+    return result[['category', 'grant_id']].reset_index(drop=True)
+
+
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
+def get_keyword_grant_links(keywords_df):
+    """Extract keyword-grant relationships using vectorized pandas operations
+    
+    Returns DataFrame with columns: keyword, grant_id
+    """
+    if keywords_df is None or keywords_df.empty:
+        return pd.DataFrame()
+    
+    # Prepare keywords with name column
+    if 'name' in keywords_df.columns:
+        kw_data = keywords_df[['name', 'grants']].rename(columns={'name': 'keyword'})
+    else:
+        kw_data = keywords_df.reset_index()[['name', 'grants']].rename(columns={'name': 'keyword'})
+    
+    # Explode grants to get one row per keyword-grant pair
+    result = kw_data.explode('grants')
+    result = result.dropna(subset=['grants'])
+    result = result.rename(columns={'grants': 'grant_id'})
+    
+    return result[['keyword', 'grant_id']].reset_index(drop=True)
+
+
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
+def expand_grants_to_years(grants_df, use_active_period=True, include_org_ids=False):
+    """Expand grants to one row per year (and optionally per organisation) using vectorized operations
+    
+    Args:
+        grants_df: DataFrame with grant data (must have start_year, end_year columns)
+        use_active_period: If True, expand to all years between start and end. If False, only use start year.
+        include_org_ids: If True, also expand by organisation_ids to get one row per year per org
+        
+    Returns:
+        DataFrame with columns: grant_id, year, funding_amount, [organisation_id if include_org_ids=True]
+    """
+    if grants_df.empty:
+        return pd.DataFrame()
+    
+    # Filter grants with valid start_year
+    valid_grants = grants_df[grants_df['start_year'].notna()].copy()
+    if valid_grants.empty:
+        return pd.DataFrame()
+    
+    # Fill end_year with start_year if missing
+    valid_grants['end_year'] = valid_grants['end_year'].fillna(valid_grants['start_year'])
+    valid_grants['start_year'] = valid_grants['start_year'].astype(int)
+    valid_grants['end_year'] = valid_grants['end_year'].astype(int)
+    
+    if use_active_period:
+        # Create year ranges for each grant
+        valid_grants['years'] = valid_grants.apply(
+            lambda row: list(range(row['start_year'], row['end_year'] + 1)),
+            axis=1
+        )
+    else:
+        # Only use start year
+        valid_grants['years'] = valid_grants['start_year'].apply(lambda x: [x])
+    
+    # Explode by years
+    expanded = valid_grants[['years', 'funding_amount']].explode('years')
+    expanded = expanded.rename(columns={'years': 'year'})
+    expanded['grant_id'] = expanded.index
+    
+    if include_org_ids and 'organisation_ids' in grants_df.columns:
+        # Add organisation_ids before exploding
+        expanded = expanded.merge(
+            grants_df[['organisation_ids']], 
+            left_on='grant_id', 
+            right_index=True, 
+            how='left'
+        )
+        # Explode by organisation_ids
+        expanded = expanded.explode('organisation_ids')
+        expanded = expanded.dropna(subset=['organisation_ids'])
+        expanded = expanded.rename(columns={'organisation_ids': 'organisation_id'})
+        return expanded[['grant_id', 'year', 'organisation_id', 'funding_amount']].reset_index(drop=True)
+    
+    return expanded[['grant_id', 'year', 'funding_amount']].reset_index(drop=True)
+
+
+def expand_links_to_years(link_df, grants_df, entity_col, use_active_period=True, include_source=False):
+    """Expand entity-grant links to one row per entity per year using vectorized operations
+    
+    Args:
+        link_df: DataFrame with entity-grant links (columns: entity_col, grant_id)
+        grants_df: DataFrame with grant data
+        entity_col: Name of the entity column (e.g., 'category', 'keyword')
+        use_active_period: If True, expand to all years between start and end
+        include_source: If True, include the 'source' column from grants_df
+        
+    Returns:
+        DataFrame with columns: entity_col, year, grant_id, funding_amount, [source if include_source=True]
+    """
+    if link_df.empty or grants_df.empty:
+        return pd.DataFrame()
+    
+    # Select columns from grants_df
+    grant_cols = ['start_year', 'end_year', 'funding_amount']
+    if include_source:
+        grant_cols.append('source')
+    
+    # Merge links with grant data
+    merged = link_df.merge(
+        grants_df[grant_cols],
+        left_on='grant_id',
+        right_index=True,
+        how='inner'
+    )
+    
+    if merged.empty:
+        return pd.DataFrame()
+    
+    # Filter valid years
+    merged = merged[merged['start_year'].notna()].copy()
+    if merged.empty:
+        return pd.DataFrame()
+    
+    # Fill end_year with start_year if missing
+    merged['end_year'] = merged['end_year'].fillna(merged['start_year'])
+    merged['start_year'] = merged['start_year'].astype(int)
+    merged['end_year'] = merged['end_year'].astype(int)
+    
+    if use_active_period:
+        # Create year ranges
+        merged['years'] = merged.apply(
+            lambda row: list(range(row['start_year'], row['end_year'] + 1)),
+            axis=1
+        )
+    else:
+        # Only use start year
+        merged['years'] = merged['start_year'].apply(lambda x: [x])
+    
+    # Explode by years
+    result_cols = [entity_col, 'grant_id', 'years', 'funding_amount']
+    if include_source:
+        result_cols.append('source')
+    
+    expanded = merged[result_cols].explode('years')
+    expanded = expanded.rename(columns={'years': 'year'})
+    
+    return expanded.reset_index(drop=True)
+
 
 # Function to load CSS from the 'static' folder
 def load_css():

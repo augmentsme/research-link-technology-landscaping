@@ -2,19 +2,19 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-from shared_utils import (  # noqa: E402
-    load_data
-)
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
+from shared_utils import load_data, render_page_links  # noqa: E402
 
 st.set_page_config(
     page_title="Grant",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+render_page_links()
 
 keywords, grants, categories = load_data()
 

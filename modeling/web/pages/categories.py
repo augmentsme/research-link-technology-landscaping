@@ -12,7 +12,10 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, load_css
+from shared_utils import (
+    load_data, load_css, render_page_links,
+    get_category_grant_links, expand_links_to_years
+)
 
 st.set_page_config(
     page_title="Category Analysis",
@@ -22,78 +25,14 @@ st.set_page_config(
 
 load_css()
 
-col1, col2, col3, col4 = st.columns(4, width=820)
-
-col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
-col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
-col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
-col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
-
-
-def get_category_grant_links(categories_df, keywords_df):
-    """Extract category-grant relationships"""
-    if categories_df is None or keywords_df is None:
-        return pd.DataFrame()
-    
-    records = []
-    for cat_name, cat in categories_df.iterrows():
-        cat_keywords = cat.get('keywords', [])
-        if not isinstance(cat_keywords, list):
-            continue
-        
-        for kw in cat_keywords:
-            # Try to find keyword by index first
-            if kw in keywords_df.index:
-                kw_row = keywords_df.loc[[kw]]
-            else:
-                # Otherwise try by name column if it exists
-                if 'name' in keywords_df.columns:
-                    kw_row = keywords_df[keywords_df['name'] == kw]
-                else:
-                    continue
-            
-            if not kw_row.empty:
-                grants = kw_row.iloc[0].get('grants', [])
-                if isinstance(grants, list):
-                    for grant_id in grants:
-                        records.append({'category': cat_name, 'grant_id': grant_id})
-    
-    return pd.DataFrame(records)
+render_page_links()
 
 
 def create_category_years_table(categories_df, keywords_df, grants_df):
     """Create a table with one row per category per year based on active grants"""
     category_grant_links = get_category_grant_links(categories_df, keywords_df)
-    
-    if category_grant_links.empty:
-        return pd.DataFrame()
-    
-    merged = category_grant_links.merge(
-        grants_df[['start_year', 'end_year', 'funding_amount', 'source']], 
-        left_on='grant_id', 
-        right_index=True, 
-        how='inner'
-    )
-    
-    records = []
-    for _, row in merged.iterrows():
-        start = row.get('start_year')
-        end = row.get('end_year', start)
-        if pd.isna(start):
-            continue
-        start = int(start)
-        end = int(end) if not pd.isna(end) else start
-        
-        for year in range(start, end + 1):
-            records.append({
-                'category': row['category'],
-                'year': year,
-                'grant_id': row['grant_id'],
-                'funding_amount': row.get('funding_amount', 0),
-                'source': row.get('source', '')
-            })
-    
-    return pd.DataFrame(records)
+    return expand_links_to_years(category_grant_links, grants_df, 'category', 
+                                 use_active_period=True, include_source=True)
 
 
 def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_keywords, 

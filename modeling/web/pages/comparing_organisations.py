@@ -13,7 +13,7 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data
+from shared_utils import load_data, render_page_links, get_category_grant_links
 
 st.set_page_config(
     page_title="Comparing Organisations",
@@ -21,34 +21,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+render_page_links()
 
-def get_category_grant_links(categories_df, keywords_df):
-    """Extract category-grant relationships"""
-    if categories_df is None or keywords_df is None:
-        return pd.DataFrame()
-    
-    records = []
-    for cat_name, cat in categories_df.iterrows():
-        cat_keywords = cat.get('keywords', [])
-        if not isinstance(cat_keywords, list):
-            continue
-        
-        for kw in cat_keywords:
-            if kw in keywords_df.index:
-                kw_row = keywords_df.loc[[kw]]
-            else:
-                if 'name' in keywords_df.columns:
-                    kw_row = keywords_df[keywords_df['name'] == kw]
-                else:
-                    continue
-            
-            if not kw_row.empty:
-                grants = kw_row.iloc[0].get('grants', [])
-                if isinstance(grants, list):
-                    for grant_id in grants:
-                        records.append({'category': cat_name, 'grant_id': grant_id})
-    
-    return pd.DataFrame(records)
+# Cache expensive category-grant link computation
+@st.cache_data
+def get_category_grant_links_cached():
+    keywords_df, _, categories_df = load_data()
+    return get_category_grant_links(categories_df, keywords_df)
 
 
 def filter_grants_by_organisations(grants_df, organisation_ids):
@@ -67,6 +46,7 @@ def calculate_category_metrics_by_year(grants_df, categories_df, keywords_df, se
     if grants_df.empty or categories_df is None or keywords_df is None:
         return pd.DataFrame()
     
+    # Use cached category-grant links
     category_grant_links = get_category_grant_links(categories_df, keywords_df)
     
     if category_grant_links.empty:
@@ -88,37 +68,20 @@ def calculate_category_metrics_by_year(grants_df, categories_df, keywords_df, se
     if merged.empty:
         return pd.DataFrame()
     
-    records = []
-    for _, row in merged.iterrows():
-        year = row.get('start_year')
-        if pd.isna(year):
-            continue
-        year = int(year)
-        
-        org_ids = row.get('organisation_ids', [])
-        if not isinstance(org_ids, list):
-            org_ids = [org_ids] if pd.notna(org_ids) else []
-        
-        for org_id in org_ids:
-            records.append({
-                'category': row['category'],
-                'year': year,
-                'organisation_id': org_id,
-                'grant_id': row['grant_id'],
-                'funding_amount': row.get('funding_amount', 0)
-            })
+    # OPTIMIZED: Explode organisation_ids ONCE instead of row-by-row iteration
+    merged_exploded = merged.explode('organisation_ids')
+    merged_exploded = merged_exploded.dropna(subset=['start_year', 'organisation_ids'])
+    merged_exploded['year'] = merged_exploded['start_year'].astype(int)
     
-    df = pd.DataFrame(records)
-    
-    if df.empty:
-        return df
+    # Prepare for aggregation
+    merged_exploded = merged_exploded.rename(columns={'organisation_ids': 'organisation_id'})
     
     if metric == 'funding':
-        aggregated = df.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
+        aggregated = merged_exploded.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
             'funding_amount': 'sum'
         }).rename(columns={'funding_amount': 'value'})
     else:
-        aggregated = df.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
+        aggregated = merged_exploded.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
             'grant_id': 'count'
         }).rename(columns={'grant_id': 'value'})
     
@@ -228,19 +191,44 @@ def calculate_category_slopes(data):
     return slopes
 
 
-def get_top_and_bottom_slope_categories(slopes, n=3):
-    """Get categories with the n highest and n lowest slopes"""
+def get_top_and_bottom_slope_categories(slopes, n=3, min_threshold=5):
+    """Get categories with the n highest and n lowest slopes
+    
+    Args:
+        slopes: List of slope dictionaries with category, slope, dx, dy
+        n: Number of top and bottom categories to return
+        min_threshold: Minimum total activity (grants/funding) required for both groups
+    """
     if not slopes:
         return []
     
-    # Filter out infinite slopes for ranking
-    finite_slopes = [s for s in slopes if not (s['slope'] == float('inf') or s['slope'] == float('-inf'))]
+    # Filter out categories with low activity in either group
+    # Both groups should have at least min_threshold total change
+    filtered_slopes = []
+    for s in slopes:
+        # Check if both groups have sufficient activity
+        org1_total = abs(s['dx'])  # Total change for org1
+        org2_total = abs(s['dy'])  # Total change for org2
+        
+        # Both groups must have at least min_threshold activity
+        if org1_total >= min_threshold and org2_total >= min_threshold:
+            # Also filter out infinite slopes for ranking
+            if not (s['slope'] == float('inf') or s['slope'] == float('-inf')):
+                filtered_slopes.append(s)
     
-    if not finite_slopes:
-        return [s['category'] for s in slopes[:min(10, len(slopes))]]
+    # If we don't have enough categories after filtering, lower the threshold
+    if len(filtered_slopes) < n * 2 and min_threshold > 1:
+        return get_top_and_bottom_slope_categories(slopes, n=n, min_threshold=max(1, min_threshold // 2))
+    
+    if not filtered_slopes:
+        # Fallback to any categories with finite slopes
+        finite_slopes = [s for s in slopes if not (s['slope'] == float('inf') or s['slope'] == float('-inf'))]
+        if not finite_slopes:
+            return [s['category'] for s in slopes[:min(10, len(slopes))]]
+        return [s['category'] for s in finite_slopes[:min(10, len(finite_slopes))]]
     
     # Sort by slope
-    sorted_slopes = sorted(finite_slopes, key=lambda x: x['slope'])
+    sorted_slopes = sorted(filtered_slopes, key=lambda x: x['slope'])
     
     # Get bottom n and top n
     bottom_n = sorted_slopes[:min(n, len(sorted_slopes))]
@@ -263,9 +251,29 @@ def get_top_and_bottom_slope_categories(slopes, n=3):
 
 
 def select_organisations_widget(label, key_prefix, organisation_options, default_regex=""):
-    """Widget for selecting organisations with regex or multiselect"""
+    """Widget for selecting organisations with regex or multiselect
+    
+    Returns:
+        tuple: (selected_orgs, label_text) where label_text is the auto-generated label
+    """
+    # Add checkbox to select all organisations
+    select_all = st.checkbox(
+        f"Select all organisations for {label}",
+        key=f"{key_prefix}_select_all",
+        help="Select all available organisations"
+    )
+    
+    if select_all:
+        st.success(f"Selected all {len(organisation_options)} organisations")
+        with st.expander("Show selected organisations"):
+            for org in organisation_options[:20]:
+                st.write(f"• {org}")
+            if len(organisation_options) > 20:
+                st.write(f"... and {len(organisation_options) - 20} more")
+        return organisation_options, "All Organisations"
+    
     search_phrase = st.text_input(
-        f"{label} (regex)",
+        f"Filter {label.lower()} (regex)",
         value=default_regex,
         key=f"{key_prefix}_regex",
         help="Type a regex pattern to select organisations, or leave empty to use multiselect"
@@ -273,8 +281,7 @@ def select_organisations_widget(label, key_prefix, organisation_options, default
     
     if search_phrase:
         try:
-            normalized_pattern = search_phrase.replace(' ', '[_ ]')
-            mask = pd.Series(organisation_options).str.contains(normalized_pattern, case=False, regex=True, na=False)
+            mask = pd.Series(organisation_options).str.contains(search_phrase, case=False, regex=True, na=False)
             selected_orgs = pd.Series(organisation_options)[mask].tolist()
             if selected_orgs:
                 st.success(f"Selected {len(selected_orgs)} organisations matching pattern")
@@ -283,13 +290,14 @@ def select_organisations_widget(label, key_prefix, organisation_options, default
                         st.write(f"• {org}")
                     if len(selected_orgs) > 20:
                         st.write(f"... and {len(selected_orgs) - 20} more")
-                return selected_orgs
+                # Use the regex pattern as the label
+                return selected_orgs, search_phrase
             else:
                 st.warning("No organisations match the regex pattern")
-                return []
+                return [], ""
         except re.error as e:
             st.error(f"Invalid regex pattern: {str(e)}")
-            return []
+            return [], ""
     else:
         selected_orgs = st.multiselect(
             f"Select {label.lower()}",
@@ -298,7 +306,13 @@ def select_organisations_widget(label, key_prefix, organisation_options, default
             key=f"{key_prefix}_multiselect",
             help="Select one or more organisations"
         )
-        return selected_orgs
+        # Use concatenation of org names as label (truncated if too long)
+        if selected_orgs:
+            label_text = ", ".join(selected_orgs)
+            if len(label_text) > 50:
+                label_text = f"{len(selected_orgs)} organisations"
+            return selected_orgs, label_text
+        return selected_orgs, ""
 
 
 def create_connected_scatterplot(data, org1_label, org2_label, category_label, metric_label):
@@ -440,7 +454,7 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
     organisation_options = organisation_counts.index.tolist()
     
     st.sidebar.subheader("Group 1 (X-axis)")
-    org_group1 = select_organisations_widget(
+    org_group1, org1_label = select_organisations_widget(
         "Organisation Group 1", 
         "org1", 
         organisation_options,
@@ -450,11 +464,11 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
     st.sidebar.markdown("---")
     
     st.sidebar.subheader("Group 2 (Y-axis)")
-    org_group2 = select_organisations_widget(
+    org_group2, org2_label = select_organisations_widget(
         "Organisation Group 2", 
         "org2", 
         organisation_options,
-        default_regex="au:monash_university"
+        default_regex="swinburne"
     )
     
     if not org_group1:
@@ -473,19 +487,46 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
     
     category_options = categories_df.index.tolist()
     
-    # Use auto-selected categories if available, otherwise use first category
-    default_categories = auto_selected_categories if auto_selected_categories else [category_options[0]]
+    # Add regex filter for categories
+    category_regex = st.sidebar.text_input(
+        "Filter categories (regex)",
+        value="",
+        key="category_regex",
+        help="Type a regex pattern to select categories, or leave empty to use multiselect"
+    ).strip()
     
-    selected_categories = st.sidebar.multiselect(
-        "Select categories to compare",
-        options=category_options,
-        default=default_categories,
-        help="Auto-selected: 3 largest and 3 smallest slope categories"
-    )
-    
-    if not selected_categories:
-        st.sidebar.warning("Please select at least one category")
-        return None
+    if category_regex:
+        try:
+            mask = pd.Series(category_options).str.contains(category_regex, case=False, regex=True, na=False)
+            filtered_categories = pd.Series(category_options)[mask].tolist()
+            if filtered_categories:
+                st.sidebar.success(f"Selected {len(filtered_categories)} categories matching pattern")
+                with st.sidebar.expander("Show selected categories"):
+                    for cat in filtered_categories[:20]:
+                        st.write(f"• {cat}")
+                    if len(filtered_categories) > 20:
+                        st.write(f"... and {len(filtered_categories) - 20} more")
+                selected_categories = filtered_categories
+            else:
+                st.sidebar.warning("No categories match the regex pattern")
+                return None
+        except re.error as e:
+            st.sidebar.error(f"Invalid regex pattern: {str(e)}")
+            return None
+    else:
+        # Use auto-selected categories if available, otherwise use first category
+        default_categories = auto_selected_categories if auto_selected_categories else [category_options[0]]
+        
+        selected_categories = st.sidebar.multiselect(
+            "Select categories to compare",
+            options=category_options,
+            default=default_categories,
+            help="Auto-selected: 3 largest and 3 smallest slope categories"
+        )
+        
+        if not selected_categories:
+            st.sidebar.warning("Please select at least one category")
+            return None
     
     st.sidebar.header("Filters")
     
@@ -497,8 +538,13 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
     
     metric = st.sidebar.radio("Metric", ["count", "funding"], index=0)
     
-    org1_label = st.sidebar.text_input("Group 1 Label", value="Group 1")
-    org2_label = st.sidebar.text_input("Group 2 Label", value="Group 2")
+    min_threshold = st.sidebar.slider(
+        "Minimum activity threshold for auto-selection",
+        min_value=1,
+        max_value=20,
+        value=5,
+        help="Minimum cumulative grants/funding required in both groups for a category to be auto-selected"
+    )
     
     return {
         'org_group1': org_group1,
@@ -508,7 +554,8 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
         'selected_categories': selected_categories,
         'year_min': year_range[0],
         'year_max': year_range[1],
-        'metric': metric
+        'metric': metric,
+        'min_threshold': min_threshold
     }
 
 
@@ -532,6 +579,7 @@ def main():
         return
     
     with st.spinner("Preparing comparison data..."):
+        # Step 1: Filter grants
         org1_grants = filter_grants_by_organisations(grants_df, config['org_group1'])
         org2_grants = filter_grants_by_organisations(grants_df, config['org_group2'])
         
@@ -539,7 +587,7 @@ def main():
             st.warning("No grants found for selected organisations.")
             return
         
-        # Calculate data for ALL categories to find slopes
+        # Step 2: Calculate metrics for ALL categories to find slopes
         org1_data_all = calculate_category_metrics_by_year(
             org1_grants, 
             categories_df, 
@@ -558,12 +606,17 @@ def main():
         )
         org2_data_all['org_group'] = 'org2'
         
+        # Step 3: Combine and calculate cumulative metrics
         combined_data_all = pd.concat([org1_data_all, org2_data_all], ignore_index=True)
         combined_data_all = calculate_cumulative_metrics(combined_data_all)
         
-        # Calculate slopes for all categories
+        # Step 4: Calculate slopes for auto-selection
         slopes = calculate_category_slopes(combined_data_all)
-        auto_categories = get_top_and_bottom_slope_categories(slopes, n=3)
+        auto_categories = get_top_and_bottom_slope_categories(
+            slopes, 
+            n=3, 
+            min_threshold=config['min_threshold']
+        )
         
         # Update session state if categories changed
         if st.session_state.auto_categories != auto_categories:
@@ -612,7 +665,6 @@ def main():
             st.info("💡 **How to read this chart:**\n"
                    "- Each line represents a category's **cumulative** trajectory over time\n"
                    "- Values accumulate from start year onwards (grants persist after they end)\n"
-                   "- Marker color indicates time: darker (earlier years) → lighter (later years)\n"
                    "- Points closer to the diagonal indicate similar cumulative activity between groups\n"
                    "- Trajectories typically move away from origin showing accumulated growth\n"
                    "- Year labels are shown at the start and end of each trajectory")

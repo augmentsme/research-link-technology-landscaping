@@ -14,237 +14,311 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, load_css
+from shared_utils import load_data, load_css, render_page_links
 
 st.set_page_config(
     page_title="Research Landscape",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-st.logo("web/static/media/logo.png", size="large", icon_image="web/static/media/favicon.png")
-
 load_css()
 
-col1, col2, col3, col4 = st.columns(4, width=820)
-
-col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
-col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
-col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
-col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
-
-@dataclass
-class TreemapConfig:
-    """Configuration for treemap visualization"""
-    max_research_fields: Optional[int]
-    max_categories_per_field: Optional[int]
-    max_keywords_per_category: Optional[int]
-    treemap_height: int
-    font_size: int
+render_page_links()
 
 
-class TreemapVisualizer:
-    """Manages the research landscape treemap visualization"""
-
-    def __init__(self, categories_df: pd.DataFrame):
-        cleaned = categories_df.fillna(0)
-        self.categories_df = cleaned.reset_index(drop=True)
-        self.categories_list = self.categories_df.to_dict('records')
+def create_treemap_data(categories: List[Dict[str, Any]], 
+                        max_research_fields: Optional[int] = None,
+                        max_categories_per_field: Optional[int] = None,
+                        max_keywords_per_category: Optional[int] = None) -> pd.DataFrame:
+    """Create hierarchical data structure for treemap visualization"""
+    treemap_data = []
     
-    def render_visualization(self, config: TreemapConfig):
-        """Render the treemap visualization with given configuration"""
-        with st.spinner("Creating research landscape treemap..."):
-            fig_treemap = create_research_landscape_treemap(
-                categories=self.categories_list,
-                classification_results=[],  # Empty for now
-                title="Research Landscape: Research Fields → Categories → Keywords",
-                height=config.treemap_height,
-                font_size=config.font_size,
-                max_research_fields=config.max_research_fields,
-                max_categories_per_field=config.max_categories_per_field,
-                max_keywords_per_category=config.max_keywords_per_category
-            )
-            
-            if fig_treemap is not None:
-                st.plotly_chart(fig_treemap, use_container_width=True, key="research_landscape_plot")
-                
-                # Show statistics
-                self._show_statistics()
-                
-                # Debug expander showing underlying data
-                self._show_debug_data()
-            else:
-                st.warning("No data available for the selected parameters.")
-
-    def _show_statistics(self):
-        """Display statistics about the research landscape"""
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("Total Categories", len(self.categories_df))
-        with col2:
-            total_keywords = sum(len(cat.get('keywords', [])) for cat in self.categories_list)
-            st.metric("Total Keywords", total_keywords)
-        with col3:
-            unique_fields = len(
-                set(
-                    cat.get('field_of_research', cat.get('for_code', 'Unknown'))
-                    for cat in self.categories_list
-                )
-            )
-            st.metric("Unique Research Fields", unique_fields)
-
-    def _show_debug_data(self):
-        """Show debug data in an expander"""
-        with st.expander("Debug: View Underlying Data", expanded=False):
-            st.subheader("Categories DataFrame")
-            st.write(f"**Shape:** {self.categories_df.shape}")
-            st.dataframe(self.categories_df, use_container_width=True)
-
-            st.subheader("Categories List (Dict Format)")
-            st.write(f"**Length:** {len(self.categories_list)} categories")
-
-
-class SidebarControls:
-    """Handles all sidebar UI controls"""
+    field_groups = group_categories_by_field(categories)
     
-    def __init__(self):
-        pass
+    if max_research_fields is not None:
+        field_groups = limit_research_fields(field_groups, max_research_fields)
     
-    def render_sidebar(self) -> tuple[TreemapConfig, bool]:
-        """Render all sidebar controls and return configuration"""
-        st.sidebar.empty()
-        
-        with st.sidebar:
-            st.subheader("Treemap Settings")
-            
-            config = self._render_treemap_settings()
-            update_settings = self._render_update_button()
-            
-            return config, update_settings
-    
-    def _render_treemap_settings(self) -> TreemapConfig:
-        """Render treemap configuration controls"""
-        # Filtering Options in Expander
-        with st.expander("Filtering Options", expanded=True):
-            max_research_fields = st.selectbox(
-                "Maximum Research Fields",
-                options=[None, 5, 10, 15, 20],
-                index=2,
-                format_func=lambda x: "All" if x is None else str(x),
-                help="Maximum number of research fields to include",
-                key="landscape_max_research_fields"
-            )
-            
-            max_categories_per_field = st.selectbox(
-                "Maximum categories per research field",
-                options=[None, 3, 5, 10, 15],
-                index=2,
-                format_func=lambda x: "All" if x is None else str(x),
-                help="Maximum number of categories to show per research field",
-                key="landscape_max_categories_per_field"
-            )
-            
-            max_keywords_per_category = st.selectbox(
-                "Maximum keywords per category",
-                options=[None, 5, 10, 20, 30],
-                index=1,
-                format_func=lambda x: "All" if x is None else str(x),
-                help="Maximum number of keywords to show per category",
-                key="landscape_max_keywords_per_category"
-            )
-        
-        # Display Settings in Expander
-        with st.expander("⚙️ Display Settings", expanded=False):
-            treemap_height = st.slider(
-                "Visualization height",
-                min_value=400,
-                max_value=1200,
-                value=800,
-                step=50,
-                key="landscape_treemap_height"
-            )
-            
-            font_size = st.slider(
-                "Font size",
-                min_value=8,
-                max_value=24,
-                value=18,
-                help="Adjust text size in the treemap boxes",
-                key="landscape_font_size"
-            )
-        
-        return TreemapConfig(
-            max_research_fields=max_research_fields,
-            max_categories_per_field=max_categories_per_field,
-            max_keywords_per_category=max_keywords_per_category,
-            treemap_height=treemap_height,
-            font_size=font_size
+    for field_name, field_data in field_groups.items():
+        add_field_level_data(
+            treemap_data, field_name, field_data, 
+            max_categories_per_field, max_keywords_per_category
         )
     
-    def _render_update_button(self) -> bool:
-        """Render update settings button"""
-        st.markdown("---")
-        return st.button("Update Settings", type="primary", use_container_width=True, key="landscape_update_button")
+    return pd.DataFrame(treemap_data)
 
 
-class ResearchLandscapePage:
-    """Main page class that orchestrates all components"""
+def group_categories_by_field(categories: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Group categories by research field"""
+    field_groups = {}
     
-    def __init__(self):
-        self.keywords_df = None
-        self.grants_df = None
-        self.categories_df = None
-        self.setup_page()
-    
-    def setup_page(self):
-
+    for category in categories:
+        field_of_research = category.get('field_of_research', 'Unknown')
         
-        st.header("Research Landscape Treemap")
-        st.markdown("Explore the hierarchical structure of research categories and keywords.")
+        if pd.isna(field_of_research) or not field_of_research:
+            field_of_research = 'Unknown'
         
-        self._load_data()
+        field_display_name = field_of_research.replace('_', ' ').title()
         
-        if self.categories_df is None:
-            st.error("Unable to load categories data. Please check your data files.")
-            return
+        if field_of_research not in field_groups:
+            field_groups[field_of_research] = {
+                'name': field_display_name,
+                'categories': []
+            }
+        field_groups[field_of_research]['categories'].append(category)
     
-    def _load_data(self):
-        """Load and store data"""
-        self.keywords_df, self.grants_df, self.categories_df = load_data()
-    
-    def run(self):
-        """Main execution method"""
-        # Create sidebar controls
-        sidebar_controls = SidebarControls()
-        
-        # Get configuration from sidebar
-        treemap_config, update_settings = sidebar_controls.render_sidebar()
+    return field_groups
 
-        should_generate = self._should_generate_visualization(update_settings)
 
-        if should_generate:
-            visualizer = TreemapVisualizer(self.categories_df)
-            visualizer.render_visualization(treemap_config)
-        else:
-            st.info("Adjust settings in the sidebar and click 'Update Settings' to generate a new visualization.")
+def limit_research_fields(field_groups: Dict[str, Dict[str, Any]], 
+                         max_research_fields: int) -> Dict[str, Dict[str, Any]]:
+    """Limit research fields by sorting by total keyword count"""
+    field_items = []
+    for field_name, field_data in field_groups.items():
+        total_keywords = sum(len(cat.get('keywords', [])) for cat in field_data['categories'])
+        field_items.append((field_name, field_data, total_keywords))
     
-    def _should_generate_visualization(self, update_settings: bool) -> bool:
-        """Determine if visualization should be generated"""
-        # Use session state to track if this is the first load
-        if "landscape_initialized" not in st.session_state:
-            st.session_state.landscape_initialized = True
-            return True
-        elif update_settings:
-            return True
-        else:
-            return False
+    field_items.sort(key=lambda x: x[2], reverse=True)
+    return {item[0]: item[1] for item in field_items[:max_research_fields]}
+
+
+def limit_categories(categories: List[Dict[str, Any]], max_categories: int) -> List[Dict[str, Any]]:
+    """Limit categories by keyword count"""
+    category_items = []
+    for category in categories:
+        keyword_count = len(category.get('keywords', []))
+        category_items.append((category, keyword_count))
+    
+    category_items.sort(key=lambda x: x[1], reverse=True)
+    return [item[0] for item in category_items[:max_categories]]
+
+
+def add_field_level_data(treemap_data: List[Dict[str, Any]], field_name: str, 
+                        field_data: Dict[str, Any], max_categories_per_field: Optional[int],
+                        max_keywords_per_category: Optional[int]):
+    """Add field-level data to treemap"""
+    field_display_name = field_data['name']
+    
+    categories_for_this_field = field_data['categories']
+    if max_categories_per_field is not None:
+        categories_for_this_field = limit_categories(categories_for_this_field, max_categories_per_field)
+    
+    field_keyword_count = sum(
+        len(cat.get('keywords', [])[:max_keywords_per_category] if max_keywords_per_category else cat.get('keywords', []))
+        for cat in categories_for_this_field
+    )
+    field_size = max(1, field_keyword_count)
+    
+    treemap_data.append({
+        'id': f"FIELD_{field_name}",
+        'parent': '',
+        'name': field_display_name,
+        'value': field_size,
+        'level': 'Research Field',
+        'item_type': 'research_field'
+    })
+    
+    add_category_and_keyword_data(
+        treemap_data, field_name, categories_for_this_field, max_keywords_per_category
+    )
+
+
+def add_category_and_keyword_data(treemap_data: List[Dict[str, Any]], field_name: str,
+                                 categories: List[Dict[str, Any]], max_keywords_per_category: Optional[int]):
+    """Add category and keyword level data to treemap"""
+    for category in categories:
+        category_name = category['name']
+        keywords = category.get('keywords', [])
+        
+        if max_keywords_per_category is not None:
+            keywords = keywords[:max_keywords_per_category]
+        
+        category_size = max(1, len(keywords))
+        
+        treemap_data.append({
+            'id': f"FIELD_{field_name} >> {category_name}",
+            'parent': f"FIELD_{field_name}",
+            'name': category_name,
+            'value': category_size,
+            'level': 'Category',
+            'item_type': 'category'
+        })
+        
+        for keyword in keywords:
+            treemap_data.append({
+                'id': f"FIELD_{field_name} >> {category_name} >> KW: {keyword}",
+                'parent': f"FIELD_{field_name} >> {category_name}",
+                'name': keyword,
+                'value': 1,
+                'level': 'Keyword',
+                'item_type': 'keyword'
+            })
+
+
+def create_treemap(categories: List[Dict[str, Any]],
+                  title: str = 'Research Landscape: Research Fields → Categories → Keywords',
+                  height: int = 800,
+                  font_size: int = 18,
+                  max_research_fields: Optional[int] = None,
+                  max_categories_per_field: Optional[int] = None,
+                  max_keywords_per_category: Optional[int] = None) -> Optional[go.Figure]:
+    """Create a comprehensive treemap visualization of the research landscape"""
+    
+    if not categories:
+        return None
+    
+    treemap_df = create_treemap_data(
+        categories, 
+        max_research_fields=max_research_fields,
+        max_categories_per_field=max_categories_per_field,
+        max_keywords_per_category=max_keywords_per_category
+    )
+    
+    if treemap_df.empty:
+        return None
+    
+    color_map = {
+        'Research Field': '#1f77b4',
+        'Category': '#ff7f0e',
+        'Keyword': '#2ca02c',
+    }
+    
+    fig = px.treemap(
+        treemap_df,
+        ids='id',
+        names='name',
+        parents='parent', 
+        values='value',
+        title=title,
+        color='level',
+        color_discrete_map=color_map,
+        hover_data=['level', 'value', 'item_type']
+    )
+    
+    fig.update_layout(
+        font_size=font_size,
+        title_font_size=font_size + 7,
+        height=height,
+        margin=dict(t=60, l=25, r=25, b=25)
+    )
+    
+    fig.update_traces(
+        textinfo="label+value",
+        textfont_size=font_size,
+        textposition="middle center",
+        marker=dict(
+            line=dict(width=2, color='white')
+        )
+    )
+    
+    return fig
+
+
+def render_sidebar(categories_df: pd.DataFrame):
+    """Render sidebar controls"""
+    st.sidebar.header("Treemap Settings")
+    
+    with st.sidebar.expander("Filtering Options", expanded=True):
+        max_research_fields = st.selectbox(
+            "Maximum Research Fields",
+            options=[None, 5, 10, 15, 20],
+            index=1,
+            format_func=lambda x: "All" if x is None else str(x),
+            help="Maximum number of research fields to include"
+        )
+        
+        max_categories_per_field = st.selectbox(
+            "Maximum categories per research field",
+            options=[None, 3, 5, 10, 15],
+            index=2,
+            format_func=lambda x: "All" if x is None else str(x),
+            help="Maximum number of categories to show per research field"
+        )
+        
+        max_keywords_per_category = st.selectbox(
+            "Maximum keywords per category",
+            options=[None, 5, 10, 20, 30],
+            index=1,
+            format_func=lambda x: "All" if x is None else str(x),
+            help="Maximum number of keywords to show per category"
+        )
+    
+    with st.sidebar.expander("⚙️ Display Settings", expanded=False):
+        treemap_height = st.slider(
+            "Visualization height",
+            min_value=400,
+            max_value=1200,
+            value=800,
+            step=50
+        )
+        
+        font_size = st.slider(
+            "Font size",
+            min_value=8,
+            max_value=24,
+            value=24,
+            help="Adjust text size in the treemap boxes"
+        )
+    
+    return {
+        'max_research_fields': max_research_fields,
+        'max_categories_per_field': max_categories_per_field,
+        'max_keywords_per_category': max_keywords_per_category,
+        'treemap_height': treemap_height,
+        'font_size': font_size
+    }
+
+
+def show_statistics(categories_list: List[Dict[str, Any]]):
+    """Display statistics about the research landscape"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Categories", len(categories_list))
+    with col2:
+        total_keywords = sum(len(cat.get('keywords', [])) for cat in categories_list)
+        st.metric("Total Keywords", total_keywords)
+    with col3:
+        unique_fields = len(
+            set(
+                cat.get('field_of_research', 'Unknown')
+                for cat in categories_list
+            )
+        )
+        st.metric("Unique Research Fields", unique_fields)
 
 
 def main():
-    """Main function to run the research landscape page"""
-    landscape_page = ResearchLandscapePage()
-    landscape_page.run()
+    st.header("Research Landscape Treemap")
+    st.markdown("Explore the hierarchical structure of research categories and keywords.")
+    
+    _, _, categories_df = load_data()
+    
+    if categories_df is None or categories_df.empty:
+        st.error("Unable to load categories data.")
+        return
+    
+    # Reset index to include 'name' as a column instead of dropping it
+    categories_df = categories_df.fillna(0).reset_index()
+    categories_list = categories_df.to_dict('records')
+    
+    config = render_sidebar(categories_df)
+    
+    with st.spinner("Creating research landscape treemap..."):
+        fig = create_treemap(
+            categories=categories_list,
+            title="Research Landscape: Research Fields → Categories → Keywords",
+            height=config['treemap_height'],
+            font_size=config['font_size'],
+            max_research_fields=config['max_research_fields'],
+            max_categories_per_field=config['max_categories_per_field'],
+            max_keywords_per_category=config['max_keywords_per_category']
+        )
+        
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+            show_statistics(categories_list)
+        else:
+            st.warning("No data available for the selected parameters.")
 
 
 if __name__ == "__main__":

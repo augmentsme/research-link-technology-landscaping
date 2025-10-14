@@ -7,7 +7,8 @@ import streamlit as st
 import pandas as pd
 from shared_utils import (load_data, get_unique_funders, 
                           get_unique_sources, get_unique_keyword_types, 
-                          get_unique_research_fields_from_categories, load_css)
+                          get_unique_research_fields_from_categories, load_css,
+                          render_page_links)
 
 # Configure the main page
 st.set_page_config(
@@ -18,12 +19,7 @@ st.set_page_config(
 
 load_css()
 
-col1, col2, col3, col4 = st.columns(4, width=820)
-
-col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
-col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
-col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
-col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
+render_page_links()
 
 # Main page content
 st.title("Research Landscape Analysis")

@@ -19,7 +19,8 @@ if web_dir not in sys.path:
 
 from shared_utils import (  # noqa: E402
     format_research_field,
-    load_data
+    load_data,
+    load_css
 )
 from web.sidebar import SidebarControl  # noqa: E402
 from visualisation import (  # noqa: E402
@@ -37,6 +38,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
+
+col1, col2, col3, col4 = st.columns(4, width=820)
+
+col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
+col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
+col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
+col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
 
 @dataclass
 class KeywordFilterConfig:
@@ -301,7 +311,7 @@ class KeywordTrendsVisualizer:
             fig_trends = visualizer.create_plot(viz_data, viz_config)
             
             if fig_trends is not None:
-                st.plotly_chart(fig_trends, use_container_width=True)
+                st.plotly_chart(fig_trends, use_container_width=True, key="keywords_trends_plot")
                 self._show_statistics(filter_config, selection_config, selected_keywords)
                 self._show_debug_data(filtered_keywords, viz_data)
             else:

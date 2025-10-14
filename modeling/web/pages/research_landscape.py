@@ -15,13 +15,25 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data  # noqa: E402
+from shared_utils import load_data, load_css  # noqa: E402
 from visualisation import create_research_landscape_treemap  # noqa: E402
 st.set_page_config(
     page_title="Research Landscape",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+st.logo("web/static/media/logo.png", size="large", icon_image="web/static/media/favicon.png")
+
+load_css()
+
+col1, col2, col3, col4 = st.columns(4, width=820)
+
+col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
+col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
+col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
+col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
+
 @dataclass
 class TreemapConfig:
     """Configuration for treemap visualization"""
@@ -55,7 +67,7 @@ class TreemapVisualizer:
             )
             
             if fig_treemap is not None:
-                st.plotly_chart(fig_treemap, use_container_width=True)
+                st.plotly_chart(fig_treemap, use_container_width=True, key="research_landscape_plot")
                 
                 # Show statistics
                 self._show_statistics()
@@ -209,7 +221,7 @@ class ResearchLandscapePage:
         
         # Get configuration from sidebar
         treemap_config, update_settings = sidebar_controls.render_sidebar()
-        
+
         should_generate = self._should_generate_visualization(update_settings)
 
         if should_generate:

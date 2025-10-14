@@ -16,7 +16,7 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data  # noqa: E402
+from shared_utils import load_data, load_css  # noqa: E402
 from web.sidebar import SidebarControl  # noqa: E402
 
 import config
@@ -33,6 +33,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
+
+col1, col2, col3, col4 = st.columns(4, width=820)
+
+col1.page_link(page="pages/categories.py", width="stretch", label="Categories", icon=":material/category:")
+col2.page_link(page="pages/grants.py", width="stretch", label="Grants", icon=":material/library_books:")
+col3.page_link(page="pages/keywords.py", width="stretch", label="Keywords", icon=":material/tag:")
+col4.page_link(page="pages/research_landscape.py", width="stretch", label="Research Landscapes", icon=":material/document_search:")
 
 @dataclass
 class CategoryFilterConfig:
@@ -413,7 +422,7 @@ class CategoryTrendsTab:
             # Configure visualization
             cumulative_text = "Cumulative" if trends_config.use_cumulative else "Yearly"
             display_text = metric_label
-            
+
             # Create appropriate title based on selection method
             if trends_config.selection_method == "custom":
                 title = f"{cumulative_text} Category Trends Over Time - Custom Selection ({len(selected_categories)} categories)"
@@ -528,7 +537,7 @@ class CategoriesPage:
         )
         
         self.trends_tab.render_tab(filter_config, trends_config)
-            
+
 
 
 def main():

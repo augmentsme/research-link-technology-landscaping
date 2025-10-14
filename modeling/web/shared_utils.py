@@ -28,14 +28,27 @@ def format_research_field(field: Optional[str]) -> str:
         return "Unspecified"
     return str(field)
 
+def hash_df(df: pd.DataFrame) -> int:
+    """Generate a hash for a DataFrame based on its content."""
+    if "id" in df.columns:
+        return pd.util.hash_pandas_object(df.id).sum()
+    elif "name" in df.columns:
+        return pd.util.hash_pandas_object(df.name).sum()
+
 # Load data with caching
-@st.cache_resource
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def load_data():
     """Load and cache the data"""
     try:
         keywords = config.Keywords.load()
+        keywords = keywords[["name", "type", "description", "grants", "organisation_ids"]]
+        keywords = keywords.set_index("name")
         grants = config.Grants.load()
+        grants = grants[["id", "title", "grant_summary", "funder", "funding_amount", "source", "start_year", "end_year", "organisation_ids"]]
+        grants = grants.set_index("id")
         categories = config.Categories.load()
+        categories = categories[["name", "description", "field_of_research", "keywords"]]
+        categories = categories.set_index("name")
         return keywords, grants, categories
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -59,22 +72,22 @@ def load_field_display_names():
         st.error(f"Error loading FOR codes data: {e}")
         return {}
 
-@st.cache_data
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def get_unique_funders(grants):
     """Get sorted list of unique funders from grants data"""
     return sorted(grants['funder'].dropna().unique())
 
-@st.cache_data
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def get_unique_sources(grants):
     """Get sorted list of unique sources from grants data"""
     return sorted(grants['source'].dropna().unique())
 
-@st.cache_data
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})   
 def get_unique_keyword_types(keywords):
     """Get sorted list of unique keyword types from keywords data"""
     return sorted(keywords['type'].dropna().unique())
 
-@st.cache_data
+@st.cache_data(hash_funcs={pd.core.frame.DataFrame: hash_df})
 def get_unique_research_fields_from_categories(categories):
     """Get sorted list of unique research fields from categories data"""
     if categories is not None and 'field_of_research' in categories.columns:

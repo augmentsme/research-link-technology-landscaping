@@ -8,304 +8,238 @@ import plotly.graph_objects as go
 import sys
 from pathlib import Path
 
-# Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import (  # noqa: E402
-    format_research_field,
-    load_data
-)
-from precomputed import get_grant_years_table  # noqa: E402
-from visualisation import (  # noqa: E402
-    TrendsVisualizer,
-    TrendsConfig,
-)
-from web.sidebar import SidebarControl, FilterConfig, DisplayConfig  # noqa: E402
+from shared_utils import load_data
 
 st.set_page_config(
-    page_title="Grant",
+    page_title="Grant Analysis",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-class GrantFilterManager:
-    """Manages all data filtering operations"""
-    
-    def __init__(self, grants_df: pd.DataFrame):
-        self.grants_df = grants_df
-    
-    def apply_filters(self, config: FilterConfig) -> pd.DataFrame:
-        """Apply filters to grants dataframe"""
-        filtered_grants = self.grants_df.copy()
+
+
+def create_grant_years_table(grants_df: pd.DataFrame, active: bool = False) -> pd.DataFrame:
+    """Create a table with one row per grant per year per organization"""
+    records = []
+    for _, grant in grants_df.iterrows():
+        start = grant.get('start_year')
+        end = grant.get('end_year', start)
+        if pd.isna(start):
+            continue
+        start = int(start)
+        end = int(end) if not pd.isna(end) else start
         
-        # Apply source filter
-        if config.source_filter:
-            filtered_grants = filtered_grants[filtered_grants['source'].isin(config.source_filter)]
+        years = range(start, end + 1) if active else [start]
+        funding = grant.get('funding_amount', 0)
         
-            # Apply research field filter
-            if config.field_filter and 'primary_subject' in filtered_grants.columns:
-                filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
-
-        if config.use_active_grant_period and 'start_year' in filtered_grants.columns:
-            start_series = filtered_grants['start_year']
-            end_series = filtered_grants['end_year'] if 'end_year' in filtered_grants.columns else start_series
-            start_series = start_series.fillna(end_series)
-            end_series = end_series.fillna(start_series)
-            mask = pd.Series(True, index=filtered_grants.index)
-            if config.start_year_min is not None:
-                mask &= end_series >= config.start_year_min
-            if config.start_year_max is not None:
-                mask &= start_series <= config.start_year_max
-            filtered_grants = filtered_grants[mask]
-        else:
-            if config.start_year_min is not None and 'start_year' in filtered_grants.columns:
-                filtered_grants = filtered_grants[filtered_grants['start_year'] >= config.start_year_min]
-            if config.start_year_max is not None and 'start_year' in filtered_grants.columns:
-                filtered_grants = filtered_grants[filtered_grants['start_year'] <= config.start_year_max]
+        org_ids = grant.get('organisation_ids', [])
+        if not isinstance(org_ids, list):
+            org_ids = [org_ids] if pd.notna(org_ids) else []
         
-        return filtered_grants
-
-
-class GrantDistributionVisualizer:
-    """Manages the grant distribution visualization"""
-    
-    def __init__(self, grants_df: pd.DataFrame):
-        self.grants_df = grants_df
-        self.filter_manager = GrantFilterManager(grants_df)
-        self._start_year_records = get_grant_years_table(active=False)
-        self._active_year_records = get_grant_years_table(active=True)
-    
-    def render_tab(self, filter_config: FilterConfig, display_config: DisplayConfig):
-        """Render the grant distribution visualization tab"""
-        
-        should_generate = self._should_generate_visualization()
-        
-        if should_generate:
-            self._generate_visualization(filter_config, display_config)
-        else:
-            st.info("Adjust settings in the sidebar to customize the visualization.")
-    
-    def _should_generate_visualization(self) -> bool:
-        """Determine if visualization should be generated"""
-        if "distributions_initialized" not in st.session_state:
-            st.session_state.distributions_initialized = True
-            return True
-        return True  # Always generate when filters change
-    
-    def _generate_visualization(self, filter_config: FilterConfig, display_config: DisplayConfig):
-        """Generate and display the visualization"""
-        with st.spinner("Creating grant distribution visualization..."):
-            # Apply filters to grants
-            filtered_grants = self.filter_manager.apply_filters(filter_config)
-
-            if len(filtered_grants) == 0:
-                st.error("No grants found with the current filters. Please adjust your filter settings.")
-                return
-
-            grants_by_year_funder = self._prepare_aggregated_trends(filtered_grants, filter_config)
-
-            if grants_by_year_funder.empty:
-                st.warning("No grant activity within the selected period.")
-                return
-
-            # Create stacked area chart using generalized visualizer
-            fig = self._create_grants_visualization(grants_by_year_funder, filter_config, display_config)
+        if not org_ids:
+            continue
             
-            # Display the chart
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Show statistics
-            self._show_statistics(filtered_grants, grants_by_year_funder)
-            
-            # Debug expander showing underlying data
-            self._show_debug_data(filtered_grants, grants_by_year_funder)
+        for year in years:
+            for org_id in org_ids:
+                records.append({
+                    'grant_id': grant.name,
+                    'year': year,
+                    'organisation_id': org_id,
+                    'funding_amount': funding
+                })
     
-    def _prepare_aggregated_trends(self, filtered_grants: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
-        """Create aggregated metrics for grant trends"""
-        if filtered_grants.empty:
-            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
+    return pd.DataFrame(records)
 
-        grant_ids = pd.Index(filtered_grants['id']).unique()
-        if grant_ids.empty:
-            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
 
-        records_source = self._active_year_records if filter_config.use_active_grant_period else self._start_year_records
-        filtered_records = records_source[records_source['grant_id'].isin(grant_ids)]
-
-        filtered_records = filtered_records.dropna(subset=['funder'])
-        if filtered_records.empty:
-            return pd.DataFrame(columns=['start_year', 'funder', 'grant_count', 'total_funding'])
-
-        if filter_config.start_year_min is not None:
-            filtered_records = filtered_records[filtered_records['year'] >= filter_config.start_year_min]
-        if filter_config.start_year_max is not None:
-            filtered_records = filtered_records[filtered_records['year'] <= filter_config.start_year_max]
-
-        aggregated = filtered_records.groupby(['year', 'funder'], as_index=False).agg({
-            'grant_id': 'count',
-            'funding_credit': 'sum'
-        })
-
-        aggregated = aggregated.rename(columns={
-            'year': 'start_year',
-            'grant_id': 'grant_count',
-            'funding_credit': 'total_funding'
-        })
-        return aggregated
-
-    def _create_grants_visualization(self, grants_by_year_funder: pd.DataFrame, filter_config: FilterConfig, display_config: DisplayConfig) -> go.Figure:
-        """Create the grants visualization using the new TrendsVisualizer"""
-        
-        # Prepare data for the visualizer
-        # Rename columns to match expected format
-        viz_data = grants_by_year_funder.rename(columns={
-            'start_year': 'year',
-            'funder': 'funder',
-            'grant_count': 'grant_count',
-            'total_funding': 'total_funding'
-        })
-        
-        # Create title with filter information
-        title = self._create_chart_title(filter_config, display_config)
-
-        value_column = 'total_funding' if display_config.metric == "funding" else 'grant_count'
-        ranking_column = value_column
-        y_label = (
-            'Cumulative Funding Amount' if display_config.metric == "funding" and display_config.use_cumulative
-            else 'Funding Amount' if display_config.metric == "funding"
-            else 'Cumulative Grant Count' if display_config.use_cumulative
-            else 'Yearly Grant Count'
-        )
-        
-        # Configure the new visualizer for stacked area chart
-        viz_config = TrendsConfig(
-            entity_col='funder',
-            time_col='year',
-            value_col=value_column,
-            ranking_col=ranking_column,
-            max_entities=display_config.num_entities,
-            aggregation='sum',
-            use_cumulative=display_config.use_cumulative,
-            chart_type='stacked_area',
-            show_others=True,
-            title=title,
-            x_label='Year',
-            y_label=y_label,
-            height=600,
-            smooth_trends=display_config.smooth_trends,
-            smoothing_window=display_config.smoothing_window,
-        )
-        
-        # Create the visualization
-        visualizer = TrendsVisualizer()
-        return visualizer.create_plot(viz_data, viz_config)
+def apply_filters(grants_df: pd.DataFrame, sources, year_min, year_max) -> pd.DataFrame:
+    """Apply filters to grants dataframe"""
+    filtered = grants_df.copy()
     
-    def _create_chart_title(self, filter_config: FilterConfig, display_config: DisplayConfig) -> str:
-        """Create title with filter information"""
-        count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        title_parts = [f"{count_type} Grant Distribution by Year and Funder"]
-        
-        if filter_config.source_filter:
-            title_parts.append(f"Sources: {', '.join(filter_config.source_filter)}")
-        if filter_config.field_filter:
-                display_names = [format_research_field(field) for field in filter_config.field_filter[:2]]
-                field_display = ', '.join(display_names)
-                if len(filter_config.field_filter) > 2:
-                    field_display += f"... +{len(filter_config.field_filter) - 2} more"
-                title_parts.append(f"Subjects: {field_display}")
-        
-        # Add date range to title if filtered
-        if filter_config.start_year_min is not None or filter_config.start_year_max is not None:
-            if filter_config.start_year_min == filter_config.start_year_max:
-                title_parts.append(f"Year: {filter_config.start_year_min}")
-            else:
-                title_parts.append(f"Years: {filter_config.start_year_min}-{filter_config.start_year_max}")
-        if filter_config.use_active_grant_period:
-            title_parts.append("Active grant period")
-        
-        return title_parts[0] if len(title_parts) == 1 else f"{title_parts[0]} | Filtered by {' | '.join(title_parts[1:])}"
+    if sources:
+        filtered = filtered[filtered['source'].isin(sources)]
     
-    def _show_statistics(self, filtered_grants: pd.DataFrame, grants_by_year_funder: pd.DataFrame):
-        """Display statistics about the grants"""
-        col1, col2, col3, col4, col5 = st.columns(5)
+    if 'start_year' in filtered.columns:
+        start = filtered['start_year']
+        end = filtered['end_year']
+        start = start.fillna(end)
+        end = end.fillna(start)
+        mask = pd.Series(True, index=filtered.index)
+        if year_min is not None:
+            mask &= end >= year_min
+        if year_max is not None:
+            mask &= start <= year_max
+        filtered = filtered[mask]
+    
+    return filtered
+
+
+def prepare_aggregated_data(filtered_grants: pd.DataFrame, year_min, year_max) -> pd.DataFrame:
+    """Aggregate grants by year and organization"""
+    grant_records = create_grant_years_table(filtered_grants, active=True)
+    filtered_records = grant_records.dropna(subset=['organisation_id'])
+    
+    if year_min is not None:
+        filtered_records = filtered_records[filtered_records['year'] >= year_min]
+    if year_max is not None:
+        filtered_records = filtered_records[filtered_records['year'] <= year_max]
+    
+    aggregated = filtered_records.groupby(['year', 'organisation_id'], as_index=False).agg({
+        'grant_id': 'count',
+        'funding_amount': 'sum'
+    })
+    
+    aggregated = aggregated.rename(columns={'grant_id': 'grant_count', 'funding_amount': 'total_funding'})
+    
+    # Fill in missing years with 0 for each organization to show accurate drops
+    if not aggregated.empty:
+        all_years = range(int(aggregated['year'].min()), int(aggregated['year'].max()) + 1)
+        all_orgs = aggregated['organisation_id'].unique()
         
-        # Calculate total grants per year for peak year calculation
-        grants_per_year = grants_by_year_funder.groupby('start_year')['grant_count'].sum()
-        total_funding = (
-            filtered_grants.get('funding_amount', pd.Series(dtype=float))
-            .fillna(0)
-            .sum()
+        # Create a complete grid of year x organization combinations
+        full_index = pd.MultiIndex.from_product(
+            [all_years, all_orgs],
+            names=['year', 'organisation_id']
         )
+        full_df = pd.DataFrame(index=full_index).reset_index()
         
-        with col1:
-            st.metric("Total Grants", len(self.grants_df))
-        with col2:
-            st.metric("Filtered Grants", len(filtered_grants))
-        with col3:
-            st.metric("Filtered Funding", f"${total_funding:,.0f}")
-        with col4:
-            st.metric("Unique Funders", grants_by_year_funder['funder'].nunique())
-        with col5:
+        # Merge with actual data and fill missing values with 0
+        aggregated = full_df.merge(aggregated, on=['year', 'organisation_id'], how='left')
+        aggregated['grant_count'] = aggregated['grant_count'].fillna(0)
+        aggregated['total_funding'] = aggregated['total_funding'].fillna(0)
+    
+    return aggregated
+
+
+def create_stacked_area_chart(data: pd.DataFrame, metric: str, num_entities: int, title: str) -> go.Figure:
+    """Create a stacked area chart"""
+    value_col = 'total_funding' if metric == "funding" else 'grant_count'
+    
+    total_by_entity = data.groupby('organisation_id')[value_col].sum().sort_values(ascending=False)
+    top_entities = total_by_entity.head(num_entities).index.tolist()
+    
+    data_plot = data[data['organisation_id'].isin(top_entities)].copy()
+    
+    fig = go.Figure()
+    
+    for entity in top_entities:
+        entity_data = data_plot[data_plot['organisation_id'] == entity].sort_values('year')
+        fig.add_trace(go.Scatter(
+            x=entity_data['year'],
+            y=entity_data[value_col],
+            name=entity,
+            mode='lines',
+            stackgroup='one'
+        ))
+    
+    y_label = 'Funding Amount' if metric == "funding" else 'Yearly Grant Count'
+    
+    fig.update_layout(
+        title=title,
+        xaxis_title='Year',
+        yaxis_title=y_label,
+        height=600,
+        hovermode='x unified'
+    )
+    
+    return fig
+
+
+def render_sidebar(grants_df: pd.DataFrame):
+    """Render sidebar controls"""
+    st.sidebar.header("Filters")
+    
+    sources = grants_df['source'].unique().tolist() if 'source' in grants_df.columns else []
+    source_filter = st.sidebar.multiselect("Source", sources, default=["arc.gov.au"])
+    
+    min_year = int(grants_df['start_year'].min()) if 'start_year' in grants_df.columns else 2000
+    max_year = int(grants_df['start_year'].max()) if 'start_year' in grants_df.columns else 2024
+    year_range = st.sidebar.slider("Year Range", min_year, max_year, (2000, max_year))
+    
+    st.sidebar.header("Display Options")
+    
+    metric = st.sidebar.radio("Metric", ["count", "funding"], index=1)
+    num_entities = st.sidebar.slider("Number of Top Organizations", 5, 20, 10)
+    
+    return {
+        'source_filter': source_filter,
+        'year_min': year_range[0],
+        'year_max': year_range[1],
+        'metric': metric,
+        'num_entities': num_entities
+    }
+
+
+def show_statistics(total_grants: int, filtered_grants: pd.DataFrame, aggregated: pd.DataFrame):
+    """Display statistics"""
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    grants_per_year = aggregated.groupby('year')['grant_count'].sum()
+    total_funding = filtered_grants.get('funding_amount', pd.Series(dtype=float)).fillna(0).sum()
+    
+    with col1:
+        st.metric("Total Grants", total_grants)
+    with col2:
+        st.metric("Filtered Grants", len(filtered_grants))
+    with col3:
+        st.metric("Filtered Funding", f"${total_funding:,.0f}")
+    with col4:
+        st.metric("Unique Organizations", aggregated['organisation_id'].nunique())
+    with col5:
+        if not grants_per_year.empty:
             peak_year = grants_per_year.idxmax()
             peak_count = grants_per_year.max()
-            st.metric("Peak Year", f"{peak_year} ({peak_count} grants)")
-    
-    def _show_debug_data(self, filtered_grants: pd.DataFrame, grants_by_year_funder: pd.DataFrame):
-        """Show debug data in an expander"""
-        with st.expander("Debug: View Underlying Data", expanded=False):
-            st.subheader("Filtered Grants DataFrame")
-            st.write(f"**Shape:** {filtered_grants.shape}")
-            st.dataframe(filtered_grants, use_container_width=True)
-            
-            st.subheader("Grants By Year and Funder (Chart Data)")
-            st.write(f"**Shape:** {grants_by_year_funder.shape}")  
-            st.dataframe(grants_by_year_funder, use_container_width=True)
-            
-
-
-class GrantsPage:
-    """Main page class that orchestrates all components"""
-    
-    def __init__(self):
-        self.grants_df = None
-        self.keywords_df = None
-        self.categories_df = None
-        self.setup_page()
-    
-    def setup_page(self):
-
-        
-        st.header("Grants Analysis")
-        
-        self._load_data()
-        
-        if self.grants_df is None:
-            st.error("Unable to load grants data. Please check your data files.")
-            return
-    
-    def _load_data(self):
-        """Load and store data"""
-        self.keywords_df, self.grants_df, self.categories_df = load_data()
-    
-    def run(self):
-        """Main execution method"""
-        # Create unified sidebar
-        sidebar_controls = SidebarControl(
-            page_type="grants",
-            grants_df=self.grants_df
-        )
-        filter_config, display_config = sidebar_controls.render_sidebar()
-        
-        distribution_visualizer = GrantDistributionVisualizer(self.grants_df)
-        distribution_visualizer.render_tab(filter_config, display_config)
+            st.metric("Peak Year", f"{peak_year} ({int(peak_count)} grants)")
 
 
 def main():
-    """Main function to run the grants page"""
-    grants_page = GrantsPage()
-    grants_page.run()
+    st.header("Grants Analysis")
+    
+    _, grants_df, _ = load_data()
+    
+    if grants_df is None or grants_df.empty:
+        st.error("Unable to load grants data.")
+        return
+    
+    config = render_sidebar(grants_df)
+    
+    with st.spinner("Creating visualization..."):
+        filtered_grants = apply_filters(
+            grants_df,
+            config['source_filter'],
+            config['year_min'],
+            config['year_max']
+        )
+        
+        if filtered_grants.empty:
+            st.error("No grants found with current filters.")
+            return
+        
+        aggregated = prepare_aggregated_data(
+            filtered_grants,
+            config['year_min'],
+            config['year_max']
+        )
+        
+        if aggregated.empty:
+            st.warning("No grant activity in selected period.")
+            return
+        
+        title = "Yearly Grant Distribution by Year and Organization"
+        
+        fig = create_stacked_area_chart(
+            aggregated,
+            config['metric'],
+            config['num_entities'],
+            title
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        show_statistics(len(grants_df), filtered_grants, aggregated)
 
 
 if __name__ == "__main__":
     main()
+

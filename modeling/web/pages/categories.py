@@ -6,536 +6,374 @@ import streamlit as st
 import sys
 from pathlib import Path
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from dataclasses import dataclass
-from typing import List, Optional
 
-# Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data  # noqa: E402
-from web.sidebar import SidebarControl  # noqa: E402
+from shared_utils import load_data
 
-import config
-from visualisation import (  # noqa: E402
-    DataExplorer,
-    DataExplorerConfig,
-    TrendsVisualizer,
-    TrendsConfig,
-    TrendsDataPreparation,
-)
-from precomputed import get_category_grant_links  # noqa: E402
 st.set_page_config(
-    page_title="Category",
+    page_title="Category Analysis",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-@dataclass
-class CategoryFilterConfig:
-    """Configuration for category data filtering"""
-    field_filter: List[str]
-    source_filter: List[str]
-    min_keywords: int
-    max_keywords: int
-    search_term: str
-    category_names: List[str]
-    start_year_min: Optional[int] = None
-    start_year_max: Optional[int] = None
-    use_active_grant_period: bool = False
 
-
-@dataclass
-class CategoryTrendsConfig:
-    """Configuration for category trends visualization"""
-    num_categories: int
-    use_cumulative: bool
-    metric: str  # "grant_count" or "total_funding" - used for both ranking and display
-    selection_method: str  # "top_n", "random", or "custom"
-    smooth_trends: bool
-    smoothing_window: int
-
-
-class CategoryDataManager:
-    """Manages category data loading and filtering operations"""
+def get_category_grant_links(categories_df, keywords_df):
+    """Extract category-grant relationships"""
+    if categories_df is None or keywords_df is None:
+        return pd.DataFrame()
     
-    def __init__(self):
-        self.categories_df = None
-        self.field_options = None
-        self.grants_df = None
-        self.keywords_df = None
-        self._category_grant_links = get_category_grant_links()
-        self._load_data()
-    
-    def _load_data(self):
-        """Load category data"""
-        try:
-            self.categories_df = config.Categories.load()
-            # Load grants and keywords for source filtering
-            self.grants_df = config.Grants.load()
-            self.keywords_df = config.Keywords.load()
-            
-            if self.categories_df is not None and not self.categories_df.empty:
-                # Process keywords field if it's stored as string
-                if 'keywords' in self.categories_df.columns:
-                    self.categories_df['keyword_count'] = self.categories_df['keywords'].apply(
-                        lambda x: len(x) if isinstance(x, list) else 0
-                    )
-                
-                # Get unique field of research values
-                if 'field_of_research' in self.categories_df.columns:
-                    unique_fields = self.categories_df['field_of_research'].dropna().unique()
-                    self.field_options = sorted([str(field) for field in unique_fields])
+    records = []
+    for cat_name, cat in categories_df.iterrows():
+        cat_keywords = cat.get('keywords', [])
+        if not isinstance(cat_keywords, list):
+            continue
+        
+        for kw in cat_keywords:
+            # Try to find keyword by index first
+            if kw in keywords_df.index:
+                kw_row = keywords_df.loc[[kw]]
+            else:
+                # Otherwise try by name column if it exists
+                if 'name' in keywords_df.columns:
+                    kw_row = keywords_df[keywords_df['name'] == kw]
                 else:
-                    self.field_options = []
-            else:
-                st.warning("No category data found. Please run the categorization process first.")
-                self.field_options = []
-        except Exception as e:
-            st.error(f"Error loading category data: {e}")
-            self.categories_df = pd.DataFrame()
-            self.field_options = []
+                    continue
+            
+            if not kw_row.empty:
+                grants = kw_row.iloc[0].get('grants', [])
+                if isinstance(grants, list):
+                    for grant_id in grants:
+                        records.append({'category': cat_name, 'grant_id': grant_id})
     
-    def get_filtered_data(self, filter_config: CategoryFilterConfig) -> pd.DataFrame:
-        """Apply filters to category data"""
-        if self.categories_df is None or self.categories_df.empty:
-            return pd.DataFrame()
+    return pd.DataFrame(records)
+
+
+def create_category_years_table(categories_df, keywords_df, grants_df):
+    """Create a table with one row per category per year based on active grants"""
+    category_grant_links = get_category_grant_links(categories_df, keywords_df)
+    
+    if category_grant_links.empty:
+        return pd.DataFrame()
+    
+    merged = category_grant_links.merge(
+        grants_df[['start_year', 'end_year', 'funding_amount', 'source']], 
+        left_on='grant_id', 
+        right_index=True, 
+        how='inner'
+    )
+    
+    records = []
+    for _, row in merged.iterrows():
+        start = row.get('start_year')
+        end = row.get('end_year', start)
+        if pd.isna(start):
+            continue
+        start = int(start)
+        end = int(end) if not pd.isna(end) else start
         
-        filtered_df = self.categories_df.copy()
-        
-        # Apply source filtering through grants if source filter is active
-        if filter_config.source_filter and not self._category_grant_links.empty:
-            source_matches = self._category_grant_links[
-                self._category_grant_links['source'].isin(filter_config.source_filter)
-            ]["category"].unique()
-            if len(source_matches) == 0:
-                return filtered_df.iloc[0:0]
-            filtered_df = filtered_df[filtered_df['name'].isin(source_matches)]
-        
-        # Field filter
-        if filter_config.field_filter:
-            filtered_df = filtered_df[
-                filtered_df['field_of_research'].isin(filter_config.field_filter)
-            ]
-        
-        # Keyword count filter
-        filtered_df = filtered_df[
-            (filtered_df['keyword_count'] >= filter_config.min_keywords) &
-            (filtered_df['keyword_count'] <= filter_config.max_keywords)
+        for year in range(start, end + 1):
+            records.append({
+                'category': row['category'],
+                'year': year,
+                'grant_id': row['grant_id'],
+                'funding_amount': row.get('funding_amount', 0),
+                'source': row.get('source', '')
+            })
+    
+    return pd.DataFrame(records)
+
+
+def apply_filters(categories_df, keywords_df, grants_df, sources, fields, min_keywords, 
+                  max_keywords, year_min, year_max, search_term):
+    """Apply filters to categories"""
+    filtered_categories = categories_df.copy()
+    
+    # Add keyword_count if not present
+    if 'keyword_count' not in filtered_categories.columns and 'keywords' in filtered_categories.columns:
+        filtered_categories['keyword_count'] = filtered_categories['keywords'].apply(
+            lambda x: len(x) if isinstance(x, list) else 0
+        )
+    
+    if fields:
+        filtered_categories = filtered_categories[
+            filtered_categories['field_of_research'].isin(fields)
         ]
-        
-        # Search term filter
-        if filter_config.search_term:
-            search_mask = (
-                filtered_df['name'].str.contains(filter_config.search_term, case=False, na=False) |
-                filtered_df['description'].str.contains(filter_config.search_term, case=False, na=False)
+    
+    if min_keywords is not None or max_keywords is not None:
+        min_val = min_keywords if min_keywords is not None else 0
+        max_val = max_keywords if max_keywords is not None else float('inf')
+        filtered_categories = filtered_categories[
+            (filtered_categories['keyword_count'] >= min_val) &
+            (filtered_categories['keyword_count'] <= max_val)
+        ]
+    
+    if search_term:
+        search_mask = (
+            filtered_categories.index.str.contains(search_term, case=False, na=False) |
+            filtered_categories['description'].str.contains(search_term, case=False, na=False)
+        )
+        filtered_categories = filtered_categories[search_mask]
+    
+    if sources:
+        category_grant_links = get_category_grant_links(filtered_categories, keywords_df)
+        if not category_grant_links.empty:
+            merged = category_grant_links.merge(
+                grants_df[['source']], 
+                left_on='grant_id', 
+                right_index=True, 
+                how='inner'
             )
-            filtered_df = filtered_df[search_mask]
-        
-        # Specific category names filter
-        if filter_config.category_names:
-            filtered_df = filtered_df[
-                filtered_df['name'].isin(filter_config.category_names)
-            ]
-        
-        return filtered_df
-
-
-class CategoryVisualizer:
-    """Creates various visualizations for category data"""
-    
-    @staticmethod
-    def create_field_distribution_chart(categories_df: pd.DataFrame) -> go.Figure:
-        """Create a bar chart showing category distribution by field of research"""
-        if categories_df.empty:
-            return go.Figure()
-        
-        field_counts = categories_df['field_of_research'].value_counts()
-        
-        fig = px.bar(
-            x=field_counts.index,
-            y=field_counts.values,
-            title="Category Distribution by Field of Research",
-            labels={'x': 'Field of Research', 'y': 'Number of Categories'}
-        )
-        
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            height=500,
-            showlegend=False
-        )
-        
-        return fig
-    
-    @staticmethod
-    def create_keyword_size_distribution(categories_df: pd.DataFrame) -> go.Figure:
-        """Create a histogram showing distribution of category sizes (number of keywords)"""
-        if categories_df.empty:
-            return go.Figure()
-        
-        fig = px.histogram(
-            categories_df,
-            x='keyword_count',
-            nbins=20,
-            title="Distribution of Category Sizes (Number of Keywords per Category)",
-            labels={'keyword_count': 'Number of Keywords', 'count': 'Number of Categories'}
-        )
-        
-        fig.update_layout(height=400)
-        return fig
-    
-    @staticmethod
-    def create_top_categories_chart(categories_df: pd.DataFrame, top_n: int = 15) -> go.Figure:
-        """Create a horizontal bar chart of top N largest categories"""
-        if categories_df.empty:
-            return go.Figure()
-        
-        top_categories = categories_df.nlargest(top_n, 'keyword_count')
-        
-        fig = px.bar(
-            top_categories,
-            x='keyword_count',
-            y='name',
-            orientation='h',
-            title=f"Top {top_n} Largest Categories by Number of Keywords",
-            labels={'keyword_count': 'Number of Keywords', 'name': 'Category Name'}
-        )
-        
-        fig.update_layout(
-            height=max(400, top_n * 25),
-            yaxis={'categoryorder': 'total ascending'}
-        )
-        
-        return fig
-    
-    @staticmethod
-    def create_field_keyword_heatmap(categories_df: pd.DataFrame) -> go.Figure:
-        """Create a heatmap showing keyword distribution across fields"""
-        if categories_df.empty:
-            return go.Figure()
-        
-        # Create bins for keyword counts
-        categories_df = categories_df.copy()
-        categories_df['size_bin'] = pd.cut(
-            categories_df['keyword_count'],
-            bins=[0, 5, 10, 20, 50, 100, float('inf')],
-            labels=['1-5', '6-10', '11-20', '21-50', '51-100', '100+']
-        )
-        
-        # Create cross-tabulation
-        heatmap_data = pd.crosstab(
-            categories_df['field_of_research'],
-            categories_df['size_bin']
-        )
-        
-        fig = px.imshow(
-            heatmap_data.values,
-            x=heatmap_data.columns,
-            y=heatmap_data.index,
-            title="Category Size Distribution Across Fields of Research",
-            labels={'x': 'Category Size (Keywords)', 'y': 'Field of Research', 'color': 'Number of Categories'},
-            color_continuous_scale='Blues'
-        )
-        
-        fig.update_layout(height=600)
-        return fig
-
-
-class CategoryExplorerTab:
-    """Manages the category explorer tab for detailed category browsing"""
-    
-    def __init__(self, data_manager: CategoryDataManager):
-        self.data_manager = data_manager
-        self.data_explorer = DataExplorer()
-    
-    @staticmethod
-    def prepare_data(filtered_categories: pd.DataFrame) -> tuple[pd.DataFrame, DataExplorerConfig]:
-        """Prepare categories data and configuration for DataExplorer"""
-        display_df = filtered_categories[['name', 'field_of_research', 'keyword_count', 'description', 'keywords']].copy()
-        display_df = display_df.sort_values('keyword_count', ascending=False)
-        
-        def format_keywords(keywords):
-            if isinstance(keywords, list):
-                keywords_str = ", ".join(keywords)
-                if len(keywords_str) > 100:
-                    return keywords_str[:97] + "..."
-                return keywords_str
+            source_matches = merged[merged['source'].isin(sources)]['category'].unique()
+            if len(source_matches) > 0:
+                filtered_categories = filtered_categories[
+                    filtered_categories.index.isin(source_matches)
+                ]
             else:
-                return str(keywords) if keywords else ""
+                return filtered_categories.iloc[0:0], grants_df.iloc[0:0]
+    
+    filtered_grants = grants_df.copy()
+    if sources:
+        filtered_grants = filtered_grants[filtered_grants['source'].isin(sources)]
+    
+    if 'start_year' in filtered_grants.columns:
+        start = filtered_grants['start_year']
+        end = filtered_grants['end_year']
+        start = start.fillna(end)
+        end = end.fillna(start)
+        mask = pd.Series(True, index=filtered_grants.index)
+        if year_min is not None:
+            mask &= end >= year_min
+        if year_max is not None:
+            mask &= start <= year_max
+        filtered_grants = filtered_grants[mask]
+    
+    return filtered_categories, filtered_grants
+
+
+def prepare_category_trends_data(filtered_categories, keywords_df, filtered_grants, 
+                                 year_min, year_max, metric):
+    """Prepare data for category trends visualization"""
+    category_years = create_category_years_table(filtered_categories, keywords_df, filtered_grants)
+    
+    if category_years.empty:
+        return pd.DataFrame()
+    
+    if year_min is not None:
+        category_years = category_years[category_years['year'] >= year_min]
+    if year_max is not None:
+        category_years = category_years[category_years['year'] <= year_max]
+    
+    if metric == "funding":
+        aggregated = category_years.groupby(['year', 'category'], as_index=False).agg({
+            'funding_amount': 'sum'
+        }).rename(columns={'funding_amount': 'value'})
+    else:
+        aggregated = category_years.groupby(['year', 'category'], as_index=False).agg({
+            'grant_id': 'count'
+        }).rename(columns={'grant_id': 'value'})
+    
+    # Fill in missing years with 0 for each category to show accurate drops
+    if not aggregated.empty:
+        all_years = range(int(aggregated['year'].min()), int(aggregated['year'].max()) + 1)
+        all_categories = aggregated['category'].unique()
         
-        display_df['keywords_formatted'] = display_df['keywords'].apply(format_keywords)
-        
-        config = DataExplorerConfig(
-            title="All Categories",
-            description="Search and explore research categories with their keywords and descriptions.",
-            search_columns=['name', 'description', 'field_of_research', 'keywords_formatted'],
-            search_placeholder="Search by category name, description, field of research, or keywords...",
-            search_help="Enter text to search across category names, descriptions, fields, and keywords",
-            display_columns=['name', 'field_of_research', 'keyword_count', 'keywords_formatted', 'description'],
-            column_formatters={
-                'description': lambda x: (x[:150] + "...") if len(str(x)) > 150 else str(x),
-                'keywords_formatted': lambda x: x
-            },
-            column_renames={
-                'name': 'Category Name',
-                'field_of_research': 'Field of Research',
-                'keyword_count': 'Keywords Count',
-                'keywords_formatted': 'Keywords',
-                'description': 'Description'
-            },
-            statistics_columns=['keyword_count'],
-            max_display_rows=50,
-            show_statistics=True,
-            show_data_info=True,
-            enable_download=True
+        full_index = pd.MultiIndex.from_product(
+            [all_years, all_categories],
+            names=['year', 'category']
         )
+        full_df = pd.DataFrame(index=full_index).reset_index()
         
-        return display_df, config
+        aggregated = full_df.merge(aggregated, on=['year', 'category'], how='left')
+        aggregated['value'] = aggregated['value'].fillna(0)
     
-    def render_tab(self, filter_config: CategoryFilterConfig):
-        """Render the category explorer tab"""
-        st.markdown("# Category Explorer")
-        
-        filtered_data = self.data_manager.get_filtered_data(filter_config)
-        
-        if filtered_data.empty:
-            st.warning("No categories found with current filters.")
-            return
-        
-        # Category selection for detailed view
-        selected_category = self._render_category_selector(filtered_data)
-        
-        if selected_category:
-            self._show_category_details(filtered_data, selected_category)
-        
-        # Use DataExplorer for category table
-        self._show_category_table_with_explorer(filtered_data)
+    return aggregated
+
+
+def get_top_categories(trends_data, num_categories, metric):
+    """Get top N categories by total value"""
+    total_by_category = trends_data.groupby('category')['value'].sum().sort_values(ascending=False)
+    return total_by_category.head(num_categories).index.tolist()
+
+
+def create_category_trends_chart(data, num_categories, metric, title):
+    """Create a line chart for category trends"""
+    if data.empty:
+        return None
     
-    def _render_category_selector(self, filtered_data: pd.DataFrame) -> Optional[str]:
-        """Render category selection dropdown"""
-        category_options = [""] + sorted(filtered_data['name'].tolist())
-        
-        selected = st.selectbox(
-            "Select a category to explore in detail:",
-            options=category_options,
-            help="Choose a category to see its detailed information"
+    top_categories = get_top_categories(data, num_categories, metric)
+    data_plot = data[data['category'].isin(top_categories)].copy()
+    
+    fig = go.Figure()
+    
+    for category in top_categories:
+        category_data = data_plot[data_plot['category'] == category].sort_values('year')
+        fig.add_trace(go.Scatter(
+            x=category_data['year'],
+            y=category_data['value'],
+            name=category,
+            mode='lines+markers',
+            line=dict(width=2),
+            marker=dict(size=6)
+        ))
+    
+    y_label = 'Funding Amount' if metric == "funding" else 'Grant Count'
+    
+    fig.update_layout(
+        title=title,
+        xaxis_title='Year',
+        yaxis_title=y_label,
+        height=600,
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
         )
-        
-        return selected if selected else None
+    )
     
-    def _show_category_details(self, filtered_data: pd.DataFrame, category_name: str):
-        """Show detailed information for selected category"""
-        category_row = filtered_data[filtered_data['name'] == category_name].iloc[0]
-        
-        st.subheader(f"{category_row['name']}")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.markdown("**Description:**")
-            st.write(category_row['description'])
-            
-            st.markdown("**Keywords:**")
-            if isinstance(category_row['keywords'], list):
-                keywords_text = ", ".join(category_row['keywords'])
-            else:
-                keywords_text = str(category_row['keywords'])
-            st.write(keywords_text)
-        
-        with col2:
-            st.metric("Field of Research", category_row['field_of_research'])
-            st.metric("Number of Keywords", category_row['keyword_count'])
-    
-    def _show_category_table_with_explorer(self, filtered_data: pd.DataFrame):
-        """Show table of all categories using DataExplorer"""
-        # Prepare data and config
-        display_df, config = self.prepare_data(filtered_data)
-        
-        # Render the explorer
-        self.data_explorer.render_explorer(display_df, config)
+    return fig
 
 
-class CategoryTrendsTab:
-    """Manages the category trends over time tab"""
+def render_sidebar(categories_df, grants_df):
+    """Render sidebar controls"""
+    st.sidebar.header("Filters")
     
-    def __init__(self, data_manager: CategoryDataManager):
-        self.data_manager = data_manager
+    sources = grants_df['source'].dropna().unique().tolist() if 'source' in grants_df.columns else []
+    source_filter = st.sidebar.multiselect(
+        "Source", 
+        sorted(sources), 
+        default=["arc.gov.au"] if "arc.gov.au" in sources else []
+    )
     
-    def render_tab(self, filter_config: CategoryFilterConfig, trends_config: CategoryTrendsConfig):
-        """Render the category trends tab"""
-        st.markdown("# Category Trends Over Time")
-        
-        filtered_data = self.data_manager.get_filtered_data(filter_config)
-        
-        if filtered_data.empty:
-            st.warning("No categories found with current filters.")
-            return
-        
-        # Validate custom selection
-        if trends_config.selection_method == "custom" and not filter_config.category_names:
-            st.error("Please select at least one category when using custom category selection.")
-            return
-        
-        # Load additional data needed for trends
-        _, grants_df, _ = load_data()
-        
-        if grants_df is None:
-            st.error("Unable to load grants data needed for trends analysis.")
-            return
-        
-        # Show data info
-        metric_label = 'Grant Count' if trends_config.metric == 'grant_count' else 'Funding Amount'
-        st.info(f"Processing {len(filtered_data)} categories. Metric: {metric_label}")
-        
-        with st.spinner("Creating category trends visualization..."):
-            # Determine selected categories based on selection method
-            selected_categories = None
-            if trends_config.selection_method == "custom" and filter_config.category_names:
-                selected_categories = filter_config.category_names
-            
-            # Prepare data using the helper from TrendsDataPreparation
-            viz_data = TrendsDataPreparation.from_category_grants(
-                filtered_data,
-                grants_df,
-                selected_categories,
-                use_active_period=filter_config.use_active_grant_period,
-                year_min=filter_config.start_year_min,
-                year_max=filter_config.start_year_max,
-            )
-            
-            if viz_data.empty:
-                st.warning("No data available for visualization.")
-                return
-            
-            # Configure visualization
-            cumulative_text = "Cumulative" if trends_config.use_cumulative else "Yearly"
-            display_text = metric_label
-            
-            # Create appropriate title based on selection method
-            if trends_config.selection_method == "custom":
-                title = f"{cumulative_text} Category Trends Over Time - Custom Selection ({len(selected_categories)} categories)"
-                max_entities_to_show = len(selected_categories)
-            else:
-                title = f"{cumulative_text} Category Trends Over Time (Top {trends_config.num_categories} by {metric_label})"
-                max_entities_to_show = trends_config.num_categories
-            
-            viz_config = TrendsConfig(
-                entity_col='category',
-                time_col='year',
-                value_col=trends_config.metric,
-                ranking_col=trends_config.metric,
-                max_entities=max_entities_to_show,
-                aggregation='sum',
-                use_cumulative=trends_config.use_cumulative,
-                chart_type='line',
-                title=title,
-                x_label='Year',
-                y_label=f'{"Cumulative" if trends_config.use_cumulative else "Yearly"} {display_text}',
-                height=600,
-                smooth_trends=trends_config.smooth_trends,
-                smoothing_window=trends_config.smoothing_window,
-            )
-            
-            # Create visualization
-            visualizer = TrendsVisualizer()
-            fig = visualizer.create_plot(viz_data, viz_config)
-            
-            if fig is not None:
-                st.plotly_chart(fig, use_container_width=True, key="category_trends_plot")
-                self._show_statistics(filtered_data, viz_data)
-                self._show_debug_data(filtered_data, viz_data)
-            else:
-                st.warning("Unable to create trends visualization.")
+    fields = categories_df['field_of_research'].dropna().unique().tolist() if 'field_of_research' in categories_df.columns else []
+    field_filter = st.sidebar.multiselect("Field of Research", sorted(fields))
     
-    def _show_statistics(self, filtered_data: pd.DataFrame, viz_data: pd.DataFrame):
-        """Display statistics about the filtered data"""
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total Categories", len(filtered_data))
-        with col2:
-            st.metric("Categories in Chart", viz_data['category'].nunique())
-        with col3:
-            year_range = f"{viz_data['year'].min()}-{viz_data['year'].max()}"
-            st.metric("Year Range", year_range)
+    st.sidebar.subheader("Keyword Count Range")
+    min_keywords = st.sidebar.number_input("Minimum Keywords", min_value=1, value=3, step=1)
+    max_keywords = st.sidebar.number_input("Maximum Keywords", min_value=1, value=100, step=5)
     
-    def _show_debug_data(self, filtered_data: pd.DataFrame, viz_data: pd.DataFrame):
-        """Show debug data in an expander"""
-        with st.expander("Debug: View Underlying Data", expanded=False):
-            st.subheader("Filtered Categories DataFrame")
-            st.write(f"**Shape:** {filtered_data.shape}")
-            st.dataframe(filtered_data, use_container_width=True)
-            
-            st.subheader("Category Trends Data (Chart Data)")
-            st.write(f"**Shape:** {viz_data.shape}")
-            st.dataframe(viz_data, use_container_width=True)
+    search_term = st.sidebar.text_input("Search Categories", "")
+    
+    min_year = int(grants_df['start_year'].min()) if 'start_year' in grants_df.columns else 2000
+    max_year = int(grants_df['start_year'].max()) if 'start_year' in grants_df.columns else 2024
+    year_range = st.sidebar.slider("Year Range", min_year, max_year, (2000, max_year))
+    
+    st.sidebar.header("Display Options")
+    
+    metric = st.sidebar.radio("Metric", ["count", "funding"], index=0)
+    num_categories = st.sidebar.slider("Number of Top Categories", 5, 20, 10)
+    
+    return {
+        'source_filter': source_filter,
+        'field_filter': field_filter,
+        'min_keywords': min_keywords,
+        'max_keywords': max_keywords,
+        'search_term': search_term,
+        'year_min': year_range[0],
+        'year_max': year_range[1],
+        'metric': metric,
+        'num_categories': num_categories
+    }
 
 
-class CategoriesPage:
-    """Main page class that orchestrates all components"""
+def show_statistics(total_categories, filtered_categories, total_grants, filtered_grants, 
+                   displayed_categories):
+    """Display statistics"""
+    col1, col2, col3, col4, col5 = st.columns(5)
     
-    def __init__(self):
-        self.data_manager = CategoryDataManager()
-        self.trends_tab = CategoryTrendsTab(self.data_manager)
-
-    
-    def run(self):
-
-        
-        # Check if data is available
-        if self.data_manager.categories_df is None or self.data_manager.categories_df.empty:
-            st.error("No category data available. Please run the categorization process first.")
-            st.info("Run: `make categorise` to generate categories from keywords, or `make merge` to merge similar categories.")
-            return
-        
-        # Load grants data for unified sidebar
-        _, grants_df, _ = load_data()
-        
-        # Create unified sidebar controls
-        sidebar = SidebarControl(
-            page_type="categories",
-            grants_df=grants_df,
-            categories_df=self.data_manager.categories_df
-        )
-        
-        # Get unified configurations from sidebar
-        unified_filter, unified_display = sidebar.render_sidebar()
-        
-        # Adapt to legacy format for existing code
-        filter_config = CategoryFilterConfig(
-            field_filter=unified_filter.field_filter,
-            source_filter=unified_filter.source_filter,
-            min_keywords=unified_filter.min_count,
-            max_keywords=unified_filter.max_count,
-            search_term=unified_filter.search_term,
-            category_names=unified_display.custom_entities if unified_display.selection_method == "custom" else [],
-            start_year_min=unified_filter.start_year_min,
-            start_year_max=unified_filter.start_year_max,
-            use_active_grant_period=unified_filter.use_active_grant_period
-        )
-        
-        metric_column = "grant_count" if unified_display.metric == "count" else "total_funding"
-        trends_config = CategoryTrendsConfig(
-            num_categories=unified_display.num_entities,
-            use_cumulative=unified_display.use_cumulative,
-            metric=metric_column,
-            selection_method=unified_display.selection_method,
-            smooth_trends=unified_display.smooth_trends,
-            smoothing_window=unified_display.smoothing_window,
-        )
-        
-        self.trends_tab.render_tab(filter_config, trends_config)
-            
+    with col1:
+        st.metric("Total Categories", total_categories)
+    with col2:
+        st.metric("Filtered Categories", len(filtered_categories))
+    with col3:
+        st.metric("Total Grants", total_grants)
+    with col4:
+        st.metric("Filtered Grants", len(filtered_grants))
+    with col5:
+        st.metric("Displayed Categories", displayed_categories)
 
 
 def main():
-    """Main function to run the categories page"""
-    categories_page = CategoriesPage()
-    categories_page.run()
+    st.header("Category Analysis")
+    
+    keywords_df, grants_df, categories_df = load_data()
+    
+    if categories_df is None or categories_df.empty:
+        st.error("No category data available. Run categorization process first.")
+        st.info("Run: `make categorise` to generate categories from keywords.")
+        return
+    
+    if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
+        st.error("Unable to load keywords or grants data.")
+        return
+    
+    # Add keyword_count column if not present
+    if 'keyword_count' not in categories_df.columns and 'keywords' in categories_df.columns:
+        categories_df['keyword_count'] = categories_df['keywords'].apply(
+            lambda x: len(x) if isinstance(x, list) else 0
+        )
+    
+    config = render_sidebar(categories_df, grants_df)
+    
+    with st.spinner("Creating visualization..."):
+        filtered_categories, filtered_grants = apply_filters(
+            categories_df,
+            keywords_df,
+            grants_df,
+            config['source_filter'],
+            config['field_filter'],
+            config['min_keywords'],
+            config['max_keywords'],
+            config['year_min'],
+            config['year_max'],
+            config['search_term']
+        )
+        
+        if filtered_categories.empty:
+            st.error("No categories found with current filters.")
+            return
+        
+        trends_data = prepare_category_trends_data(
+            filtered_categories,
+            keywords_df,
+            filtered_grants,
+            config['year_min'],
+            config['year_max'],
+            config['metric']
+        )
+        
+        if trends_data.empty:
+            st.warning("No category activity in selected period.")
+            return
+        
+        title = "Category Trends Over Time (Active Grants Only)"
+        
+        fig = create_category_trends_chart(
+            trends_data,
+            config['num_categories'],
+            config['metric'],
+            title
+        )
+        
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+            show_statistics(
+                len(categories_df),
+                filtered_categories,
+                len(grants_df),
+                filtered_grants,
+                min(config['num_categories'], len(filtered_categories))
+            )
+        else:
+            st.warning("No data available for visualization.")
 
 
 if __name__ == "__main__":
     main()
+

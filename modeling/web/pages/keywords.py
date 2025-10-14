@@ -1,36 +1,19 @@
 """
 Keyword Trends Analysis Page
-Analyze how research keywords evolve over time with cumulative occurrence tracking.
+Analyze how research keywords evolve over time.
 """
 
 import streamlit as st
 import pandas as pd
-import random
-import numpy as np
+import plotly.graph_objects as go
 import sys
 from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
-# Add the web directory to Python path to import shared_utils
 web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import (  # noqa: E402
-    format_research_field,
-    load_data
-)
-from web.sidebar import SidebarControl  # noqa: E402
-from visualisation import (  # noqa: E402
-    DataExplorer,
-    DataExplorerConfig,
-    TrendsVisualizer,
-    TrendsConfig,
-    TrendsDataPreparation,
-)
-from precomputed import get_keyword_grant_links  # noqa: E402
-
+from shared_utils import load_data
 
 st.set_page_config(
     page_title="Keywords",
@@ -38,490 +21,289 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-@dataclass
-class KeywordFilterConfig:
-    """Configuration for data filtering"""
-    funder_filter: List[str]
-    source_filter: List[str]
-    field_filter: List[str]
-    keyword_type_filter: List[str]
-    min_count: int
-    max_count: int
-    start_year_min: Optional[int] = None
-    start_year_max: Optional[int] = None
-    use_active_grant_period: bool = False
+
+def get_keyword_grant_links(keywords_df: pd.DataFrame) -> pd.DataFrame:
+    """Extract keyword-grant relationships from keywords dataframe"""
+    records = []
+    for idx, row in keywords_df.iterrows():
+        keyword_name = row.get('name', idx)
+        grants = row.get('grants', [])
+        if isinstance(grants, list):
+            for grant_id in grants:
+                records.append({'keyword': keyword_name, 'grant_id': grant_id})
+    return pd.DataFrame(records)
 
 
-@dataclass
-class KeywordSelectionConfig:
-    """Configuration for keyword selection"""
-    method: str  # "Top N keywords", "Random sample", "Specify custom keywords"
-    top_n: int
-    random_sample_size: int
-    custom_keywords: List[str]
-    use_random_seed: bool
-    random_seed: Optional[int]
-
-
-@dataclass
-class KeywordDisplayConfig:
-    """Configuration for display settings"""
-    show_baseline: bool
-    use_cumulative: bool
-    metric: str  # "count" or "funding"
-    smooth_trends: bool
-    smoothing_window: int
-
-
-class KeywordFilterManager:
-    """Manages all data filtering operations"""
+def create_keyword_years_table(keywords_df: pd.DataFrame, grants_df: pd.DataFrame) -> pd.DataFrame:
+    """Create a table with one row per keyword per year based on active grants"""
+    keyword_grant_links = get_keyword_grant_links(keywords_df)
     
-    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
-        self.keywords_df = keywords_df
-        self.grants_df = grants_df
-        self._keyword_grant_links = get_keyword_grant_links()
+    if keyword_grant_links.empty:
+        return pd.DataFrame()
     
-    def apply_grant_filters(self, config: KeywordFilterConfig) -> pd.DataFrame:
-        """Apply filters to grants dataframe"""
-        filtered_grants = self.grants_df.copy()
-        
-        if config.funder_filter:
-            filtered_grants = filtered_grants[filtered_grants['funder'].isin(config.funder_filter)]
-        
-        if config.source_filter:
-            filtered_grants = filtered_grants[filtered_grants['source'].isin(config.source_filter)]
-        
-        if config.field_filter and 'primary_subject' in filtered_grants.columns:
-            filtered_grants = filtered_grants[filtered_grants['primary_subject'].isin(config.field_filter)]
-
-        if config.use_active_grant_period:
-            grant_start = filtered_grants['start_year'] if 'start_year' in filtered_grants.columns else pd.Series(dtype=float)
-            grant_end = filtered_grants['end_year'] if 'end_year' in filtered_grants.columns else grant_start
-            grant_start = grant_start.fillna(grant_end)
-            grant_end = grant_end.fillna(grant_start)
-            mask = pd.Series(True, index=filtered_grants.index)
-            if config.start_year_min is not None:
-                mask &= grant_end >= config.start_year_min
-            if config.start_year_max is not None:
-                mask &= grant_start <= config.start_year_max
-            filtered_grants = filtered_grants[mask]
-        else:
-            if config.start_year_min is not None and 'start_year' in filtered_grants.columns:
-                filtered_grants = filtered_grants[filtered_grants['start_year'] >= config.start_year_min]
-            if config.start_year_max is not None and 'start_year' in filtered_grants.columns:
-                filtered_grants = filtered_grants[filtered_grants['start_year'] <= config.start_year_max]
-
-        return filtered_grants
-
-    def apply_keyword_filters(self, config: KeywordFilterConfig, filtered_grants: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-        """Apply filters to keywords dataframe and update grants lists"""
-        filtered_keywords = self.keywords_df.copy()
-        if 'name' not in filtered_keywords.columns:
-            filtered_keywords = filtered_keywords.reset_index().rename(columns={'index': 'name'})
-
-        if config.keyword_type_filter:
-            filtered_keywords = filtered_keywords[filtered_keywords['type'].isin(config.keyword_type_filter)]
-
-        if filtered_grants is None:
-            filtered_grants = self.apply_grant_filters(config)
-
-        if (
-            filtered_grants is not None
-            and not filtered_grants.empty
-            and not self._keyword_grant_links.empty
-        ):
-            valid_links = self._keyword_grant_links[
-                self._keyword_grant_links['grant_id'].isin(filtered_grants['id'])
-            ]
-            grouped = valid_links.groupby('keyword')['grant_id'].agg(list)
-            mapped = filtered_keywords['name'].map(grouped)
-            filtered_keywords['grants'] = [value if isinstance(value, list) else [] for value in mapped]
-        else:
-            filtered_keywords['grants'] = [[] for _ in range(len(filtered_keywords))]
-
-        grant_counts = filtered_keywords['grants'].apply(len)
-        filtered_keywords = filtered_keywords[
-            (grant_counts >= config.min_count) & (grant_counts <= config.max_count)
-        ]
-
-        return filtered_keywords
+    merged = keyword_grant_links.merge(
+        grants_df[['start_year', 'end_year', 'funding_amount']], 
+        left_on='grant_id', 
+        right_index=True, 
+        how='inner'
+    )
     
-    def get_available_keywords(self, config: KeywordFilterConfig, metric: str) -> List[str]:
-        """Get list of available keyword names after filtering, sorted by number of grants (descending)"""
-        filtered_keywords = self.apply_keyword_filters(config)
+    records = []
+    for _, row in merged.iterrows():
+        start = row.get('start_year')
+        end = row.get('end_year', start)
+        if pd.isna(start):
+            continue
+        start = int(start)
+        end = int(end) if not pd.isna(end) else start
         
-        # Sort keywords using the requested metric
-        filtered_keywords = filtered_keywords.copy()
-        filtered_keywords['grant_count'] = filtered_keywords['grants'].apply(len)
-        if metric == "funding":
-            funding_lookup = self.grants_df.set_index('id')['funding_amount'].fillna(0) if 'funding_amount' in self.grants_df.columns else None
-            if funding_lookup is not None:
-                filtered_keywords['total_funding'] = filtered_keywords['grants'].apply(
-                    lambda grant_ids: sum(funding_lookup.get(gid, 0) for gid in grant_ids)
-                )
-            else:
-                filtered_keywords['total_funding'] = 0
-            filtered_keywords = filtered_keywords.sort_values('total_funding', ascending=False)
-        else:
-            filtered_keywords = filtered_keywords.sort_values('grant_count', ascending=False)
-        
-        if 'name' in filtered_keywords.columns:
-            return [str(name) for name in filtered_keywords['name'].tolist()]
-        else:
-            return [str(name) for name in filtered_keywords.index.tolist()]
+        for year in range(start, end + 1):
+            records.append({
+                'keyword': row['keyword'],
+                'year': year,
+                'grant_id': row['grant_id'],
+                'funding_amount': row.get('funding_amount', 0)
+            })
+    
+    return pd.DataFrame(records)
 
 
-class KeywordSelector:
-    """Handles different keyword selection strategies"""
+def apply_filters(keywords_df: pd.DataFrame, grants_df: pd.DataFrame, sources, 
+                  keyword_types, min_count, max_count, year_min, year_max):
+    """Apply filters to keywords and grants"""
+    filtered_grants = grants_df.copy()
     
-    def __init__(self, filter_manager: KeywordFilterManager):
-        self.filter_manager = filter_manager
+    if sources:
+        filtered_grants = filtered_grants[filtered_grants['source'].isin(sources)]
+    
+    if 'start_year' in filtered_grants.columns:
+        start = filtered_grants['start_year']
+        end = filtered_grants['end_year']
+        start = start.fillna(end)
+        end = end.fillna(start)
+        mask = pd.Series(True, index=filtered_grants.index)
+        if year_min is not None:
+            mask &= end >= year_min
+        if year_max is not None:
+            mask &= start <= year_max
+        filtered_grants = filtered_grants[mask]
+    
+    filtered_keywords = keywords_df.copy()
+    
+    if keyword_types:
+        filtered_keywords = filtered_keywords[filtered_keywords['type'].isin(keyword_types)]
+    
+    keyword_grant_links = get_keyword_grant_links(filtered_keywords)
+    valid_links = keyword_grant_links[keyword_grant_links['grant_id'].isin(filtered_grants.index)]
+    
+    grant_counts = valid_links.groupby('keyword').size()
+    valid_keywords = grant_counts[(grant_counts >= min_count) & (grant_counts <= max_count)].index
+    
 
+    filtered_keywords = filtered_keywords[filtered_keywords.index.isin(valid_keywords)]
     
-    def select_keywords(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> Tuple[List[str], str]:
-        """Select keywords based on the configured method"""
-        available_keywords = self.filter_manager.get_available_keywords(filter_config, display_config.metric)
-        
-        if selection_config.method == "Top N keywords":
-            return [], self._create_top_n_title(filter_config, selection_config, display_config)
-        
-        elif selection_config.method == "Random sample":
-            return self._select_random_keywords(available_keywords, selection_config, display_config)
-        
-        elif selection_config.method == "Specify custom keywords":
-            count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-            title = f"{count_type} Keyword Trends - Custom Selection ({len(selection_config.custom_keywords)} keywords)"
-            return selection_config.custom_keywords, title
-        
-        return [], "Unknown Selection Method"
+    return filtered_keywords, filtered_grants
+
+
+def prepare_keyword_trends_data(filtered_keywords: pd.DataFrame, filtered_grants: pd.DataFrame, 
+                                year_min, year_max, metric: str) -> pd.DataFrame:
+    """Prepare data for keyword trends visualization"""
+    keyword_years = create_keyword_years_table(filtered_keywords, filtered_grants)
     
-    def _select_random_keywords(self, available_keywords: List[str], selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> Tuple[List[str], str]:
-        """Select random keywords from available list"""
-        if len(available_keywords) == 0 or selection_config.random_sample_size == 0:
-            return [], "No keywords available for random sampling"
+    if keyword_years.empty:
+        return pd.DataFrame()
+    
+    if year_min is not None:
+        keyword_years = keyword_years[keyword_years['year'] >= year_min]
+    if year_max is not None:
+        keyword_years = keyword_years[keyword_years['year'] <= year_max]
+    
+    if metric == "funding":
+        aggregated = keyword_years.groupby(['year', 'keyword'], as_index=False).agg({
+            'funding_amount': 'sum'
+        }).rename(columns={'funding_amount': 'value'})
+    else:
+        aggregated = keyword_years.groupby(['year', 'keyword'], as_index=False).agg({
+            'grant_id': 'count'
+        }).rename(columns={'grant_id': 'value'})
+    
+    # Fill in missing years with 0 for each keyword to show accurate drops
+    if not aggregated.empty:
+        all_years = range(int(aggregated['year'].min()), int(aggregated['year'].max()) + 1)
+        all_keywords = aggregated['keyword'].unique()
         
-        if selection_config.use_random_seed and selection_config.random_seed is not None:
-            effective_seed = selection_config.random_seed + st.session_state.get('random_sample_counter', 0)
-            random.seed(effective_seed)
-            np.random.seed(effective_seed)
-        
-        sampled_keywords = random.sample(
-            available_keywords, 
-            min(selection_config.random_sample_size, len(available_keywords))
+        # Create a complete grid of year x keyword combinations
+        full_index = pd.MultiIndex.from_product(
+            [all_years, all_keywords],
+            names=['year', 'keyword']
         )
+        full_df = pd.DataFrame(index=full_index).reset_index()
         
-        count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        title = f"{count_type} Random Sample of Keywords ({len(sampled_keywords)} keywords)"
-        
-        return sampled_keywords, title
+        # Merge with actual data and fill missing values with 0
+        aggregated = full_df.merge(aggregated, on=['year', 'keyword'], how='left')
+        aggregated['value'] = aggregated['value'].fillna(0)
     
+    return aggregated
+
+
+def get_top_keywords(trends_data: pd.DataFrame, num_keywords: int, metric: str) -> list:
+    """Get top N keywords by total value"""
+    total_by_keyword = trends_data.groupby('keyword')['value'].sum().sort_values(ascending=False)
+    return total_by_keyword.head(num_keywords).index.tolist()
+
+
+def create_keyword_trends_chart(data: pd.DataFrame, num_keywords: int, metric: str, title: str) -> go.Figure:
+    """Create a line chart for keyword trends"""
+    if data.empty:
+        return None
     
-    def _create_top_n_title(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, display_config: KeywordDisplayConfig) -> str:
-        """Create title for top N keyword selection"""
-        count_type = "Cumulative" if display_config.use_cumulative else "Yearly"
-        metric_text = "Funding" if display_config.metric == "funding" else "Grant Count"
-        return (
-            f"{count_type} Keyword Trends (count_range={filter_config.min_count}-{filter_config.max_count}, "
-            f"top_n={selection_config.top_n}, metric={metric_text})"
+    top_keywords = get_top_keywords(data, num_keywords, metric)
+    data_plot = data[data['keyword'].isin(top_keywords)].copy()
+    
+    fig = go.Figure()
+    
+    for keyword in top_keywords:
+        keyword_data = data_plot[data_plot['keyword'] == keyword].sort_values('year')
+        fig.add_trace(go.Scatter(
+            x=keyword_data['year'],
+            y=keyword_data['value'],
+            name=keyword,
+            mode='lines+markers',
+            line=dict(width=2),
+            marker=dict(size=6)
+        ))
+    
+    y_label = 'Funding Amount' if metric == "funding" else 'Grant Count'
+    
+    fig.update_layout(
+        title=title,
+        xaxis_title='Year',
+        yaxis_title=y_label,
+        height=600,
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
         )
+    )
+    
+    return fig
 
 
-class KeywordTrendsVisualizer:
-    """Manages the trends visualization tab using unified TrendsVisualizer"""
+def render_sidebar(keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
+    """Render sidebar controls"""
+    st.sidebar.header("Filters")
     
-    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
-        self.keywords_df = keywords_df
-        self.grants_df = grants_df
-        self.filter_manager = KeywordFilterManager(keywords_df, grants_df)
-        self.keyword_selector = KeywordSelector(self.filter_manager)
+    sources = grants_df['source'].dropna().unique().tolist() if 'source' in grants_df.columns else []
+    source_filter = st.sidebar.multiselect("Source", sorted(sources), default=["arc.gov.au"] if "arc.gov.au" in sources else [])
     
-    def render_tab(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, 
-                  display_config: KeywordDisplayConfig):
-        """Render the trends visualization tab"""
-        st.markdown("# Keyword Trends Over Time")
-        
-        if selection_config.method == "Specify custom keywords" and not selection_config.custom_keywords:
-            st.error("Please select at least one keyword when using custom keyword selection.")
-            return
-        
-        with st.spinner("Creating keyword trends visualization..."):
-            # Apply filters to get filtered grants and keywords
-            filtered_grants = self.filter_manager.apply_grant_filters(filter_config)
-            filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config, filtered_grants)
-            
-            selected_keywords, title = self.keyword_selector.select_keywords(filter_config, selection_config, display_config)
-            title_with_filters = self._add_filter_info_to_title(title, filter_config)
-            
-            # Use filtered data for trends visualization
-            viz_data = TrendsDataPreparation.from_keyword_grants(
-                filtered_keywords,
-                filtered_grants,
-                selected_keywords,
-                use_active_period=filter_config.use_active_grant_period,
-                year_min=filter_config.start_year_min,
-                year_max=filter_config.start_year_max,
-            )
-            
-            if viz_data.empty:
-                st.warning("No data available for the selected keywords and filters.")
-                return
-            
-            num_entities = (
-                selection_config.top_n if selection_config.method == "Top N keywords" else
-                len(selected_keywords)
-            )
-            
-            value_column = 'total_funding' if display_config.metric == "funding" else 'grant_count'
-            ranking_column = value_column
-            y_label = (
-                'Cumulative Funding Amount' if display_config.metric == "funding" and display_config.use_cumulative
-                else 'Funding Amount' if display_config.metric == "funding"
-                else 'Cumulative Grant Count' if display_config.use_cumulative
-                else 'Yearly Grant Count'
-            )
-
-            viz_config = TrendsConfig(
-                entity_col='keyword',
-                time_col='year',
-                value_col=value_column,
-                ranking_col=ranking_column,
-                max_entities=num_entities,
-                aggregation='sum',
-                use_cumulative=display_config.use_cumulative,
-                chart_type='line',
-                title=title_with_filters,
-                x_label='Year',
-                y_label=y_label,
-                height=600,
-                smooth_trends=display_config.smooth_trends,
-                smoothing_window=display_config.smoothing_window,
-            )
-            
-            visualizer = TrendsVisualizer()
-            fig_trends = visualizer.create_plot(viz_data, viz_config)
-            
-            if fig_trends is not None:
-                st.plotly_chart(fig_trends, use_container_width=True)
-                self._show_statistics(filter_config, selection_config, selected_keywords)
-                self._show_debug_data(filtered_keywords, viz_data)
-            else:
-                st.warning("No data available for the selected parameters.")
+    keyword_types = keywords_df['type'].dropna().unique().tolist() if 'type' in keywords_df.columns else []
+    keyword_type_filter = st.sidebar.multiselect("Keyword Type", sorted(keyword_types))
     
-    def _add_filter_info_to_title(self, title: str, filter_config: KeywordFilterConfig) -> str:
-        """Add filter information to the visualization title"""
-        filter_parts = []
-        if filter_config.funder_filter:
-            filter_parts.append(f"Funders: {', '.join(filter_config.funder_filter)}")
-        if filter_config.source_filter:
-            filter_parts.append(f"Sources: {', '.join(filter_config.source_filter)}")
-        if filter_config.field_filter:
-            field_display_parts = [format_research_field(field)[:25] for field in filter_config.field_filter[:2]]
-            field_display = ', '.join(field_display_parts)
-            if len(filter_config.field_filter) > 2:
-                field_display += f"... +{len(filter_config.field_filter) - 2} more"
-            filter_parts.append(f"Research Fields: {field_display}")
-        if filter_config.keyword_type_filter:
-            filter_parts.append(f"Types: {', '.join(filter_config.keyword_type_filter)}")
-        if filter_config.start_year_min is not None or filter_config.start_year_max is not None:
-            year_min = filter_config.start_year_min if filter_config.start_year_min is not None else "*"
-            year_max = filter_config.start_year_max if filter_config.start_year_max is not None else "*"
-            filter_parts.append(f"Years: {year_min}-{year_max}")
-        if filter_config.use_active_grant_period:
-            filter_parts.append("Active grant period")
-        
-        return f"{title} | Filtered by {' | '.join(filter_parts)}" if filter_parts else title
+    st.sidebar.subheader("Grant Count Range")
+    min_count = st.sidebar.number_input("Minimum Grants", min_value=1, value=5, step=1)
+    max_count = st.sidebar.number_input("Maximum Grants", min_value=1, value=1000, step=10)
     
-    def _show_statistics(self, filter_config: KeywordFilterConfig, selection_config: KeywordSelectionConfig, 
-                        selected_keywords: List[str]):
-        """Display statistics about the filtered data"""
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        filtered_grants = self.filter_manager.apply_grant_filters(filter_config)
-        filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config, filtered_grants)
-        
-        with col1:
-            st.metric("Total Keywords", len(self.keywords_df))
-        with col2:
-            st.metric("Filtered Keywords", len(filtered_keywords))
-        with col3:
-            st.metric("Total Grants", len(self.grants_df))
-        with col4:
-            st.metric("Filtered Grants", len(filtered_grants))
-        with col5:
-            displayed_count = self._get_displayed_keywords_count(selection_config, selected_keywords, filtered_keywords)
-            st.metric("Displayed Keywords", displayed_count)
+    min_year = int(grants_df['start_year'].min()) if 'start_year' in grants_df.columns else 2000
+    max_year = int(grants_df['start_year'].max()) if 'start_year' in grants_df.columns else 2024
+    year_range = st.sidebar.slider("Year Range", min_year, max_year, (2000, max_year))
     
-    def _get_displayed_keywords_count(self, selection_config: KeywordSelectionConfig, 
-                                    selected_keywords: List[str], filtered_keywords: pd.DataFrame) -> int:
-        """Get the count of displayed keywords"""
-        if selection_config.method == "Top N keywords" and selection_config.top_n > 0:
-            return min(selection_config.top_n, len(filtered_keywords))
-        elif selection_config.method == "Random sample":
-            return len(selected_keywords)
-        elif selection_config.method == "Specify custom keywords":
-            return len(selection_config.custom_keywords)
-        return 0
+    st.sidebar.header("Display Options")
     
-    def _show_debug_data(self, filtered_keywords: pd.DataFrame, viz_data: pd.DataFrame):
-        """Show debug data in an expander"""
-        with st.expander("Debug: View Underlying Data", expanded=False):
-            st.subheader("Filtered Keywords DataFrame")
-            st.write(f"**Shape:** {filtered_keywords.shape}")
-            st.dataframe(filtered_keywords, use_container_width=True)
-            
-            st.subheader("Keyword Trends Data (Chart Data)")
-            st.write(f"**Shape:** {viz_data.shape}")
-            st.dataframe(viz_data, use_container_width=True)
+    metric = st.sidebar.radio("Metric", ["count", "funding"], index=0)
+    num_keywords = st.sidebar.slider("Number of Top Keywords", 5, 30, 10)
     
-
-class KeywordDataExplorer:
-    """Manages the data exploration tab using the generalized DataExplorer"""
-    
-    def __init__(self, keywords_df: pd.DataFrame, grants_df: pd.DataFrame):
-        self.keywords_df = keywords_df
-        self.grants_df = grants_df
-        self.filter_manager = KeywordFilterManager(keywords_df, grants_df)
-        self.data_explorer = DataExplorer()
-    
-    @staticmethod
-    def prepare_data(filtered_keywords: pd.DataFrame) -> tuple[pd.DataFrame, DataExplorerConfig]:
-        """Prepare keywords data and configuration for DataExplorer"""
-        display_df = filtered_keywords.copy()
-        
-        if 'name' not in display_df.columns and display_df.index.name == 'name':
-            display_df = display_df.reset_index()
-        
-        display_df['grant_count'] = display_df['grants'].apply(len)
-        display_df = display_df.sort_values('grant_count', ascending=False)
-        
-        config = DataExplorerConfig(
-            title="Keywords Dataset",
-            description="Explore the complete keywords dataset with filtering, search capabilities, and distribution analysis.",
-            search_columns=['name', 'type'],
-            search_placeholder="Search in keyword names or types...",
-            search_help="Enter text to search for specific keywords by name or type",
-            display_columns=['name', 'type', 'grant_count', 'grants'],
-            column_formatters={
-                'grants': lambda x: ', '.join(str(g) for g in x[:3]) + ('...' if len(x) > 3 else '')
-            },
-            column_renames={
-                'name': 'Keyword Name',
-                'type': 'Type',
-                'grant_count': 'Grant Count',
-                'grants': 'Associated Grants'
-            },
-            statistics_columns=['grant_count'],
-            max_display_rows=100,
-            show_statistics=True,
-            show_data_info=True,
-            enable_download=True
-        )
-        
-        return display_df, config
-    
-    def render_tab(self, filter_config: KeywordFilterConfig):
-        """Render the data exploration tab"""
-        filtered_keywords = self.filter_manager.apply_keyword_filters(filter_config)
-        
-        if len(filtered_keywords) == 0:
-            st.warning("No keywords found with current filters. Please adjust your filter settings.")
-            return
-        
-        # Prepare data and config
-        display_data, config = self.prepare_data(filtered_keywords)
-        
-        # Render the explorer
-        self.data_explorer.render_explorer(display_data, config)
+    return {
+        'source_filter': source_filter,
+        'keyword_type_filter': keyword_type_filter,
+        'min_count': min_count,
+        'max_count': max_count,
+        'year_min': year_range[0],
+        'year_max': year_range[1],
+        'metric': metric,
+        'num_keywords': num_keywords
+    }
 
 
-class KeywordsPage:
-    """Main page class that orchestrates all components"""
+def show_statistics(total_keywords: int, total_grants: int, filtered_keywords: pd.DataFrame, 
+                   filtered_grants: pd.DataFrame, displayed_keywords: int):
+    """Display statistics"""
+    col1, col2, col3, col4, col5 = st.columns(5)
     
-    def __init__(self):
-        self.keywords_df = None
-        self.grants_df = None
-        self.categories_df = None
-        self.setup_page()
-    
-    def setup_page(self):
-
-        
-        st.header("Keywords Analysis")
-        
-        self._load_data()
-        
-        if self.keywords_df is None or self.grants_df is None:
-            st.error("Unable to load data. Please check your data files.")
-            st.stop()
-        
-        # Store data in session state for use in sidebar controls
-        st.session_state['keywords'] = self.keywords_df
-        st.session_state['grants'] = self.grants_df
-    
-    def _load_data(self):
-        """Load and store data"""
-        self.keywords_df, self.grants_df, self.categories_df = load_data()
-    
-    def _map_selection_method(self, method: str) -> str:
-        """Map unified selection method to legacy format"""
-        mapping = {
-            "top_n": "Top N keywords",
-            "random": "Random sample",
-            "custom": "Specify custom keywords"
-        }
-        return mapping.get(method, "Top N keywords")
-    
-    def run(self):
-        """Main execution method"""
-        # Create unified sidebar controls
-        sidebar = SidebarControl(
-            page_type="keywords",
-            grants_df=self.grants_df,
-            keywords_df=self.keywords_df,
-            categories_df=self.categories_df
-        )
-        
-        # Get unified configurations from sidebar
-        unified_filter, unified_display = sidebar.render_sidebar()
-        
-        # Adapt to legacy format for existing code
-        filter_config = KeywordFilterConfig(
-            funder_filter=unified_filter.funder_filter,
-            source_filter=unified_filter.source_filter,
-            field_filter=unified_filter.field_filter,
-            keyword_type_filter=unified_filter.keyword_type_filter,
-            min_count=unified_filter.min_count,
-            max_count=unified_filter.max_count,
-            start_year_min=unified_filter.start_year_min,
-            start_year_max=unified_filter.start_year_max,
-            use_active_grant_period=unified_filter.use_active_grant_period
-        )
-        
-        selection_config = KeywordSelectionConfig(
-            method=self._map_selection_method(unified_display.selection_method),
-            top_n=unified_display.num_entities,
-            random_sample_size=unified_display.num_entities,
-            custom_keywords=unified_display.custom_entities,
-            use_random_seed=unified_display.use_random_seed,
-            random_seed=unified_display.random_seed
-        )
-        
-        display_config = KeywordDisplayConfig(
-            show_baseline=unified_display.show_baseline,
-            use_cumulative=unified_display.use_cumulative,
-            metric=unified_display.metric,
-            smooth_trends=unified_display.smooth_trends,
-            smoothing_window=unified_display.smoothing_window,
-        )
-        
-        trends_viz = KeywordTrendsVisualizer(self.keywords_df, self.grants_df)
-        trends_viz.render_tab(filter_config, selection_config, display_config)
+    with col1:
+        st.metric("Total Keywords", total_keywords)
+    with col2:
+        st.metric("Filtered Keywords", len(filtered_keywords))
+    with col3:
+        st.metric("Total Grants", total_grants)
+    with col4:
+        st.metric("Filtered Grants", len(filtered_grants))
+    with col5:
+        st.metric("Displayed Keywords", displayed_keywords)
 
 
 def main():
-    """Main function to run the keywords page"""
-    keywords_page = KeywordsPage()
-    keywords_page.run()
+    st.header("Keywords Analysis")
+    
+    keywords_df, grants_df, _ = load_data()
+    
+    if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
+        st.error("Unable to load data.")
+        return
+    
+    config = render_sidebar(keywords_df, grants_df)
+    
+    with st.spinner("Creating visualization..."):
+        filtered_keywords, filtered_grants = apply_filters(
+            keywords_df,
+            grants_df,
+            config['source_filter'],
+            config['keyword_type_filter'],
+            config['min_count'],
+            config['max_count'],
+            config['year_min'],
+            config['year_max']
+        )
+        
+        if filtered_keywords.empty:
+            st.error("No keywords found with current filters.")
+            return
+        
+        trends_data = prepare_keyword_trends_data(
+            filtered_keywords,
+            filtered_grants,
+            config['year_min'],
+            config['year_max'],
+            config['metric']
+        )
+        
+        if trends_data.empty:
+            st.warning("No keyword activity in selected period.")
+            return
+        
+        title = f"Keyword Trends Over Time (Active Grants Only)"
+        
+        fig = create_keyword_trends_chart(
+            trends_data,
+            config['num_keywords'],
+            config['metric'],
+            title
+        )
+        
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+            show_statistics(
+                len(keywords_df), 
+                len(grants_df), 
+                filtered_keywords, 
+                filtered_grants,
+                min(config['num_keywords'], len(filtered_keywords))
+            )
+        else:
+            st.warning("No data available for visualization.")
 
 
 if __name__ == "__main__":

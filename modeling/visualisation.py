@@ -454,7 +454,7 @@ class DataExplorer:
 
         st.dataframe(
             display_data,
-            use_container_width=True,
+            width=True,
             height=400,
             key=f"dataframe_{hash(config.title)}"
         )
@@ -729,7 +729,7 @@ class TrendsVisualizer:
                 stackgroup='one',
                 name=str(entity),
                 line=dict(width=0),
-                fillcolor=color,
+                fillcolor=color if len(entity_totals) > 1 else 'rgba(0,0,0,0)',
                 hovertemplate=hover_template
             ))
         fig.update_layout(

@@ -316,7 +316,7 @@ def render_sidebar(grants_df):
     
     search_phrase = st.sidebar.text_input(
         "Filter organisations (regex)",
-        value="",
+        value="swinburne",
         help="Type a regex pattern to select organisations, or leave empty to use multiselect"
     ).strip()
     

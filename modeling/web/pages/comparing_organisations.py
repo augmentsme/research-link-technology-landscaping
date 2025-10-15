@@ -250,7 +250,7 @@ def get_top_and_bottom_slope_categories(slopes, n=3, min_threshold=5):
 
 
 
-def select_organisations_widget(label, key_prefix, organisation_options, default_regex=""):
+def select_organisations_widget(label, key_prefix, organisation_options, default_regex="", select_all_orgs=False):
     """Widget for selecting organisations with regex or multiselect
     
     Returns:
@@ -260,7 +260,8 @@ def select_organisations_widget(label, key_prefix, organisation_options, default
     select_all = st.checkbox(
         f"Select all organisations for {label}",
         key=f"{key_prefix}_select_all",
-        help="Select all available organisations"
+        help="Select all available organisations",
+        value=select_all_orgs
     )
     
     if select_all:
@@ -458,7 +459,8 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
         "Organisation Group 1", 
         "org1", 
         organisation_options,
-        default_regex="au:melbourne_university"
+        default_regex="au:melbourne_university",
+        select_all_orgs=True
     )
     
     st.sidebar.markdown("---")
@@ -468,7 +470,8 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
         "Organisation Group 2", 
         "org2", 
         organisation_options,
-        default_regex="swinburne"
+        default_regex="swinburne",
+        select_all_orgs=False
     )
     
     if not org_group1:
@@ -490,7 +493,6 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
     # Add regex filter for categories
     category_regex = st.sidebar.text_input(
         "Filter categories (regex)",
-        value="",
         key="category_regex",
         help="Type a regex pattern to select categories, or leave empty to use multiselect"
     ).strip()

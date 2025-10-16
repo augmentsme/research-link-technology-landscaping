@@ -3,7 +3,6 @@ showSidebarNavigation = false
 
 [server]
 port = 8501
-baseUrlPath = "/landscaping"
 enableCORS = true
 enableXsrfProtection = true
 

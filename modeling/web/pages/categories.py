@@ -267,26 +267,28 @@ def show_statistics(total_categories, filtered_categories, total_grants, filtere
 
 def main():
     st.header("Category Analysis")
-    
-    keywords_df, grants_df, categories_df = load_data()
-    
-    if categories_df is None or categories_df.empty:
-        st.error("No category data available. Run categorization process first.")
-        st.info("Run: `make categorise` to generate categories from keywords.")
-        return
-    
-    if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
-        st.error("Unable to load keywords or grants data.")
-        return
-    
-    # Add keyword_count column if not present
-    if 'keyword_count' not in categories_df.columns and 'keywords' in categories_df.columns:
-        categories_df['keyword_count'] = categories_df['keywords'].apply(
-            lambda x: len(x) if isinstance(x, list) else 0
-        )
-    
-    config = render_sidebar(categories_df, grants_df)
-    
+
+    with st.spinner("Loading data..."):
+
+        keywords_df, grants_df, categories_df = load_data()
+
+        if categories_df is None or categories_df.empty:
+            st.error("No category data available. Run categorization process first.")
+            st.info("Run: `make categorise` to generate categories from keywords.")
+            return
+
+        if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
+            st.error("Unable to load keywords or grants data.")
+            return
+
+        # Add keyword_count column if not present
+        if 'keyword_count' not in categories_df.columns and 'keywords' in categories_df.columns:
+            categories_df['keyword_count'] = categories_df['keywords'].apply(
+                lambda x: len(x) if isinstance(x, list) else 0
+            )
+
+        config = render_sidebar(categories_df, grants_df)
+
     with st.spinner("Creating visualization..."):
         filtered_categories, filtered_grants = apply_filters(
             categories_df,
@@ -300,11 +302,11 @@ def main():
             config['year_max'],
             config['search_term']
         )
-        
+
         if filtered_categories.empty:
             st.error("No categories found with current filters.")
             return
-        
+
         trends_data = prepare_category_trends_data(
             filtered_categories,
             keywords_df,
@@ -313,20 +315,20 @@ def main():
             config['year_max'],
             config['metric']
         )
-        
+
         if trends_data.empty:
             st.warning("No category activity in selected period.")
             return
-        
+
         title = "Category Trends Over Time (Active Grants Only)"
-        
+
         fig = create_category_trends_chart(
             trends_data,
             config['num_categories'],
             config['metric'],
             title
         )
-        
+
         if fig is not None:
             st.plotly_chart(fig, use_container_width=True)
             show_statistics(

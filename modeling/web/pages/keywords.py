@@ -215,14 +215,16 @@ def show_statistics(total_keywords: int, total_grants: int, filtered_keywords: p
 
 def main():
     st.header("Keywords Analysis")
+
+    with st.spinner("Loading data..."):
     
-    keywords_df, grants_df, _ = load_data()
-    
-    if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
-        st.error("Unable to load data.")
-        return
-    
-    config = render_sidebar(keywords_df, grants_df)
+        keywords_df, grants_df, _ = load_data()
+
+        if keywords_df is None or keywords_df.empty or grants_df is None or grants_df.empty:
+            st.error("Unable to load data.")
+            return
+
+        config = render_sidebar(keywords_df, grants_df)
     
     with st.spinner("Creating visualization..."):
         filtered_keywords, filtered_grants = apply_filters(

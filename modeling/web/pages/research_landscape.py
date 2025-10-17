@@ -21,6 +21,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 load_css()
 
 render_page_links()
@@ -290,18 +291,20 @@ def show_statistics(categories_list: List[Dict[str, Any]]):
 def main():
     st.header("Research Landscape Treemap")
     st.markdown("Explore the hierarchical structure of research categories and keywords.")
+
+    with st.spinner("Loading data..."):
     
-    _, _, categories_df = load_data()
-    
-    if categories_df is None or categories_df.empty:
-        st.error("Unable to load categories data.")
-        return
-    
-    # Reset index to include 'name' as a column instead of dropping it
-    categories_df = categories_df.fillna(0).reset_index()
-    categories_list = categories_df.to_dict('records')
-    
-    config = render_sidebar(categories_df)
+        _, _, categories_df = load_data()
+
+        if categories_df is None or categories_df.empty:
+            st.error("Unable to load categories data.")
+            return
+
+        # Reset index to include 'name' as a column instead of dropping it
+        categories_df = categories_df.fillna(0).reset_index()
+        categories_list = categories_df.to_dict('records')
+
+        config = render_sidebar(categories_df)
     
     with st.spinner("Creating research landscape treemap..."):
         fig = create_treemap(

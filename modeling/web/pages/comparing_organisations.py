@@ -13,13 +13,15 @@ web_dir = str(Path(__file__).parent.parent)
 if web_dir not in sys.path:
     sys.path.insert(0, web_dir)
 
-from shared_utils import load_data, render_page_links, get_category_grant_links
+from shared_utils import load_data, render_page_links, get_category_grant_links, load_css
 
 st.set_page_config(
     page_title="Comparing Organisations",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 render_page_links()
 
@@ -564,81 +566,83 @@ def render_sidebar(grants_df, categories_df, auto_selected_categories=None):
 def main():
     st.title("Comparing Organisations")
     st.caption("Compare research activity between two groups of organisations using connected scatterplots")
+
+    with st.spinner("Loading data..."):
     
-    keywords_df, grants_df, categories_df = load_data()
-    
-    if grants_df is None or grants_df.empty:
-        st.error("Unable to load grants data.")
-        return
-    
-    # Initialize session state for auto-selected categories
-    if 'auto_categories' not in st.session_state:
-        st.session_state.auto_categories = None
-    
-    # First render to get org groups
-    config = render_sidebar(grants_df, categories_df, st.session_state.auto_categories)
-    if config is None:
-        return
-    
+        keywords_df, grants_df, categories_df = load_data()
+
+        if grants_df is None or grants_df.empty:
+            st.error("Unable to load grants data.")
+            return
+
+        # Initialize session state for auto-selected categories
+        if 'auto_categories' not in st.session_state:
+            st.session_state.auto_categories = None
+
+        # First render to get org groups
+        config = render_sidebar(grants_df, categories_df, st.session_state.auto_categories)
+        if config is None:
+            return
+
     with st.spinner("Preparing comparison data..."):
         # Step 1: Filter grants
         org1_grants = filter_grants_by_organisations(grants_df, config['org_group1'])
         org2_grants = filter_grants_by_organisations(grants_df, config['org_group2'])
-        
+
         if org1_grants.empty and org2_grants.empty:
             st.warning("No grants found for selected organisations.")
             return
-        
+
         # Step 2: Calculate metrics for ALL categories to find slopes
         org1_data_all = calculate_category_metrics_by_year(
-            org1_grants, 
-            categories_df, 
-            keywords_df, 
+            org1_grants,
+            categories_df,
+            keywords_df,
             None,  # Get all categories
             config['metric']
         )
         org1_data_all['org_group'] = 'org1'
-        
+
         org2_data_all = calculate_category_metrics_by_year(
-            org2_grants, 
-            categories_df, 
-            keywords_df, 
+            org2_grants,
+            categories_df,
+            keywords_df,
             None,  # Get all categories
             config['metric']
         )
         org2_data_all['org_group'] = 'org2'
-        
+
         # Step 3: Combine and calculate cumulative metrics
         combined_data_all = pd.concat([org1_data_all, org2_data_all], ignore_index=True)
         combined_data_all = calculate_cumulative_metrics(combined_data_all)
-        
+
         # Step 4: Calculate slopes for auto-selection
         slopes = calculate_category_slopes(combined_data_all)
         auto_categories = get_top_and_bottom_slope_categories(
-            slopes, 
-            n=3, 
+            slopes,
+            n=3,
             min_threshold=config['min_threshold']
         )
-        
+
         # Update session state if categories changed
         if st.session_state.auto_categories != auto_categories:
             st.session_state.auto_categories = auto_categories
             st.rerun()
-        
+
         # Filter to selected categories
         combined_data = combined_data_all[combined_data_all['category'].isin(config['selected_categories'])].copy()
-        
+
         combined_data = combined_data[
-            (combined_data['year'] >= config['year_min']) & 
+            (combined_data['year'] >= config['year_min']) &
             (combined_data['year'] <= config['year_max'])
         ]
-        
+
         if combined_data.empty:
             st.warning("No data available for the selected parameters.")
             return
-        
+
         metric_label = 'Funding Amount' if config['metric'] == 'funding' else 'Grant Count'
-        
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric(config['org1_label'], f"{len(config['org_group1'])} orgs")
@@ -648,11 +652,11 @@ def main():
             st.metric(config['org2_label'], f"{len(config['org_group2'])} orgs")
         with col4:
             st.metric("Grants", f"{len(org2_grants):,}")
-        
+
         st.markdown("---")
-        
+
         category_label = f"Selected Categories ({len(config['selected_categories'])})"
-        
+
         fig = create_connected_scatterplot(
             combined_data,
             config['org1_label'],
@@ -660,10 +664,10 @@ def main():
             category_label,
             metric_label
         )
-        
+
         if fig:
             st.plotly_chart(fig, use_container_width=True)
-            
+
             st.info("💡 **How to read this chart:**\n"
                    "- Each line represents a category's **cumulative** trajectory over time\n"
                    "- Values accumulate from start year onwards (grants persist after they end)\n"

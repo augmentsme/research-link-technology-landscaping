@@ -30,16 +30,18 @@ def format_research_field(field: Optional[str]) -> str:
     return str(field)
 
 def render_page_links():
+    st.logo("web/static/media/logo.png", size="large", icon_image="web/static/media/favicon.png")
+
     """Render navigation page links"""
-    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+    col1, col2, col3, col4, col5, col6, col7 = st.columns(7, width="stretch")
     
-    col1.page_link(page="pages/categories.py", label="Categories", icon=":material/category:")
-    col2.page_link(page="pages/grants.py", label="Grants", icon=":material/library_books:")
-    col3.page_link(page="pages/keywords.py", label="Keywords", icon=":material/tag:")
-    col4.page_link(page="pages/research_landscape.py", label="Research Landscapes", icon=":material/document_search:")
-    col5.page_link(page="pages/organisation.py", label="Organisation", icon=":material/business:")
-    col6.page_link(page="pages/comparing_organisations.py", label="Compare Orgs", icon=":material/compare_arrows:")
-    col7.page_link(page="pages/raw_data.py", label="Raw Data", icon=":material/table:")
+    col1.page_link(page="pages/categories.py", label="Categories", icon=":material/category:", width="stretch")
+    col2.page_link(page="pages/grants.py", label="Grants", icon=":material/library_books:", width="stretch")
+    col3.page_link(page="pages/keywords.py", label="Keywords", icon=":material/tag:", width="stretch")
+    col4.page_link(page="pages/research_landscape.py", label="Research Landscapes", icon=":material/document_search:", width="stretch")
+    col5.page_link(page="pages/organisation.py", label="Organisation", icon=":material/business:", width="stretch")
+    col6.page_link(page="pages/comparing_organisations.py", label="Compare Orgs", icon=":material/compare_arrows:", width="stretch")
+    col7.page_link(page="pages/raw_data.py", label="Raw Data", icon=":material/table:", width="stretch")
 
 def hash_df(df: pd.DataFrame) -> int:
     """Generate a hash for a DataFrame based on its content."""

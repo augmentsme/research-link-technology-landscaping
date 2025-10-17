@@ -171,15 +171,17 @@ def show_statistics(total_grants: int, filtered_grants: pd.DataFrame, aggregated
 
 def main():
     st.header("Grants Analysis")
+
+    with st.spinner("Loading data..."):
     
-    _, grants_df, _ = load_data()
-    
-    if grants_df is None or grants_df.empty:
-        st.error("Unable to load grants data.")
-        return
-    
-    config = render_sidebar(grants_df)
-    
+        _, grants_df, _ = load_data()
+
+        if grants_df is None or grants_df.empty:
+            st.error("Unable to load grants data.")
+            return
+
+        config = render_sidebar(grants_df)
+
     with st.spinner("Creating visualization..."):
         filtered_grants = apply_filters(
             grants_df,
@@ -187,30 +189,30 @@ def main():
             config['year_min'],
             config['year_max']
         )
-        
+
         if filtered_grants.empty:
             st.error("No grants found with current filters.")
             return
-        
+
         aggregated = prepare_aggregated_data(
             filtered_grants,
             config['year_min'],
             config['year_max']
         )
-        
+
         if aggregated.empty:
             st.warning("No grant activity in selected period.")
             return
-        
+
         title = "Yearly Grant Distribution by Year and Organization"
-        
+
         fig = create_stacked_area_chart(
             aggregated,
             config['metric'],
             config['num_entities'],
             title
         )
-        
+
         st.plotly_chart(fig, use_container_width=True)
         show_statistics(len(grants_df), filtered_grants, aggregated)
 

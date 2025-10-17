@@ -16,7 +16,7 @@ if web_dir not in sys.path:
 from shared_utils import (
     load_data, render_page_links,
     get_category_grant_links, get_keyword_grant_links,
-    expand_grants_to_years, expand_links_to_years
+    expand_grants_to_years, expand_links_to_years, load_css
 )
 
 st.set_page_config(
@@ -24,6 +24,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 render_page_links()
 
@@ -394,16 +396,18 @@ def render_sidebar(grants_df):
 def main():
     st.title("Organisation Insights")
     st.caption("Explore grants, keywords, and categories for a specific organisation")
+
+    with st.spinner("Loading data..."):
     
-    keywords_df, grants_df, categories_df = load_data()
-    
-    if grants_df is None or grants_df.empty:
-        st.error("Unable to load grants data.")
-        return
-    
-    config = render_sidebar(grants_df)
-    if config is None:
-        return
+        keywords_df, grants_df, categories_df = load_data()
+
+        if grants_df is None or grants_df.empty:
+            st.error("Unable to load grants data.")
+            return
+
+        config = render_sidebar(grants_df)
+        if config is None:
+            return
     
     with st.spinner("Loading organisation data..."):
         filtered_grants = filter_grants_by_organisation(

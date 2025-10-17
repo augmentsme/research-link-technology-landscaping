@@ -59,7 +59,7 @@ def calculate_category_metrics_by_year(grants_df, categories_df, keywords_df, se
         return pd.DataFrame()
     
     merged = category_grant_links.merge(
-        grants_df[['start_year', 'funding_amount', 'organisation_ids']], 
+        grants_df[['start_year', 'end_year', 'funding_amount', 'organisation_ids']], 
         left_on='grant_id', 
         right_index=True, 
         how='inner'
@@ -68,18 +68,35 @@ def calculate_category_metrics_by_year(grants_df, categories_df, keywords_df, se
     if merged.empty:
         return pd.DataFrame()
     
-    # OPTIMIZED: Explode organisation_ids ONCE instead of row-by-row iteration
-    merged_exploded = merged.explode('organisation_ids')
-    merged_exploded = merged_exploded.dropna(subset=['start_year', 'organisation_ids'])
-    merged_exploded['year'] = merged_exploded['start_year'].astype(int)
+    # Prepare data for expansion across years
+    merged = merged.dropna(subset=['start_year'])
+    merged['end_year'] = merged['end_year'].fillna(merged['start_year'])
+    merged['start_year'] = merged['start_year'].astype(int)
+    merged['end_year'] = merged['end_year'].astype(int)
     
-    # Prepare for aggregation
+    # Calculate duration and divide funding by duration
+    merged['duration'] = merged['end_year'] - merged['start_year'] + 1
+    merged['funding_per_year'] = merged['funding_amount'] / merged['duration']
+    
+    # Create year ranges for each grant
+    merged['years'] = merged.apply(
+        lambda row: list(range(row['start_year'], row['end_year'] + 1)),
+        axis=1
+    )
+    
+    # Explode by years first
+    merged_years = merged[['category', 'grant_id', 'years', 'funding_per_year', 'organisation_ids']].explode('years')
+    merged_years = merged_years.rename(columns={'years': 'year'})
+    
+    # Then explode by organisation_ids
+    merged_exploded = merged_years.explode('organisation_ids')
+    merged_exploded = merged_exploded.dropna(subset=['organisation_ids'])
     merged_exploded = merged_exploded.rename(columns={'organisation_ids': 'organisation_id'})
     
     if metric == 'funding':
         aggregated = merged_exploded.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
-            'funding_amount': 'sum'
-        }).rename(columns={'funding_amount': 'value'})
+            'funding_per_year': 'sum'
+        }).rename(columns={'funding_per_year': 'value'})
     else:
         aggregated = merged_exploded.groupby(['year', 'organisation_id', 'category'], as_index=False).agg({
             'grant_id': 'count'

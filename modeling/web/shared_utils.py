@@ -223,13 +223,17 @@ def expand_grants_to_years(grants_df, use_active_period=True, include_org_ids=Fa
             lambda row: list(range(row['start_year'], row['end_year'] + 1)),
             axis=1
         )
+        # Calculate duration and divide funding by duration
+        valid_grants['duration'] = valid_grants['end_year'] - valid_grants['start_year'] + 1
+        valid_grants['funding_per_year'] = valid_grants['funding_amount'] / valid_grants['duration']
     else:
         # Only use start year
         valid_grants['years'] = valid_grants['start_year'].apply(lambda x: [x])
+        valid_grants['funding_per_year'] = valid_grants['funding_amount']
     
     # Explode by years
-    expanded = valid_grants[['years', 'funding_amount']].explode('years')
-    expanded = expanded.rename(columns={'years': 'year'})
+    expanded = valid_grants[['years', 'funding_per_year']].explode('years')
+    expanded = expanded.rename(columns={'years': 'year', 'funding_per_year': 'funding_amount'})
     expanded['grant_id'] = expanded.index
     
     if include_org_ids and 'organisation_ids' in grants_df.columns:
@@ -297,17 +301,21 @@ def expand_links_to_years(link_df, grants_df, entity_col, use_active_period=True
             lambda row: list(range(row['start_year'], row['end_year'] + 1)),
             axis=1
         )
+        # Calculate duration and divide funding by duration
+        merged['duration'] = merged['end_year'] - merged['start_year'] + 1
+        merged['funding_per_year'] = merged['funding_amount'] / merged['duration']
     else:
         # Only use start year
         merged['years'] = merged['start_year'].apply(lambda x: [x])
+        merged['funding_per_year'] = merged['funding_amount']
     
     # Explode by years
-    result_cols = [entity_col, 'grant_id', 'years', 'funding_amount']
+    result_cols = [entity_col, 'grant_id', 'years', 'funding_per_year']
     if include_source:
         result_cols.append('source')
     
     expanded = merged[result_cols].explode('years')
-    expanded = expanded.rename(columns={'years': 'year'})
+    expanded = expanded.rename(columns={'years': 'year', 'funding_per_year': 'funding_amount'})
     
     return expanded.reset_index(drop=True)
 
